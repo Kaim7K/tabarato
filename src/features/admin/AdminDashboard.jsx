@@ -24,7 +24,7 @@ export function Dashboard({ analytics, offers, loading, onNew, onEdit, onRefresh
         <Metric icon={ClipboardList} label="Ofertas cadastradas" value={analytics.total} hint={`${analytics.drafts} rascunhos`} />
         <Metric icon={Send} label="Publicadas" value={analytics.published} hint={`${analytics.totalClicks} cliques registrados`} />
         <Metric icon={CalendarClock} label="Agendadas" value={analytics.scheduled} hint={analytics.scheduled ? "Na fila de publicacao" : "Nenhuma pendente"} />
-        <Metric icon={CircleDollarSign} label="Ticket medio" value={formatPrice(analytics.averageTicket)} hint={`${analytics.averageDiscount}% desconto medio`} />
+        <Metric icon={CircleDollarSign} label="Engajamento" value={analytics.totalShares + analytics.totalFavorites} hint={`${analytics.totalShares} compartilhamentos · ${analytics.totalFavorites} favoritos`} />
       </div>
 
       <div className="grid xl:grid-cols-2 gap-4">
@@ -129,4 +129,3 @@ function Metric({ icon: Icon, label, value, hint }) {
     </div>
   );
 }
-

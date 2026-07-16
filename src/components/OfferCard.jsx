@@ -1,25 +1,36 @@
 import { Link } from "react-router-dom";
-import { ArrowUpRight, Clock, Heart, ImageOff } from "lucide-react";
+import { ArrowUpRight, Clock, Heart, ImageOff, Scale } from "lucide-react";
 import { StoreBadge, WhatsAppIcon } from "@/components/BrandIcons";
 import { useFavorites } from "@/lib/FavoritesContext";
-import { formatPrice } from "@/lib/catalog";
-import { trackOfferClick } from "@/lib/offersApi";
+import { formatPrice, formatRelativeDate } from "@/lib/catalog";
+import { trackOfferClick, trackOfferMetric } from "@/lib/offersApi";
+import { useOfferTools } from "@/lib/OfferToolsContext";
 
-export default function OfferCard({ offer }) {
+export default function OfferCard({ offer, rank = 0 }) {
   const { toggle, isFavorite } = useFavorites();
+  const { compareIds, isComparing, recordInterest, toggleCompare } = useOfferTools();
   const favorite = isFavorite(offer.id);
+  const comparing = isComparing(offer.id);
   const summary = offer.benefit || offer.description || "Oferta selecionada pelo Tá Barato.";
 
   const shareOffer = (event) => {
     event.preventDefault();
     event.stopPropagation();
     const text = `Oferta Tá Barato: ${offer.name}\n\n${formatPrice(offer.price)}\n${summary}\n\n${offer.affiliate_link}`;
+    trackOfferMetric(offer.id, "share");
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer");
+  };
+
+  const toggleFavorite = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!favorite) trackOfferMetric(offer.id, "favorite");
+    toggle(offer.id);
   };
 
   return (
     <article className="group bg-white rounded-lg overflow-hidden border border-[#111111]/8 shadow-[0_2px_12px_rgba(17,17,17,0.04)] hover:border-[#111111]/15 hover:shadow-[0_12px_30px_rgba(17,17,17,0.09)] transition-[border-color,box-shadow,transform] duration-200 flex flex-col h-full">
-      <Link to={`/oferta/${offer.id}`} className="block relative overflow-hidden aspect-[4/3] bg-white border-b border-[#111111]/8">
+      <Link to={`/oferta/${offer.id}`} onClick={() => recordInterest(offer.category)} className="block relative overflow-hidden aspect-[4/3] bg-white border-b border-[#111111]/8">
         {offer.image ? (
           <img
             src={offer.image}
@@ -34,11 +45,7 @@ export default function OfferCard({ offer }) {
         )}
         <button
           type="button"
-          onClick={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            toggle(offer.id);
-          }}
+          onClick={toggleFavorite}
           className={`absolute top-3 right-3 w-10 h-10 rounded-full flex items-center justify-center border transition shadow-sm ${
             favorite
               ? "bg-[#FF6B35] border-[#FF6B35] text-white"
@@ -49,6 +56,8 @@ export default function OfferCard({ offer }) {
         >
           <Heart className="w-4 h-4" fill={favorite ? "currentColor" : "none"} />
         </button>
+        {offer.discount > 0 && <span className="absolute top-3 left-3 px-2.5 py-1.5 rounded-md bg-[#168A55] text-white text-xs font-bold">-{offer.discount}%</span>}
+        {rank > 0 && <span className="absolute top-12 left-3 px-2 py-1 rounded-md bg-[#111111] text-white text-xs font-bold">#{rank} em alta</span>}
         <StoreBadge platform={offer.platform} />
       </Link>
 
@@ -65,15 +74,19 @@ export default function OfferCard({ offer }) {
         </p>
 
         <div className="mt-5 mb-4">
+          {offer.previous_price && offer.previous_price > offer.price && <p className="text-xs text-[#111111]/35 line-through mb-1">{formatPrice(offer.previous_price)}</p>}
           <p className="price-type text-[#111111] text-2xl leading-none">
             {formatPrice(offer.price)}
           </p>
-          {offer.time_label && (
-            <span className="mt-2 flex items-center gap-1 text-[#111111]/40 text-xs">
+          <div className="flex flex-wrap items-center gap-2 mt-2">
+            {offer.coupon && <span className="px-2 py-1 rounded bg-[#FF6B35]/10 text-[#D95426] text-xs font-semibold">Cupom: {offer.coupon}</span>}
+          {offer.published_date && (
+            <span className="flex items-center gap-1 text-[#111111]/40 text-xs">
               <Clock className="w-3 h-3" />
-              {offer.time_label}
+              Atualizado {formatRelativeDate(offer.published_date)}
             </span>
           )}
+          </div>
         </div>
 
         <div className="flex gap-2 mt-auto">
@@ -95,6 +108,16 @@ export default function OfferCard({ offer }) {
             aria-label="Compartilhar no WhatsApp"
           >
             <WhatsAppIcon className="w-5 h-5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => toggleCompare(offer.id)}
+            disabled={!comparing && compareIds.length >= 3}
+            className={`min-h-11 min-w-11 flex items-center justify-center border rounded-md transition-colors ${comparing ? "bg-[#111111] text-white border-[#111111]" : "bg-white text-[#111111]/55 border-[#111111]/10 hover:text-[#FF6B35]"}`}
+            title={comparing ? "Remover da comparação" : compareIds.length >= 3 ? "Limite de três ofertas atingido" : "Adicionar à comparação"}
+            aria-label={comparing ? "Remover da comparação" : compareIds.length >= 3 ? "Limite de três ofertas atingido" : "Adicionar à comparação"}
+          >
+            <Scale className="w-5 h-5" />
           </button>
         </div>
       </div>

@@ -32,3 +32,19 @@ test("admin password is not hardcoded in the login function", () => {
   assert.doesNotMatch(login, /Argolo@28/);
   assert.match(login, /process\.env\.ADMIN_PASSWORD/);
 });
+
+test("PWA manifest and service worker are production-ready", () => {
+  const manifest = JSON.parse(readFileSync(join(root, "public", "manifest.json"), "utf8"));
+  const serviceWorker = readFileSync(join(root, "public", "sw.js"), "utf8");
+  assert.equal(manifest.display, "standalone");
+  assert.ok(manifest.shortcuts.length >= 3);
+  assert.match(serviceWorker, /url\.pathname\.startsWith\("\/api\/"\)/);
+  assert.match(serviceWorker, /request\.mode === "navigate"/);
+});
+
+test("public routes include radar, comparison and alerts", () => {
+  const app = readFileSync(join(root, "src", "App.jsx"), "utf8");
+  assert.match(app, /path="\/radar"/);
+  assert.match(app, /path="\/comparar"/);
+  assert.match(app, /path="\/alertas"/);
+});

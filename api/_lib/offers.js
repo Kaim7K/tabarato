@@ -38,6 +38,8 @@ export function mapOffer(row) {
     telegramResponse: row.telegram_response || null,
     errorMessage: row.error_message || "",
     clicks: row.clicks || 0,
+    shares: row.shares || 0,
+    favorites: row.favorites || 0,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

@@ -4,6 +4,7 @@ const FavoritesContext = createContext({
   favorites: [],
   toggle: (_id) => {},
   isFavorite: (_id) => Boolean(false),
+  replaceFavorites: (_ids) => {},
 });
 export const useFavorites = () => useContext(FavoritesContext);
 
@@ -14,6 +15,12 @@ export function FavoritesProvider({ children }) {
 
   useEffect(() => {
     try { setFavorites(JSON.parse(localStorage.getItem(KEY) || "[]")); } catch {}
+    const sync = (event) => {
+      if (event.key !== KEY) return;
+      try { setFavorites(JSON.parse(event.newValue || "[]")); } catch {}
+    };
+    window.addEventListener("storage", sync);
+    return () => window.removeEventListener("storage", sync);
   }, []);
 
   const toggle = useCallback((id) => {
@@ -25,9 +32,14 @@ export function FavoritesProvider({ children }) {
   }, []);
 
   const isFavorite = useCallback((id) => favorites.includes(id), [favorites]);
+  const replaceFavorites = useCallback((ids) => {
+    const next = [...new Set(ids.filter((id) => typeof id === "string"))];
+    localStorage.setItem(KEY, JSON.stringify(next));
+    setFavorites(next);
+  }, []);
 
   return (
-    <FavoritesContext.Provider value={{ favorites, toggle, isFavorite }}>
+    <FavoritesContext.Provider value={{ favorites, toggle, isFavorite, replaceFavorites }}>
       {children}
     </FavoritesContext.Provider>
   );

@@ -22,6 +22,7 @@ import { DEFAULT_CATEGORIES, formatPrice, normalizeText, slugify } from "@/lib/c
 import { listPublicOffers, trackOfferClick } from "@/lib/offersApi";
 import { TELEGRAM_CHANNEL_URL, WHATSAPP_GROUP_URL } from "@/lib/publicLinks";
 import { useDocumentMetadata } from "@/hooks/useDocumentMetadata";
+import { useOfferTools } from "@/lib/OfferToolsContext";
 
 const categoryIcons = {
   Casa: HomeIcon,
@@ -39,6 +40,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [searchParams] = useSearchParams();
+  const { preferredCategories } = useOfferTools();
   const searchQuery = searchParams.get("q") || "";
 
   useEffect(() => {
@@ -56,6 +58,9 @@ export default function Home() {
   const featured = filteredOffers[0] || null;
   const featuredCopy = featured?.benefit || featured?.description || "Oferta selecionada para comprar melhor sem perder tempo.";
   const recent = filteredOffers.filter((offer) => offer.id !== featured?.id).slice(0, 8);
+  const personalized = preferredCategories.length
+    ? filteredOffers.filter((offer) => preferredCategories.slice(0, 3).includes(offer.category) && offer.id !== featured?.id).slice(0, 4)
+    : [];
   const mostClicked = [...filteredOffers].sort((a, b) => (b.clicks || 0) - (a.clicks || 0)).slice(0, 5);
   const hasTelegramLink = Boolean(TELEGRAM_CHANNEL_URL);
   const hasWhatsAppLink = Boolean(WHATSAPP_GROUP_URL);
@@ -67,7 +72,6 @@ export default function Home() {
           src="/brand/hero-marketplace-v1.jpg"
           alt=""
           aria-hidden="true"
-          fetchPriority="high"
           className="absolute inset-0 -z-20 h-full w-full object-cover object-[68%_center] sm:object-center"
         />
         <div className="absolute inset-0 -z-10 bg-[#090909]/55 sm:bg-[#090909]/42" aria-hidden="true" />
@@ -151,7 +155,7 @@ export default function Home() {
               <div className="bg-white border border-[#111111]/8 rounded-lg overflow-hidden shadow-[0_8px_30px_rgba(17,17,17,0.06)] grid md:grid-cols-[minmax(18rem,0.85fr)_minmax(0,1.15fr)]">
                 <div className="relative min-h-64 md:min-h-80 bg-white border-b md:border-b-0 md:border-r border-[#111111]/8">
                   {featured.image ? (
-                    <img src={featured.image} alt={featured.name} fetchPriority="high" className="absolute inset-0 w-full h-full object-contain p-5 sm:p-7" />
+                    <img src={featured.image} alt={featured.name} className="absolute inset-0 w-full h-full object-contain p-5 sm:p-7" />
                   ) : (
                     <div className="absolute inset-0 flex items-center justify-center bg-[#F3F3F3]">
                       <PackageSearch className="w-12 h-12 text-[#111111]/15" />
@@ -204,6 +208,12 @@ export default function Home() {
                 <EmptyState title="Mais ofertas aparecem aqui em breve." />
               )}
             </section>
+            {personalized.length > 0 && (
+              <section aria-labelledby="personalized-title">
+                <SectionTitle eyebrow="Com base nos seus interesses" title="Escolhidos para você" />
+                <OfferGrid>{personalized.map((offer) => <OfferCard key={offer.id} offer={offer} />)}</OfferGrid>
+              </section>
+            )}
           </>
         ) : (
           <EmptyState title="Novos achados aparecem aqui." description="Assim que uma oferta for publicada, ela entra nesta vitrine automaticamente." />

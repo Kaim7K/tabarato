@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { ClipboardList, FolderKanban, LayoutDashboard, MessageSquareText, Plus } from "lucide-react";
-import { DEFAULT_CATEGORIES, slugify } from "@/lib/catalog";
+import { DEFAULT_CATEGORIES, normalizeText, slugify } from "@/lib/catalog";
 import { telegramOffersApi, telegramStatuses } from "@/lib/telegramOffersApi";
 import { AdminHeader, AdminNavButton, AdminQuickLine } from "@/features/admin/AdminUi";
 import { number, statusLabels } from "@/features/admin/adminOfferConfig";
@@ -67,6 +67,19 @@ const normalizeFormPrice = (value = "") => {
   const integer = raw.slice(0, decimalIndex).replace(/[.,]/g, "");
   if (decimals.length === 2) return `${integer}.${decimals}`;
   return `${integer}${decimals}`;
+};
+
+const suggestCategory = (product = {}, available = []) => {
+  const text = normalizeText(`${product.productName || ""} ${product.shortDescription || ""}`);
+  const rules = [
+    { category: "Tecnologia", words: ["fone", "celular", "smartphone", "notebook", "computador", "mouse", "teclado", "monitor"] },
+    { category: "Cozinha", words: ["panela", "air fryer", "cafeteira", "liquidificador", "cozinha"] },
+    { category: "Ferramentas", words: ["furadeira", "parafusadeira", "ferramenta", "serra", "chave"] },
+    { category: "Casa e organização", words: ["organizador", "casa", "armario", "prateleira", "limpeza"] },
+    { category: "Beleza e cuidados", words: ["beleza", "perfume", "cabelo", "barbeador", "maquiagem"] },
+    { category: "Escritório", words: ["escritorio", "cadeira", "mesa", "papel", "caneta"] },
+  ];
+  return rules.find((rule) => available.includes(rule.category) && rule.words.some((word) => text.includes(word)))?.category || "";
 };
 
 const loadCustomCategories = () => {
@@ -235,6 +248,8 @@ export default function AdminOffers() {
     const published = offers.filter((offer) => offer.status === "PUBLICADO");
     const scheduled = offers.filter((offer) => offer.status === "AGENDADO");
     const totalClicks = offers.reduce((sum, offer) => sum + number(offer.clicks), 0);
+    const totalShares = offers.reduce((sum, offer) => sum + number(offer.shares), 0);
+    const totalFavorites = offers.reduce((sum, offer) => sum + number(offer.favorites), 0);
     const totalValue = published.reduce((sum, offer) => sum + number(offer.currentPrice), 0);
     const discounts = offers.map((offer) => {
       const previous = number(offer.previousPrice);
@@ -251,6 +266,8 @@ export default function AdminOffers() {
       errors: offers.filter((offer) => offer.status === "ERRO").length,
       drafts: offers.filter((offer) => offer.status === "RASCUNHO").length,
       totalClicks,
+      totalShares,
+      totalFavorites,
       averageDiscount: discounts.length ? Math.round(discounts.reduce((a, b) => a + b, 0) / discounts.length) : 0,
       averageTicket: published.length ? totalValue / published.length : 0,
       nextScheduled: scheduled
@@ -368,6 +385,7 @@ export default function AdminOffers() {
         imageUrl: product.imageUrl || current.imageUrl,
         affiliateLink: product.affiliateLink || current.affiliateLink,
         platform: product.platform || current.platform,
+        category: suggestCategory(product, categories) || current.category,
       }));
       showMessage("Produto preenchido automaticamente.");
     } catch (error) {
@@ -447,6 +465,9 @@ export default function AdminOffers() {
       showMessage(`Faltam informacoes: ${missing.join(", ")}.`);
       return null;
     }
+    const normalizedLink = form.affiliateLink.trim().replace(/\/$/, "");
+    const duplicate = offers.find((offer) => offer.id !== editingId && offer.affiliateLink?.trim().replace(/\/$/, "") === normalizedLink);
+    if (normalizedLink && duplicate && !window.confirm(`Este link já está cadastrado em "${duplicate.productName}". Deseja salvar mesmo assim?`)) return null;
     setSaving(true);
     try {
       const data = editingId

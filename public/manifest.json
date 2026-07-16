@@ -3,7 +3,9 @@
   "short_name": "Tá Barato",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#F5F2EB",
+  "description": "Ofertas selecionadas, alertas de preço e comparação de produtos.",
+  "scope": "/",
+  "background_color": "#F4F5F6",
   "theme_color": "#FF6B35",
   "icons": [
     {
@@ -11,5 +13,10 @@
       "sizes": "512x512",
       "type": "image/png"
     }
+  ],
+  "shortcuts": [
+    { "name": "Radar de ofertas", "url": "/radar", "icons": [{ "src": "/brand/favicon.png", "sizes": "512x512" }] },
+    { "name": "Favoritos", "url": "/favoritos", "icons": [{ "src": "/brand/favicon.png", "sizes": "512x512" }] },
+    { "name": "Alertas", "url": "/alertas", "icons": [{ "src": "/brand/favicon.png", "sizes": "512x512" }] }
   ]
 }

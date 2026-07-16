@@ -5,12 +5,17 @@ import { formatPrice, normalizeText } from "@/lib/catalog";
 import { listPublicOffers } from "@/lib/offersApi";
 import { StoreBadge } from "@/components/BrandIcons";
 
+const RECENT_SEARCHES_KEY = "tb_recent_searches";
+
 export default function SmartSearch({ placeholder = "Buscar por nome, categoria..." }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
   const [open, setOpen] = useState(false);
   const [allOffers, setAllOffers] = useState([]);
   const [activeIndex, setActiveIndex] = useState(-1);
+  const [recentSearches, setRecentSearches] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(RECENT_SEARCHES_KEY) || "[]"); } catch { return []; }
+  });
   const containerRef = useRef(null);
   const loadingRef = useRef(false);
   const inputId = useId();
@@ -49,7 +54,27 @@ export default function SmartSearch({ placeholder = "Buscar por nome, categoria.
   }, []);
 
   const handleSelect = (offer) => {
+    saveRecent(query || offer.name);
     navigate(`/oferta/${offer.id}`);
+    setQuery("");
+    setOpen(false);
+  };
+
+  const saveRecent = (value) => {
+    const term = value.trim();
+    if (!term) return;
+    setRecentSearches((current) => {
+      const next = [term, ...current.filter((item) => normalizeText(item) !== normalizeText(term))].slice(0, 5);
+      localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const submitSearch = (term = query) => {
+    const value = term.trim();
+    if (!value) return;
+    saveRecent(value);
+    navigate(`/buscar?q=${encodeURIComponent(value)}`);
     setQuery("");
     setOpen(false);
   };
@@ -72,7 +97,7 @@ export default function SmartSearch({ placeholder = "Buscar por nome, categoria.
 
   return (
     <div ref={containerRef} className="relative w-full">
-      <form onSubmit={(e) => { e.preventDefault(); if (query.trim()) { navigate(`/buscar?q=${encodeURIComponent(query.trim())}`); setOpen(false); } }} className="relative">
+      <form onSubmit={(event) => { event.preventDefault(); submitSearch(); }} className="relative">
         <label htmlFor={inputId} className="sr-only">{placeholder}</label>
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#111111]/40 pointer-events-none" />
         <input
@@ -91,9 +116,14 @@ export default function SmartSearch({ placeholder = "Buscar por nome, categoria.
           className="w-full pl-10 pr-4 py-2.5 bg-white rounded-full text-sm text-[#111111] placeholder:text-[#111111]/40 border border-[#111111]/8 focus:outline-none focus:ring-2 focus:ring-[var(--brand-primary)]/30 transition"
         />
       </form>
-      {open && query.trim() && (
+      {open && (query.trim() || recentSearches.length > 0) && (
         <div id={resultsId} role="listbox" className="absolute top-full mt-2 w-full bg-white rounded-lg shadow-[0_12px_32px_rgba(0,0,0,0.12)] border border-[#111111]/10 overflow-hidden z-50 max-h-[28rem] overflow-y-auto">
-          {results.length === 0 ? (
+          {!query.trim() ? (
+            <div className="p-2">
+              <div className="px-3 pt-2 pb-1 text-[#111111]/30 text-xs font-medium uppercase">Buscas recentes</div>
+              {recentSearches.map((term) => <button key={term} type="button" onClick={() => submitSearch(term)} className="w-full min-h-10 px-3 flex items-center gap-2 rounded-md text-sm text-[#111111]/65 hover:bg-[#F4F5F6] text-left"><Search className="w-4 h-4" /> {term}</button>)}
+            </div>
+          ) : results.length === 0 ? (
             <div className="p-6 text-center">
               <p className="text-sm text-[#111111]/40 mb-1">Nenhum resultado para "{query}"</p>
               <p className="text-xs text-[#111111]/30">Tente buscar por nome ou categoria</p>

@@ -66,7 +66,15 @@ test("UUID validation rejects malformed route IDs", () => {
 
 test("public click tracking only updates published offers", () => {
   const source = readFileSync(join(root, "api", "ofertas", "[id].js"), "utf8");
-  assert.match(source, /AND status='PUBLICADO' RETURNING clicks/);
+  assert.match(source, /AND status='PUBLICADO'/);
+  assert.match(source, /click: "clicks", share: "shares", favorite: "favorites"/);
+});
+
+test("public offer sorting uses a fixed allowlist", () => {
+  const source = readFileSync(join(root, "api", "ofertas", "index.js"), "utf8");
+  assert.match(source, /const orderBy = \{/);
+  assert.match(source, /\}\[sort\] \|\|/);
+  assert.doesNotMatch(source, /ORDER BY \$\{sort\}/);
 });
 
 test("automatic messages are claimed before Telegram delivery", () => {
@@ -80,3 +88,9 @@ test("database migration includes recurring messages", () => {
   assert.match(migration, /CREATE TABLE IF NOT EXISTS telegram_auto_messages/);
 });
 
+test("database migration records real price changes", () => {
+  const migration = readFileSync(join(root, "migrations", "001_create_telegram_offers.sql"), "utf8");
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS offer_price_history/);
+  assert.match(migration, /OLD\.current_price IS DISTINCT FROM NEW\.current_price/);
+  assert.match(migration, /AFTER INSERT OR UPDATE OF current_price/);
+});

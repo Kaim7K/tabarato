@@ -1,16 +1,17 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import OfferCard from "@/components/OfferCard";
 import Footer from "@/components/Footer";
 import { useFavorites } from "@/lib/FavoritesContext";
-import { Heart } from "lucide-react";
+import { Download, Heart, Upload } from "lucide-react";
 import { listPublicOffers } from "@/lib/offersApi";
 import { EmptyState, LoadingState, OfferGrid, PageShell, SectionHeader } from "@/components/PublicUi";
 import { useDocumentMetadata } from "@/hooks/useDocumentMetadata";
 
 export default function Favorites() {
   useDocumentMetadata("Favoritos | Tá Barato", "Seus achados salvos no Tá Barato.", "noindex, nofollow");
-  const { favorites } = useFavorites();
+  const { favorites, replaceFavorites } = useFavorites();
+  const importRef = useRef(null);
   const [offers, setOffers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -26,7 +27,13 @@ export default function Favorites() {
 
   return (
     <PageShell>
-      <SectionHeader eyebrow="Favoritos" title="Seus achados salvos" description={`${offers.length} ${offers.length === 1 ? "item salvo" : "itens salvos"}`} />
+      <SectionHeader eyebrow="Favoritos" title="Seus achados salvos" description={`${offers.length} ${offers.length === 1 ? "item salvo" : "itens salvos"}`}>
+        <div className="flex gap-2">
+          <button type="button" onClick={() => { const blob = new Blob([JSON.stringify({ favorites }, null, 2)], { type: "application/json" }); const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = "ta-barato-favoritos.json"; link.click(); URL.revokeObjectURL(url); }} className="min-h-11 px-4 inline-flex items-center gap-2 bg-white border border-[#111111]/10 rounded-md text-sm font-semibold"><Download className="w-4 h-4" /> Exportar</button>
+          <button type="button" onClick={() => importRef.current?.click()} className="min-h-11 px-4 inline-flex items-center gap-2 bg-[#111111] text-white rounded-md text-sm font-semibold"><Upload className="w-4 h-4" /> Importar</button>
+          <input ref={importRef} type="file" accept="application/json" className="sr-only" onChange={async (event) => { const file = event.target.files?.[0]; if (!file) return; try { const data = JSON.parse(await file.text()); replaceFavorites(Array.isArray(data.favorites) ? data.favorites : []); } catch { event.target.value = ""; } }} />
+        </div>
+      </SectionHeader>
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
         {loading ? (
           <LoadingState label="Carregando favoritos..." />

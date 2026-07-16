@@ -32,12 +32,27 @@ export async function listPublicOffers(params = {}) {
   return payload.offers || [];
 }
 
+export async function listPublicOffersPage(params = {}) {
+  const search = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== "" && value != null) search.set(key, value);
+  });
+  return cachedJson(`/api/ofertas${search.toString() ? `?${search}` : ""}`, "Nao foi possivel carregar ofertas.");
+}
+
 export async function getPublicOffer(id) {
   const payload = await cachedJson(`/api/ofertas/${encodeURIComponent(id)}`, "Oferta nao encontrada.");
   return payload.offer;
 }
 
 export async function trackOfferClick(id) {
-  fetch(`/api/ofertas/${encodeURIComponent(id)}`, { method: "POST" }).catch(() => {});
+  trackOfferMetric(id, "click");
 }
 
+export async function trackOfferMetric(id, action) {
+  fetch(`/api/ofertas/${encodeURIComponent(id)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action }),
+  }).catch(() => {});
+}

@@ -28,6 +28,17 @@ export const formatPrice = (value) =>
     ? `R$ ${value.toFixed(2).replace(".", ",")}`
     : "Preço indisponível";
 
+export const formatRelativeDate = (value) => {
+  const timestamp = new Date(value || 0).getTime();
+  if (!timestamp) return "";
+  const minutes = Math.round((timestamp - Date.now()) / 60000);
+  const formatter = new Intl.RelativeTimeFormat("pt-BR", { numeric: "auto" });
+  if (Math.abs(minutes) < 60) return formatter.format(minutes, "minute");
+  const hours = Math.round(minutes / 60);
+  if (Math.abs(hours) < 24) return formatter.format(hours, "hour");
+  return formatter.format(Math.round(hours / 24), "day");
+};
+
 export const categoryNameBySlug = (slug) =>
   DEFAULT_CATEGORIES.find((category) => category.slug === slug)?.name;
 

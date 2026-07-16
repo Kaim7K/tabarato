@@ -9,6 +9,9 @@ const CategoryPage = lazy(() => import('@/pages/CategoryPage'));
 const OfferDetail = lazy(() => import('@/pages/OfferDetail'));
 const SearchPage = lazy(() => import('@/pages/SearchPage'));
 const Favorites = lazy(() => import('@/pages/Favorites'));
+const Radar = lazy(() => import('@/pages/Radar'));
+const Compare = lazy(() => import('@/pages/Compare'));
+const Alerts = lazy(() => import('@/pages/Alerts'));
 const PageNotFound = lazy(() => import('@/lib/PageNotFound'));
 const AdminOffers = lazy(() => import('@/pages/AdminOffers'));
 const AdminLogin = lazy(() => import('@/pages/AdminLogin'));
@@ -26,6 +29,9 @@ function App() {
             <Route path="/oferta/:id" element={<OfferDetail />} />
             <Route path="/buscar" element={<SearchPage />} />
             <Route path="/favoritos" element={<Favorites />} />
+            <Route path="/radar" element={<Radar />} />
+            <Route path="/comparar" element={<Compare />} />
+            <Route path="/alertas" element={<Alerts />} />
           </Route>
           <Route path="/admin/login" element={<AdminShell><AdminLogin /></AdminShell>} />
           <Route path="/admin" element={<AdminRoute><AdminShell><AdminOffers /></AdminShell></AdminRoute>} />

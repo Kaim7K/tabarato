@@ -1,15 +1,24 @@
-import { Link, Outlet } from "react-router-dom";
-import { useState } from "react";
-import { ChevronDown, Heart, Menu, X } from "lucide-react";
+import { Link, NavLink, Outlet } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Bell, ChevronDown, Download, Flame, Heart, Home, Menu, Scale, Search, X } from "lucide-react";
 import SmartSearch from "@/components/SmartSearch";
 import { TelegramIcon, WhatsAppIcon } from "@/components/BrandIcons";
 import { FavoritesProvider } from "@/lib/FavoritesContext";
+import { OfferToolsProvider, useOfferTools } from "@/lib/OfferToolsContext";
 import { DEFAULT_CATEGORIES } from "@/lib/catalog";
 import { TELEGRAM_CHANNEL_URL, WHATSAPP_GROUP_URL } from "@/lib/publicLinks";
 import { BRAND_LOGO } from "@/lib/brand";
 
 function Header() {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [installPrompt, setInstallPrompt] = useState(null);
+  const { compareIds } = useOfferTools();
+
+  useEffect(() => {
+    const handlePrompt = (event) => { event.preventDefault(); setInstallPrompt(event); };
+    window.addEventListener("beforeinstallprompt", handlePrompt);
+    return () => window.removeEventListener("beforeinstallprompt", handlePrompt);
+  }, []);
 
   return (
     <header className="sticky top-0 z-50 bg-white border-b border-[#111111]/10 shadow-[0_1px_0_rgba(0,0,0,0.04)]">
@@ -24,6 +33,12 @@ function Header() {
           </div>
 
           <div className="flex items-center justify-end gap-1 sm:gap-2">
+            {installPrompt && <button type="button" onClick={async () => { await installPrompt.prompt(); setInstallPrompt(null); }} className="min-h-11 min-w-11 inline-flex items-center justify-center text-[#111111]/70 hover:text-[#FF6B35]" title="Instalar Tá Barato" aria-label="Instalar Tá Barato"><Download className="w-5 h-5" /></button>}
+            <Link to="/comparar" className="relative min-h-11 min-w-11 px-2 sm:px-3 inline-flex items-center justify-center gap-2 text-[#111111]/70 hover:text-[#FF6B35] transition" aria-label={`Comparar ofertas: ${compareIds.length} selecionadas`}>
+              <Scale className="w-5 h-5" />
+              {compareIds.length > 0 && <span className="absolute top-1 right-0 min-w-5 h-5 px-1 rounded-full bg-[#FF6B35] text-white text-[10px] font-bold flex items-center justify-center">{compareIds.length}</span>}
+              <span className="hidden xl:inline text-sm font-medium">Comparar</span>
+            </Link>
             <Link to="/favoritos" className="min-h-11 min-w-11 px-2 sm:px-3 inline-flex items-center justify-center gap-2 text-[#111111]/70 hover:text-[#FF6B35] transition" aria-label="Abrir favoritos">
               <Heart className="w-5 h-5" />
               <span className="hidden xl:inline text-sm font-medium">Favoritos</span>
@@ -60,6 +75,7 @@ function Header() {
               </div>
             </div>
             <Link to="/" className="min-h-10 inline-flex items-center text-sm text-[#111111]/65 hover:text-[#111111] transition">Ofertas recentes</Link>
+            <Link to="/radar" className="min-h-10 inline-flex items-center gap-1.5 text-sm text-[#111111]/65 hover:text-[#FF6B35] transition"><Flame className="w-4 h-4" /> Radar</Link>
             <Link to="/categoria/abaixo-de-50" className="min-h-10 inline-flex items-center text-sm text-[#111111]/65 hover:text-[#111111] transition">Abaixo de R$ 50</Link>
             <Link to="/categoria/abaixo-de-100" className="min-h-10 inline-flex items-center text-sm text-[#111111]/65 hover:text-[#111111] transition">Abaixo de R$ 100</Link>
           </nav>
@@ -109,12 +125,34 @@ function Header() {
 export default function Layout() {
   return (
     <FavoritesProvider>
-      <div className="min-h-screen bg-[#F3F3F3] flex flex-col">
-        <Header />
-        <main className="flex-1">
-          <Outlet />
-        </main>
-      </div>
+      <OfferToolsProvider>
+        <div className="min-h-screen bg-[#F3F3F3] flex flex-col pb-16 lg:pb-0">
+          <Header />
+          <main className="flex-1">
+            <Outlet />
+          </main>
+          <MobileDock />
+        </div>
+      </OfferToolsProvider>
     </FavoritesProvider>
+  );
+}
+
+function MobileDock() {
+  const items = [
+    { to: "/", label: "Início", icon: Home, end: true },
+    { to: "/buscar", label: "Buscar", icon: Search },
+    { to: "/radar", label: "Radar", icon: Flame },
+    { to: "/favoritos", label: "Favoritos", icon: Heart },
+    { to: "/alertas", label: "Alertas", icon: Bell },
+  ];
+  return (
+    <nav className="lg:hidden fixed inset-x-0 bottom-0 z-50 grid grid-cols-5 bg-white border-t border-[#111111]/10 shadow-[0_-6px_24px_rgba(17,17,17,0.08)] pb-[env(safe-area-inset-bottom)]" aria-label="Navegação rápida">
+      {items.map(({ to, label, icon: Icon, end }) => (
+        <NavLink key={to} to={to} end={end} className={({ isActive }) => `min-h-16 flex flex-col items-center justify-center gap-1 text-[10px] font-medium ${isActive ? "text-[#FF6B35]" : "text-[#111111]/50"}`}>
+          <Icon className="w-5 h-5" /> {label}
+        </NavLink>
+      ))}
+    </nav>
   );
 }
