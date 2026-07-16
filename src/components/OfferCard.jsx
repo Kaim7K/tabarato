@@ -17,14 +17,14 @@ export default function OfferCard({ offer }) {
   };
 
   return (
-    <article className="group bg-white rounded-lg overflow-hidden border border-[#111111]/8 hover:border-[#111111]/15 hover:shadow-[0_8px_24px_rgba(0,0,0,0.08)] transition flex flex-col h-full">
+    <article className="group bg-white rounded-lg overflow-hidden border border-[#111111]/8 shadow-[0_2px_12px_rgba(17,17,17,0.04)] hover:border-[#111111]/15 hover:shadow-[0_12px_30px_rgba(17,17,17,0.09)] transition-[border-color,box-shadow,transform] duration-200 flex flex-col h-full">
       <Link to={`/oferta/${offer.id}`} className="block relative overflow-hidden aspect-[4/3] bg-white border-b border-[#111111]/8">
         {offer.image ? (
           <img
             src={offer.image}
             alt={offer.name}
             loading="lazy"
-            className="w-full h-full object-contain bg-white p-3 group-hover:scale-[1.02] transition-transform duration-300"
+            className="w-full h-full object-contain bg-white p-3 group-hover:scale-[1.025] transition-transform duration-300"
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center bg-[#F3F3F3] text-[#111111]/20">

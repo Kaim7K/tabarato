@@ -62,26 +62,34 @@ export default function Home() {
   const hasWhatsAppLink = Boolean(WHATSAPP_GROUP_URL);
 
   return (
-    <div className="bg-[#F3F3F3] min-h-screen">
-      <section className="bg-[#111111] text-white border-b-4 border-[#FF6B35]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-9 sm:py-11">
-          <div className="grid lg:grid-cols-[minmax(0,1fr)_minmax(20rem,0.7fr)] gap-8 lg:gap-12 items-center">
-            <div>
+    <div className="bg-[#F4F5F6] min-h-screen">
+      <section className="relative isolate overflow-hidden bg-[#111111] text-white border-b-4 border-[#FF6B35]">
+        <img
+          src="/brand/hero-marketplace-v1.jpg"
+          alt=""
+          aria-hidden="true"
+          fetchPriority="high"
+          className="absolute inset-0 -z-20 h-full w-full object-cover object-[68%_center] sm:object-center"
+        />
+        <div className="absolute inset-0 -z-10 bg-[#090909]/55 sm:bg-[#090909]/42" aria-hidden="true" />
+        <div className="max-w-7xl mx-auto min-h-[29rem] sm:min-h-[32rem] px-4 sm:px-6 lg:px-8 py-10 sm:py-14 flex items-center">
+          <div className="max-w-3xl">
+            <div className="max-w-2xl">
               <p className="inline-flex items-center gap-2 text-white/60 text-xs font-semibold uppercase mb-3">
                 <UsersRound className="w-4 h-4 text-[#FF6B35]" />
                 Comunidade Tá Barato
               </p>
-              <h1 className="text-3xl sm:text-4xl lg:text-5xl font-semibold leading-tight max-w-3xl">
+              <h1 className="text-3xl sm:text-4xl lg:text-5xl font-semibold leading-[1.12] max-w-3xl">
                 Receba os melhores achados direto no Telegram e WhatsApp.
               </h1>
-              <p className="mt-4 text-white/65 text-base leading-relaxed max-w-2xl">
+              <p className="mt-5 text-white/75 text-sm sm:text-base leading-relaxed max-w-xl">
                 Entre nos grupos oficiais do Tá Barato para acompanhar ofertas publicadas em tempo real, alertas rápidos e oportunidades antes que acabem.
               </p>
             </div>
 
-            <div className="grid gap-3">
+            <div className="grid sm:grid-cols-2 gap-3 mt-7 max-w-2xl">
               {hasTelegramLink && (
-                <a href={TELEGRAM_CHANNEL_URL} target="_blank" rel="noopener noreferrer" className="min-h-14 flex items-center justify-between gap-4 px-5 py-3.5 bg-[#FF6B35] hover:bg-[#D95426] rounded-lg transition">
+                <a href={TELEGRAM_CHANNEL_URL} target="_blank" rel="noopener noreferrer" className="min-h-14 flex items-center justify-between gap-4 px-5 py-3.5 bg-[#FF6B35] hover:bg-[#D95426] rounded-lg shadow-[0_10px_28px_rgba(0,0,0,0.2)] transition-colors">
                   <span className="flex items-center gap-3">
                     <Send className="w-5 h-5" />
                     <span>
@@ -93,7 +101,7 @@ export default function Home() {
                 </a>
               )}
               {hasWhatsAppLink && (
-                <a href={WHATSAPP_GROUP_URL} target="_blank" rel="noopener noreferrer" className="min-h-14 flex items-center justify-between gap-4 px-5 py-3.5 bg-[#168A55] hover:bg-[#137247] rounded-lg transition">
+                <a href={WHATSAPP_GROUP_URL} target="_blank" rel="noopener noreferrer" className="min-h-14 flex items-center justify-between gap-4 px-5 py-3.5 bg-[#168A55] hover:bg-[#137247] rounded-lg shadow-[0_10px_28px_rgba(0,0,0,0.2)] transition-colors">
                   <span className="flex items-center gap-3">
                     <MessageCircle className="w-5 h-5" />
                     <span>
@@ -109,13 +117,13 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="bg-white border-b border-[#111111]/10">
+      <section className="bg-white border-b border-[#111111]/10 shadow-[0_1px_3px_rgba(17,17,17,0.04)]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5">
           <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
             {DEFAULT_CATEGORIES.map((category) => {
               const Icon = categoryIcons[category.icon] || BadgeDollarSign;
               return (
-                <Link key={category.slug} to={`/categoria/${category.slug}`} className="group min-h-20 px-2 py-3 flex flex-col items-center justify-center gap-2 text-center rounded-lg hover:bg-[#F3F3F3] transition">
+                <Link key={category.slug} to={`/categoria/${category.slug}`} className="group min-h-20 px-2 py-3 flex flex-col items-center justify-center gap-2 text-center rounded-lg hover:bg-[#F4F5F6] transition-colors">
                   <Icon className="w-6 h-6 text-[#FF6B35]" aria-hidden="true" />
                   <span className="text-xs sm:text-sm leading-tight text-[#111111]/65 group-hover:text-[#111111]">{category.name}</span>
                 </Link>
@@ -141,7 +149,7 @@ export default function Home() {
           <>
             <section aria-labelledby="featured-title">
               <SectionTitle eyebrow="Selecionado hoje" title="Achado do dia" />
-              <div className="bg-white border border-[#111111]/8 rounded-lg overflow-hidden grid md:grid-cols-[minmax(18rem,0.85fr)_minmax(0,1.15fr)]">
+              <div className="bg-white border border-[#111111]/8 rounded-lg overflow-hidden shadow-[0_8px_30px_rgba(17,17,17,0.06)] grid md:grid-cols-[minmax(18rem,0.85fr)_minmax(0,1.15fr)]">
                 <div className="relative min-h-64 md:min-h-80 bg-white border-b md:border-b-0 md:border-r border-[#111111]/8">
                   {featured.image ? (
                     <img src={featured.image} alt={featured.name} fetchPriority="high" className="absolute inset-0 w-full h-full object-contain p-5 sm:p-7" />
@@ -204,7 +212,7 @@ export default function Home() {
         {mostClicked.length > 0 && !loading && !error && (
           <section aria-labelledby="popular-title">
             <SectionTitle eyebrow="Mais clicados" title="Ofertas em destaque" />
-            <div className="bg-white rounded-lg border border-[#111111]/8 overflow-hidden">
+            <div className="bg-white rounded-lg border border-[#111111]/8 overflow-hidden shadow-[0_6px_24px_rgba(17,17,17,0.05)]">
               {mostClicked.map((offer, index) => (
                 <Link key={offer.id} to={`/oferta/${offer.id}`} className="grid grid-cols-[2rem_3.5rem_minmax(0,1fr)_auto] sm:grid-cols-[2.5rem_4rem_minmax(0,1fr)_auto] items-center gap-3 sm:gap-5 px-4 sm:px-5 py-3.5 border-b border-[#111111]/8 last:border-0 hover:bg-[#F8F8F8] transition">
                   <span className="text-lg font-semibold text-[#111111]/20">{String(index + 1).padStart(2, "0")}</span>

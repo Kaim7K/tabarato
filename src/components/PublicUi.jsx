@@ -1,7 +1,7 @@
 import { PackageSearch } from "lucide-react";
 
 export function PageShell({ children }) {
-  return <div className="bg-[#F3F3F3] min-h-screen">{children}</div>;
+  return <div className="bg-[#F4F5F6] min-h-screen">{children}</div>;
 }
 
 export function SectionHeader({ eyebrow = "", title, description = "", children = null }) {
@@ -27,7 +27,7 @@ export function LoadingState({ label = "Carregando achados..." }) {
       <span className="sr-only">{label}</span>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {Array.from({ length: 8 }, (_, index) => (
-          <div key={index} className="bg-white rounded-lg overflow-hidden border border-[#111111]/8 animate-pulse">
+          <div key={index} className="bg-white rounded-lg overflow-hidden border border-[#111111]/8 shadow-[0_2px_12px_rgba(17,17,17,0.04)] animate-pulse">
             <div className="aspect-[4/3] bg-[#111111]/5" />
             <div className="p-4 space-y-3">
               <div className="h-3 bg-[#111111]/8 rounded w-1/3" />
@@ -44,7 +44,7 @@ export function LoadingState({ label = "Carregando achados..." }) {
 
 export function EmptyState({ icon: Icon = PackageSearch, title, description = "", action = null }) {
   return (
-    <div className="bg-white border border-[#111111]/8 rounded-lg text-center py-14 sm:py-16 px-5">
+    <div className="bg-white border border-[#111111]/8 rounded-lg text-center py-14 sm:py-16 px-5 shadow-[0_4px_20px_rgba(17,17,17,0.04)]">
       <Icon className="w-11 h-11 text-[#111111]/15 mx-auto mb-4" aria-hidden="true" />
       <p className="text-[#111111]/70 text-lg font-semibold">{title}</p>
       {description && <p className="text-[#111111]/45 text-sm mt-2 max-w-md mx-auto leading-relaxed">{description}</p>}
