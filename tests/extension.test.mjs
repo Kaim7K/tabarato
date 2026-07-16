@@ -77,7 +77,7 @@ test("extension keeps only the first captured description paragraph", () => {
   stores.forEach((source) => assert.match(source, /tools\.description/));
 });
 
-test("extension creates an image and formatted text for WhatsApp sharing", () => {
+test("extension shares the original product image and Telegram-style text on WhatsApp", () => {
   const html = readFileSync(join(extensionRoot, "sidepanel", "index.html"), "utf8");
   const app = readFileSync(join(extensionRoot, "sidepanel", "app.js"), "utf8");
   const background = readFileSync(join(extensionRoot, "background", "service-worker.js"), "utf8");
@@ -86,13 +86,16 @@ test("extension creates an image and formatted text for WhatsApp sharing", () =>
   assert.match(html, /id="whatsapp-button"/);
   assert.match(html, /id="whatsapp-group"/);
   assert.match(html, /assets\/whatsapp\.svg/);
-  assert.match(app, /createWhatsAppImage/);
+  assert.match(app, /productImageBlob\(payload\.imageUrl\)/);
+  assert.match(app, /new File\(\[imageBlob\]/);
+  assert.doesNotMatch(app, /context\.fillText/);
   assert.match(app, /controller\.abort\(\)/);
   assert.match(app, /TABARATO_SHARE_WHATSAPP/);
   assert.match(app, /async function sendOfferToWhatsApp/);
   assert.match(app, /await sendOfferToWhatsApp\(payload, groupName/);
   assert.match(app, /Publicada no Telegram, mas o WhatsApp falhou/);
-  assert.match(app, /Publicidade \| Link de afiliado/);
+  assert.match(app, /payload\.extraText/);
+  assert.match(app, /Pre\\u00e7o e disponibilidade podem mudar/);
   assert.match(background, /chrome\.tabs\.query\(\{ url: "https:\/\/web\.whatsapp\.com\/\*" \}\)/);
   assert.match(background, /chrome\.tabs\.update\(tab\.id, \{ active: true \}\)/);
   assert.match(background, /withTimeout/);

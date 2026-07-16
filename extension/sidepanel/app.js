@@ -259,101 +259,36 @@ function formatPrice(value) {
     : "Preco nao identificado";
 }
 
-function wrapCanvasText(context, value, x, y, maxWidth, lineHeight, maxLines = 3) {
-  const words = String(value || "").split(/\s+/).filter(Boolean);
-  const lines = [];
-  let line = "";
-  words.forEach((word) => {
-    const candidate = line ? `${line} ${word}` : word;
-    if (context.measureText(candidate).width <= maxWidth || !line) line = candidate;
-    else { lines.push(line); line = word; }
-  });
-  if (line) lines.push(line);
-  const visible = lines.slice(0, maxLines);
-  if (lines.length > maxLines) {
-    let last = visible[maxLines - 1];
-    while (last && context.measureText(`${last}...`).width > maxWidth) last = last.slice(0, -1);
-    visible[maxLines - 1] = `${last}...`;
-  }
-  visible.forEach((item, index) => context.fillText(item, x, y + index * lineHeight));
-  return y + visible.length * lineHeight;
-}
-
-async function loadShareImage(url) {
-  if (!url) return null;
+async function productImageBlob(url) {
+  if (!/^https:\/\//i.test(url)) throw new Error("A imagem original do produto nao possui uma URL valida.");
   const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), 10000);
+  const timeout = window.setTimeout(() => controller.abort(), 15000);
   try {
     const response = await fetch(url, { signal: controller.signal });
-    if (!response.ok) return null;
-    return createImageBitmap(await response.blob());
-  } catch {
-    return null;
+    if (!response.ok) throw new Error(`A loja respondeu com status ${response.status} ao carregar a imagem.`);
+    const blob = await response.blob();
+    if (!blob.type.startsWith("image/")) throw new Error("A URL capturada nao retornou uma imagem.");
+    return blob;
+  } catch (error) {
+    if (error?.name === "AbortError") throw new Error("A imagem original do produto demorou para carregar.");
+    throw error;
   } finally {
     window.clearTimeout(timeout);
   }
 }
 
-async function createWhatsAppImage(payload) {
+async function pngFromImage(blob) {
+  if (blob.type !== "image/webp") return blob;
+  const image = await createImageBitmap(blob);
   const canvas = document.createElement("canvas");
-  canvas.width = 1080;
-  canvas.height = 1080;
+  canvas.width = image.width;
+  canvas.height = image.height;
   const context = canvas.getContext("2d");
-  context.fillStyle = "#f4f5f6";
-  context.fillRect(0, 0, 1080, 1080);
-
-  const productImage = await loadShareImage(payload.imageUrl);
-  if (productImage) {
-    const maxWidth = 880;
-    const maxHeight = 540;
-    const scale = Math.min(maxWidth / productImage.width, maxHeight / productImage.height, 1);
-    const width = productImage.width * scale;
-    const height = productImage.height * scale;
-    context.fillStyle = "#ffffff";
-    context.fillRect(0, 0, 1080, 610);
-    context.drawImage(productImage, (1080 - width) / 2, (580 - height) / 2, width, height);
-    productImage.close?.();
-  }
-
-  context.fillStyle = "#111111";
-  context.fillRect(0, 610, 1080, 470);
-  context.fillStyle = "#ff6b35";
-  context.fillRect(0, 610, 1080, 10);
-  context.fillStyle = "#ff6b35";
-  context.font = "800 34px system-ui, sans-serif";
-  context.fillText("TA BARATO", 72, 682);
-  context.fillStyle = "rgba(255,255,255,.58)";
-  context.font = "600 24px system-ui, sans-serif";
-  context.textAlign = "right";
-  context.fillText(payload.platform || "OFERTA", 1008, 682);
-  context.textAlign = "left";
-
-  context.fillStyle = "#ffffff";
-  context.font = "700 38px system-ui, sans-serif";
-  const nextY = wrapCanvasText(context, payload.productName, 72, 752, 936, 48, 2);
-  context.fillStyle = "#ffffff";
-  context.font = "800 62px system-ui, sans-serif";
-  context.fillText(formatPrice(payload.currentPrice), 72, nextY + 48);
-  if (payload.previousPrice) {
-    context.fillStyle = "rgba(255,255,255,.46)";
-    context.font = "600 28px system-ui, sans-serif";
-    const oldPrice = `Antes: ${formatPrice(payload.previousPrice)}`;
-    context.fillText(oldPrice, 72, nextY + 94);
-    const oldWidth = context.measureText(oldPrice).width;
-    context.fillRect(72, nextY + 82, oldWidth, 3);
-  }
-  if (payload.coupon) {
-    context.fillStyle = "#ff6b35";
-    context.fillRect(72, 990, 420, 56);
-    context.fillStyle = "#ffffff";
-    context.font = "800 26px system-ui, sans-serif";
-    context.fillText(`CUPOM: ${payload.coupon}`, 92, 1027);
-  }
-
-  const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
-  if (!blob) throw new Error("Nao foi possivel gerar a imagem da oferta.");
-  const slug = payload.productName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || "oferta";
-  return new File([blob], `${slug}.png`, { type: "image/png" });
+  context.drawImage(image, 0, 0);
+  image.close?.();
+  const pngBlob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+  if (!pngBlob) throw new Error("Nao foi possivel preparar a imagem original do produto.");
+  return pngBlob;
 }
 
 function fileToDataUrl(file) {
@@ -366,10 +301,15 @@ function fileToDataUrl(file) {
 }
 
 function prepareWhatsAppImage(payload) {
-  const key = JSON.stringify([payload.productName, payload.currentPrice, payload.previousPrice, payload.coupon, payload.platform, payload.imageUrl]);
+  const key = payload.imageUrl;
   if (key === shareImageKey && shareImagePromise) return shareImagePromise;
   shareImageKey = key;
-  shareImagePromise = createWhatsAppImage(payload);
+  shareImagePromise = productImageBlob(payload.imageUrl).then(async (sourceBlob) => {
+    const imageBlob = await pngFromImage(sourceBlob);
+    const extension = imageBlob.type === "image/png" ? "png" : "jpg";
+    const slug = payload.productName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || "produto";
+    return new File([imageBlob], `${slug}.${extension}`, { type: imageBlob.type });
+  });
   return shareImagePromise;
 }
 
@@ -380,17 +320,17 @@ function scheduleWhatsAppImage() {
 
 function whatsappMessage(payload) {
   const lines = [
-    "🔥 *TA BARATO!*",
+    "\u{1F525} *T\u00c1 BARATO!*",
     "",
     `*${payload.productName}*`,
     "",
-    `💰 Agora: *${formatPrice(payload.currentPrice)}*`,
+    `\u{1F4B0} Agora: *${formatPrice(payload.currentPrice)}*`,
   ];
   if (payload.previousPrice) lines.push(`Antes: ~${formatPrice(payload.previousPrice)}~`);
   if (payload.coupon) lines.push(`Cupom: *${payload.coupon}*`);
-  if (payload.category) lines.push("", `📦 ${payload.category}`);
-  if (payload.shortDescription) lines.push("", payload.shortDescription);
-  lines.push("", "Publicidade | Link de afiliado", "Preco e disponibilidade podem mudar.", "", `🛒 ${payload.affiliateLink}`);
+  if (payload.category) lines.push("", `\u{1F4E6} ${payload.category}`);
+  if (payload.extraText) lines.push("", payload.extraText);
+  lines.push("", "Pre\u00e7o e disponibilidade podem mudar.", "", `\u{1F6D2} ${payload.affiliateLink}`);
   return lines.join("\n");
 }
 
