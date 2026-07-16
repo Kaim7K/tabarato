@@ -1,5 +1,6 @@
 const STORAGE_KEY = "tabarato_extension_session";
 const WHATSAPP_GROUP_KEY = "tabarato_whatsapp_group";
+const LAST_BASE_URL_KEY = "tabarato_last_base_url";
 
 const elements = {
   setup: document.getElementById("setup-view"),
@@ -10,6 +11,7 @@ const elements = {
   username: document.getElementById("username"),
   password: document.getElementById("password"),
   loginButton: document.getElementById("login-button"),
+  adminPanelButton: document.getElementById("admin-panel-button"),
   status: document.getElementById("connection-status"),
   loading: document.getElementById("loading-state"),
   empty: document.getElementById("empty-state"),
@@ -114,6 +116,29 @@ async function clearSession() {
   session = null;
   activeProduct = null;
   await chrome.storage.local.remove(STORAGE_KEY);
+}
+
+async function openAdminPanel() {
+  const stored = await chrome.storage.local.get(LAST_BASE_URL_KEY);
+  const candidate = session?.baseUrl || elements.baseUrl.value || stored[LAST_BASE_URL_KEY];
+  if (!candidate) {
+    elements.baseUrl.focus();
+    showToast("Informe primeiro o endereco do site.", "error");
+    return;
+  }
+  try {
+    const baseUrl = normalizeBaseUrl(candidate);
+    const targetUrl = `${baseUrl}/admin`;
+    const existing = (await chrome.tabs.query({ url: `${baseUrl}/admin*` }))[0];
+    if (existing?.id) {
+      await chrome.windows.update(existing.windowId, { focused: true });
+      await chrome.tabs.update(existing.id, { active: true });
+      return;
+    }
+    await chrome.tabs.create({ url: targetUrl });
+  } catch (error) {
+    showToast(error.message, "error");
+  }
 }
 
 async function requestApi(path, options = {}) {
@@ -523,6 +548,7 @@ elements.loginForm.addEventListener("submit", async (event) => {
     const payload = await response.json().catch(() => ({}));
     if (!response.ok || !payload.token) throw new Error(payload.error || "Login nao autorizado.");
     await saveSession({ baseUrl, token: payload.token, expiresAt: payload.expiresAt });
+    await chrome.storage.local.set({ [LAST_BASE_URL_KEY]: baseUrl });
     elements.password.value = "";
     renderAuth();
     showToast("Extensao conectada ao painel.", "success");
@@ -541,6 +567,7 @@ elements.offerForm.addEventListener("submit", (event) => {
 elements.saveOpenButton.addEventListener("click", () => saveOffer(true));
 elements.publishButton.addEventListener("click", publishOffer);
 elements.whatsappButton.addEventListener("click", shareOnWhatsApp);
+elements.adminPanelButton.addEventListener("click", openAdminPanel);
 elements.whatsappGroup.addEventListener("input", () => {
   chrome.storage.local.set({ [WHATSAPP_GROUP_KEY]: elements.whatsappGroup.value.trim() });
 });
@@ -552,10 +579,10 @@ elements.logoutButton.addEventListener("click", async () => {
 elements.fields.affiliateLink.addEventListener("change", checkDuplicate);
 Object.values(elements.fields).forEach((field) => field.addEventListener("input", updatePreview));
 
-chrome.storage.local.get([STORAGE_KEY, WHATSAPP_GROUP_KEY]).then((stored) => {
+chrome.storage.local.get([STORAGE_KEY, WHATSAPP_GROUP_KEY, LAST_BASE_URL_KEY]).then((stored) => {
   session = stored[STORAGE_KEY] || null;
   elements.whatsappGroup.value = stored[WHATSAPP_GROUP_KEY] || "";
-  if (session?.baseUrl) elements.baseUrl.value = session.baseUrl;
+  elements.baseUrl.value = session?.baseUrl || stored[LAST_BASE_URL_KEY] || "";
   if (session?.expiresAt && new Date(session.expiresAt).getTime() <= Date.now()) session = null;
   renderAuth();
 });

@@ -28,6 +28,7 @@ Sem essa variavel, o servidor aceita origens com o formato oficial de extensoes 
 - Produtos sao criados como `RASCUNHO`.
 - A acao **Publicar agora** exige confirmacao, cria a oferta como `APROVADO` e envia pelo publicador existente do Telegram.
 - **Enviar ao WhatsApp** gera uma imagem quadrada, reutiliza a aba aberta do WhatsApp Web, procura o grupo configurado e envia a imagem com o texto como legenda.
+- O botao **Painel** no cabecalho abre ou reutiliza a aba administrativa mesmo quando nenhum produto foi capturado.
 - A extensao pede acesso apenas ao dominio configurado pelo administrador.
 - O link capturado deve ser revisado, pois algumas lojas nao disponibilizam automaticamente o link pessoal de afiliado no HTML.
 

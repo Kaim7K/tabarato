@@ -97,3 +97,12 @@ test("extension creates an image and formatted text for WhatsApp sharing", () =>
   assert.ok(manifest.host_permissions.some((permission) => permission.includes("mlstatic.com")));
   assert.ok(manifest.host_permissions.includes("https://web.whatsapp.com/*"));
 });
+
+test("extension can open the admin panel without a captured product", () => {
+  const html = readFileSync(join(extensionRoot, "sidepanel", "index.html"), "utf8");
+  const app = readFileSync(join(extensionRoot, "sidepanel", "app.js"), "utf8");
+  assert.match(html, /id="admin-panel-button"/);
+  assert.match(app, /async function openAdminPanel/);
+  assert.match(app, /chrome\.tabs\.query\(\{ url: `\$\{baseUrl\}\/admin\*` \}\)/);
+  assert.match(app, /chrome\.tabs\.create\(\{ url: targetUrl \}\)/);
+});
