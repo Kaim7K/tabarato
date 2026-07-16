@@ -6,7 +6,9 @@ import {
   CalendarClock,
   CheckCircle2,
   CircleDollarSign,
+  Clipboard,
   ClipboardList,
+  ExternalLink,
   FolderKanban,
   LayoutDashboard,
   Loader2,
@@ -86,6 +88,75 @@ const loadCustomCategories = () => {
     return [];
   }
 };
+
+const browserCaptureScript = `(() => {
+  const clean = (value = "") => String(value).replace(/\\s+/g, " ").trim();
+  const meta = (key) => clean(document.querySelector(\`meta[property="\${key}"],meta[name="\${key}"]\`)?.content || "");
+  const text = (...selectors) => {
+    for (const selector of selectors) {
+      const value = clean(document.querySelector(selector)?.innerText || document.querySelector(selector)?.textContent || "");
+      if (value) return value;
+    }
+    return "";
+  };
+  const normalizePrice = (value = "") => {
+    const raw = clean(value).replace(/[^\\d,.]/g, "");
+    if (!raw) return "";
+    if (raw.includes(",")) return raw.replace(/\\./g, "").replace(",", ".");
+    const parts = raw.split(".");
+    return parts.length > 2 ? parts.join("") : raw;
+  };
+  const money = (...selectors) => {
+    for (const selector of selectors) {
+      const el = document.querySelector(selector);
+      if (!el) continue;
+      const fraction = clean(el.querySelector(".andes-money-amount__fraction")?.textContent || "");
+      const cents = clean(el.querySelector(".andes-money-amount__cents")?.textContent || "");
+      const value = fraction ? \`\${fraction}\${cents ? "," + cents : ""}\` : clean(el.textContent || "");
+      const price = normalizePrice(value);
+      if (price) return price;
+    }
+    return "";
+  };
+  const bestImage = () => {
+    const fromMeta = meta("og:image") || meta("twitter:image");
+    if (fromMeta) return fromMeta;
+    const selectors = [
+      ".ui-pdp-gallery__figure img",
+      ".ui-pdp-image",
+      "img[data-zoom]",
+      "img[src*='mlstatic']",
+      "main img",
+    ];
+    for (const selector of selectors) {
+      const img = [...document.querySelectorAll(selector)].find((item) => item.currentSrc || item.src);
+      if (img) return img.currentSrc || img.src;
+    }
+    return [...document.images]
+      .filter((img) => img.currentSrc || img.src)
+      .sort((a, b) => ((b.naturalWidth || 0) * (b.naturalHeight || 0)) - ((a.naturalWidth || 0) * (a.naturalHeight || 0)))[0]?.currentSrc || "";
+  };
+  const host = location.hostname.replace(/^www\\./, "");
+  const platform = host.includes("mercadolivre") || host.includes("mercadolibre")
+    ? "Mercado Livre"
+    : host.includes("shopee")
+      ? "Shopee"
+      : host.includes("amazon")
+        ? "Amazon"
+        : "Outra";
+  const product = {
+    productName: text(".ui-pdp-title", "h1[data-testid='product-title']", "h1") || meta("og:title") || document.title,
+    shortDescription: text(".ui-pdp-description__content", "[data-testid='product-description']", "#productDescription", ".product-description") || meta("og:description") || meta("description"),
+    currentPrice: money(".ui-pdp-price__second-line .andes-money-amount", "[data-testid='price-part'] .andes-money-amount", ".andes-money-amount") || normalizePrice(meta("product:price:amount")),
+    previousPrice: money(".ui-pdp-price__original-value .andes-money-amount", ".andes-money-amount--previous", ".price-tag__old-price"),
+    imageUrl: bestImage(),
+    affiliateLink: location.href,
+    platform,
+  };
+  navigator.clipboard.writeText(JSON.stringify(product, null, 2)).then(() => {
+    console.log("Dados copiados para a area de transferencia:", product);
+  });
+})();`;
 
 export default function AdminOffers() {
   const [offers, setOffers] = useState([]);
@@ -250,6 +321,44 @@ export default function AdminOffers() {
       showMessage(error.message);
     } finally {
       setAutoFilling(false);
+    }
+  };
+
+  const applyCapturedProduct = (product = {}) => {
+    setForm((current) => ({
+      ...current,
+      productName: product.productName || current.productName,
+      shortDescription: product.shortDescription || current.shortDescription,
+      currentPrice: product.currentPrice || current.currentPrice,
+      previousPrice: product.previousPrice || current.previousPrice,
+      imageUrl: product.imageUrl || current.imageUrl,
+      affiliateLink: product.affiliateLink || current.affiliateLink,
+      platform: product.platform || current.platform,
+    }));
+  };
+
+  const openBrowserCapture = async () => {
+    if (!form.affiliateLink) {
+      showMessage("Cole o link do produto antes de abrir.");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(browserCaptureScript);
+      window.open(form.affiliateLink, "_blank", "noopener,noreferrer");
+      showMessage("Script copiado. Cole no console da pagina do produto.");
+    } catch {
+      showMessage("Nao consegui copiar o script automaticamente.");
+    }
+  };
+
+  const importBrowserCapture = async () => {
+    try {
+      const raw = await navigator.clipboard.readText();
+      const product = JSON.parse(raw);
+      applyCapturedProduct(product);
+      showMessage("Dados importados da captura.");
+    } catch {
+      showMessage("Nao encontrei uma captura valida na area de transferencia.");
     }
   };
 
@@ -419,6 +528,8 @@ export default function AdminOffers() {
                 set={set}
                 startNew={startNew}
                 autoFillFromLink={autoFillFromLink}
+                openBrowserCapture={openBrowserCapture}
+                importBrowserCapture={importBrowserCapture}
                 save={save}
                 publishNow={publishNow}
                 schedule={schedule}
@@ -600,7 +711,7 @@ function OffersView({ offers, loading, search, setSearch, status, setStatus, cat
   );
 }
 
-function EditorView({ form, selected, categories, saving, autoFilling, set, startNew, autoFillFromLink, save, publishNow, schedule }) {
+function EditorView({ form, selected, categories, saving, autoFilling, set, startNew, autoFillFromLink, openBrowserCapture, importBrowserCapture, save, publishNow, schedule }) {
   const completion = [
     form.affiliateLink,
     form.productName,
@@ -628,10 +739,21 @@ function EditorView({ form, selected, categories, saving, autoFilling, set, star
               <input value={form.affiliateLink} onChange={(e) => set("affiliateLink", e.target.value)} className={inputCls} placeholder="https://..." />
               <button type="button" onClick={autoFillFromLink} disabled={autoFilling || !form.affiliateLink} className="px-4 py-2.5 bg-white text-[#0D0D0D] rounded-xl text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2">
                 {autoFilling ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-                Preencher
+                Servidor
               </button>
             </div>
           </Field>
+          <div className="mt-3 grid sm:grid-cols-2 gap-2">
+            <button type="button" onClick={openBrowserCapture} disabled={!form.affiliateLink} className="px-4 py-2.5 bg-white/10 rounded-xl text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2">
+              <ExternalLink className="w-4 h-4" />
+              Abrir e copiar script
+            </button>
+            <button type="button" onClick={importBrowserCapture} className="px-4 py-2.5 bg-[#168A55] rounded-xl text-sm font-semibold flex items-center justify-center gap-2">
+              <Clipboard className="w-4 h-4" />
+              Importar captura
+            </button>
+          </div>
+          <p className="mt-3 text-xs text-white/35">Para lojas que bloqueiam servidor, abra o produto, cole o script no console da pagina e volte para importar.</p>
         </Panel>
 
         <Panel title="2. Dados do produto" icon={Tag}>
