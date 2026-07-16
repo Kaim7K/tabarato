@@ -23,3 +23,13 @@ test("Telegram message presents a store coupon as an instruction", () => {
   assert.match(message, /<b>Use o cupom da loja<\/b>/);
   assert.doesNotMatch(message, /Cupom: <b>Use o cupom da loja/);
 });
+
+test("Telegram message never invents a final coupon price", () => {
+  const message = formatTelegramMessage({
+    productName: "Produto",
+    currentPrice: 619.99,
+    couponDiscountPercent: 24,
+  });
+  assert.doesNotMatch(message, /Com cupom/i);
+  assert.doesNotMatch(message, /471,19/);
+});

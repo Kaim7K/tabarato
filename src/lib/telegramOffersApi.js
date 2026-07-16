@@ -53,7 +53,6 @@ export function formatTelegramPreview(offer) {
   ];
   if (offer.previousPrice) lines.push(`Antes: R$ ${Number(offer.previousPrice).toFixed(2).replace(".", ",")}`);
   if (offer.coupon) lines.push(`Cupom: ${offer.coupon}`);
-  if (offer.couponDiscountPercent > 0) lines.push(`Com cupom: R$ ${(Number(offer.currentPrice) * (1 - Number(offer.couponDiscountPercent) / 100)).toFixed(2).replace(".", ",")}`);
   if (offer.category) lines.push("", `📦 ${offer.category}`);
   if (offer.extraText) lines.push("", offer.extraText);
   lines.push("", "Preco e disponibilidade podem mudar.", "", "🛒 Ver oferta");
@@ -65,7 +64,6 @@ export function formatWhatsAppPreview(offer) {
   const lines = ["🔥 *TÁ BARATO!*", "", `*${offer.productName || "[NOME DO PRODUTO]"}*`, "", `💰 Agora: *${price}*`];
   if (offer.previousPrice) lines.push(`Antes: ~R$ ${Number(offer.previousPrice).toFixed(2).replace(".", ",")}~`);
   if (offer.coupon) lines.push("", `🎟️ Cupom: *${offer.coupon}*`);
-  if (offer.couponDiscountPercent > 0) lines.push(`Com cupom: *R$ ${(Number(offer.currentPrice) * (1 - Number(offer.couponDiscountPercent) / 100)).toFixed(2).replace(".", ",")}*`);
   if (offer.extraText) lines.push("", offer.extraText);
   lines.push("", "🛒 *Comprar:*", offer.affiliateLink || "[LINK DA OFERTA]");
   return compactLines(lines);

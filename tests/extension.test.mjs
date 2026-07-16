@@ -185,6 +185,7 @@ test("extension shares the original product image and Telegram-style text on Wha
   assert.ok(manifest.permissions.includes("clipboardWrite"));
   assert.match(app, /T\\u00c1 BARATO!/);
   assert.match(app, /Agora: \*\$\{formatPrice\(payload\.currentPrice\)\}\*/);
+  assert.doesNotMatch(app, /Com cupom:/);
   assert.match(app, /Pre\\u00e7o e disponibilidade podem mudar/);
 });
 
@@ -195,6 +196,16 @@ test("extension can open the admin panel without a captured product", () => {
   assert.match(app, /async function openAdminPanel/);
   assert.match(app, /chrome\.tabs\.query\(\{ url: `\$\{baseUrl\}\/admin\*` \}\)/);
   assert.match(app, /chrome\.tabs\.create\(\{ url: targetUrl \}\)/);
+});
+
+test("extension reinjects the store capture script when a tab has no receiver", () => {
+  const app = readFileSync(join(extensionRoot, "sidepanel", "app.js"), "utf8");
+  assert.match(app, /function captureScriptsForUrl/);
+  assert.match(app, /async function extractProductFromTab/);
+  assert.match(app, /receiving end does not exist\|could not establish connection/i);
+  assert.match(app, /chrome\.scripting\.executeScript/);
+  assert.match(app, /content\/stores\/mercado-livre\.js/);
+  assert.match(app, /content\/stores\/shopee\.js/);
 });
 
 test("extension manually sends due WhatsApp scheduler messages", () => {

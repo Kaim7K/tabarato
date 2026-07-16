@@ -106,6 +106,7 @@ export function validateOffer(input, { requireSchedule = false } = {}) {
   if (input.couponDiscountPercent !== "" && input.couponDiscountPercent != null) {
     const couponDiscount = Number(input.couponDiscountPercent);
     if (!Number.isFinite(couponDiscount) || couponDiscount < 0 || couponDiscount > 100) errors.push("Desconto do cupom deve estar entre 0 e 100%.");
+    if (couponDiscount > 0 && !String(input.coupon || "").trim()) errors.push("Informe o cupom antes de definir o desconto do cupom.");
   }
 
   URL_FIELDS.forEach((key) => {
@@ -127,7 +128,7 @@ export function toDbParams(input) {
     current_price: parsePrice(input.currentPrice),
     previous_price: input.previousPrice ? parsePrice(input.previousPrice) : null,
     coupon: input.coupon ? String(input.coupon).trim() : null,
-    coupon_discount_percent: Math.max(0, Math.min(100, Number(input.couponDiscountPercent) || 0)) || null,
+    coupon_discount_percent: input.coupon ? Math.max(0, Math.min(100, Number(input.couponDiscountPercent) || 0)) || null : null,
     category: String(input.category || "").trim(),
     image_url: input.imageUrl ? String(input.imageUrl).trim() : null,
     affiliate_link: String(input.affiliateLink || "").trim(),

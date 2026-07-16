@@ -10,7 +10,7 @@ export function mapPublicOffer(row) {
   const price = Number(row.current_price);
   const previousPrice = row.previous_price == null ? null : Number(row.previous_price);
   const discount = previousPrice > price ? Math.round(((previousPrice - price) / previousPrice) * 100) : 0;
-  const couponDiscountPercent = Number(row.coupon_discount_percent || 0);
+  const couponDiscountPercent = row.coupon ? Number(row.coupon_discount_percent || 0) : 0;
   const finalPrice = couponDiscountPercent > 0 ? price * (1 - couponDiscountPercent / 100) : price;
   return {
     id: row.id,

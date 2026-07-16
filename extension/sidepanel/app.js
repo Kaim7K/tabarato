@@ -305,7 +305,7 @@ function formPayload() {
     currentPrice: elements.fields.currentPrice.value,
     previousPrice: elements.fields.previousPrice.value,
     coupon: elements.fields.coupon.value.trim(),
-    couponDiscountPercent: activeProduct?.couponDiscountPercent || 0,
+    couponDiscountPercent: 0,
     category: elements.fields.category.value,
     imageUrl: elements.fields.imageUrl.value.trim(),
     affiliateLink: elements.fields.affiliateLink.value.trim(),
@@ -400,9 +400,6 @@ function whatsappMessage(payload) {
       : `\u{1F3AB} Cupom: *${payload.coupon}*`;
     lines.push("", couponText);
   }
-  if (payload.couponDiscountPercent > 0) {
-    lines.push(`Com cupom: *${formatPrice(Number(payload.currentPrice) * (1 - Number(payload.couponDiscountPercent) / 100))}*`);
-  }
   if (payload.category) lines.push("", `\u{1F4E6} ${payload.category}`);
   if (payload.extraText) {
     const benefits = payload.extraText.split(/\.\s+/).map((item) => item.replace(/\.$/, "").trim()).filter(Boolean);
@@ -445,6 +442,34 @@ async function activeTab() {
   return tab;
 }
 
+function captureScriptsForUrl(value) {
+  try {
+    const hostname = new URL(value).hostname;
+    if (hostname === "mercadolivre.com.br" || hostname.endsWith(".mercadolivre.com.br")
+      || hostname === "mercadolibre.com" || hostname.endsWith(".mercadolibre.com")) {
+      return ["content/shared.js", "content/stores/mercado-livre.js", "content/index.js"];
+    }
+    if (hostname === "shopee.com.br" || hostname.endsWith(".shopee.com.br")) {
+      return ["content/shared.js", "content/stores/shopee.js", "content/index.js"];
+    }
+  } catch { /* Unsupported and internal browser pages are handled below. */ }
+  return [];
+}
+
+async function extractProductFromTab(tab) {
+  try {
+    return await chrome.tabs.sendMessage(tab.id, { type: "TABARATO_EXTRACT_PRODUCT" });
+  } catch (error) {
+    const missingReceiver = /receiving end does not exist|could not establish connection/i.test(error?.message || "");
+    if (!missingReceiver) throw error;
+    const files = captureScriptsForUrl(tab.url);
+    if (!files.length) throw new Error("Abra uma página de produto do Mercado Livre ou Shopee.");
+    await chrome.scripting.executeScript({ target: { tabId: tab.id }, files });
+    await new Promise((resolve) => window.setTimeout(resolve, 150));
+    return chrome.tabs.sendMessage(tab.id, { type: "TABARATO_EXTRACT_PRODUCT" });
+  }
+}
+
 async function captureProduct() {
   elements.loading.classList.remove("hidden");
   elements.empty.classList.add("hidden");
@@ -453,7 +478,7 @@ async function captureProduct() {
     const catalogRequest = synchronizeCatalog().catch(() => null);
     const tab = await activeTab();
     if (!tab?.id) throw new Error("Nenhuma aba ativa encontrada.");
-    const result = await chrome.tabs.sendMessage(tab.id, { type: "TABARATO_EXTRACT_PRODUCT" });
+    const result = await extractProductFromTab(tab);
     if (!result?.ok) throw new Error(result?.error || "Produto nao encontrado.");
     let product = result.product;
     const needsServerData = !product.productName || !product.currentPrice || !product.imageUrl || !product.shortDescription;
