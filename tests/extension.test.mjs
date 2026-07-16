@@ -152,3 +152,15 @@ test("extension can open the admin panel without a captured product", () => {
   assert.match(app, /chrome\.tabs\.query\(\{ url: `\$\{baseUrl\}\/admin\*` \}\)/);
   assert.match(app, /chrome\.tabs\.create\(\{ url: targetUrl \}\)/);
 });
+
+test("extension synchronizes site categories and classifies captured products", () => {
+  const app = readFileSync(join(extensionRoot, "sidepanel", "app.js"), "utf8");
+  const stores = ["mercado-livre.js", "amazon.js", "shopee.js"]
+    .map((file) => readFileSync(join(extensionRoot, "content", "stores", file), "utf8"));
+  assert.match(app, /async function synchronizeCatalog/);
+  assert.match(app, /data\.categories/);
+  assert.match(app, /category\.replaceChildren\(\.\.\.options\)/);
+  assert.match(app, /CATEGORY_PROFILES/);
+  assert.match(app, /product\.sourceCategory/);
+  stores.forEach((source) => assert.match(source, /sourceCategory:/));
+});

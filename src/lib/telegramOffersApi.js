@@ -25,6 +25,8 @@ export const telegramOffersApi = {
     return request(`/api/admin/ofertas${search.toString() ? `?${search}` : ""}`);
   },
   create: (offer) => request("/api/admin/ofertas", { method: "POST", body: offer }),
+  createCategory: (name) => request("/api/admin/ofertas", { method: "POST", body: { resource: "category", name } }),
+  removeCategory: (slug) => request(`/api/admin/ofertas?resource=category&slug=${encodeURIComponent(slug)}`, { method: "DELETE" }),
   update: (id, offer) => request(`/api/admin/ofertas/${id}`, { method: "PATCH", body: offer }),
   remove: (id) => request(`/api/admin/ofertas/${id}`, { method: "DELETE" }),
   publish: (id) => request(`/api/admin/ofertas/${id}/publicar`, { method: "POST" }),

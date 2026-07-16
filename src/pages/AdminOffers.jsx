@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { ClipboardList, FolderKanban, LayoutDashboard, MessageSquareText, Plus } from "lucide-react";
-import { DEFAULT_CATEGORIES, normalizeText, slugify } from "@/lib/catalog";
+import { DEFAULT_CATEGORIES, normalizeText } from "@/lib/catalog";
 import { telegramOffersApi, telegramStatuses } from "@/lib/telegramOffersApi";
 import { AdminHeader, AdminNavButton, AdminQuickLine } from "@/features/admin/AdminUi";
 import { number, statusLabels } from "@/features/admin/adminOfferConfig";
@@ -207,7 +207,7 @@ export default function AdminOffers() {
   const [status, setStatus] = useState(() => loadOfferFilters().status || "");
   const [category, setCategory] = useState(() => loadOfferFilters().category || "");
   const [activeView, setActiveView] = useState("dashboard");
-  const [customCategories, setCustomCategories] = useState(loadCustomCategories);
+  const [customCategories, setCustomCategories] = useState([]);
   const [newCategory, setNewCategory] = useState("");
   const [selectedIds, setSelectedIds] = useState([]);
   const [bulkStatus, setBulkStatus] = useState("");
@@ -292,9 +292,17 @@ export default function AdminOffers() {
         telegramOffersApi.listMessages(),
       ]);
       const nextOffers = data.offers || [];
+      const serverCategories = data.categories || [];
+      const legacyCategories = loadCustomCategories();
+      const knownNames = new Set(serverCategories.map((item) => item.name.toLowerCase()));
+      const missingLegacy = legacyCategories.filter((item) => !knownNames.has(item.name.toLowerCase()));
+      const migrated = await Promise.all(missingLegacy.map((item) => telegramOffersApi.createCategory(item.name)));
+      const synchronizedCategories = [...serverCategories, ...migrated.map((item) => item.category)];
       setOffers(nextOffers);
+      setCustomCategories(synchronizedCategories.filter((item) => !baseCategories.includes(item.name)));
       setAutoMessages(messagesData.messages || []);
       setSelectedIds((current) => current.filter((id) => nextOffers.some((offer) => offer.id === id)));
+      localStorage.removeItem(CUSTOM_CATEGORIES_KEY);
     } catch (error) {
       showMessage(error.message);
     } finally {
@@ -316,28 +324,35 @@ export default function AdminOffers() {
     }
   }, [category, search, status]);
 
-  const persistCustomCategories = (items) => {
-    setCustomCategories(items);
-    localStorage.setItem(CUSTOM_CATEGORIES_KEY, JSON.stringify(items));
-  };
-
-  const addCategory = () => {
+  const addCategory = async () => {
     const name = newCategory.trim();
     if (!name) return;
     if (categories.some((item) => item.toLowerCase() === name.toLowerCase())) {
       showMessage("Categoria ja existe.");
       return;
     }
-    persistCustomCategories([...customCategories, { name, slug: slugify(name) }]);
-    setNewCategory("");
-    showMessage("Categoria adicionada.");
+    try {
+      const data = await telegramOffersApi.createCategory(name);
+      setCustomCategories((current) => [...current, data.category]);
+      setNewCategory("");
+      showMessage("Categoria adicionada.");
+    } catch (error) {
+      showMessage(error.message);
+    }
   };
 
-  const removeCategory = (name) => {
-    persistCustomCategories(customCategories.filter((item) => item.name !== name));
-    if (form.category === name) setForm((current) => ({ ...current, category: "Tecnologia" }));
-    if (category === name) setCategory("");
-    showMessage("Categoria removida.");
+  const removeCategory = async (name) => {
+    const item = customCategories.find((current) => current.name === name);
+    if (!item) return;
+    try {
+      await telegramOffersApi.removeCategory(item.slug);
+      setCustomCategories((current) => current.filter((categoryItem) => categoryItem.name !== name));
+      if (form.category === name) setForm((current) => ({ ...current, category: "Tecnologia" }));
+      if (category === name) setCategory("");
+      showMessage("Categoria removida.");
+    } catch (error) {
+      showMessage(error.message);
+    }
   };
 
   const startNew = () => {

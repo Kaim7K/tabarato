@@ -13,6 +13,7 @@
       return {
         productName: tools.text("#productTitle", "h1") || tools.clean(structured.name) || tools.meta("og:title"),
         shortDescription: tools.description("#feature-bullets", "#productDescription") || tools.firstParagraph(structured.description) || tools.firstParagraph(tools.meta("og:description")),
+        sourceCategory: tools.text("#wayfinding-breadcrumbs_feature_div", "nav[aria-label*='breadcrumb' i]"),
         currentPrice: tools.price("#corePrice_feature_div .a-price .a-offscreen", ".priceToPay .a-offscreen", ".a-price .a-offscreen") || tools.productPrice(structured),
         previousPrice: tools.price(".basisPrice .a-offscreen", ".a-text-price .a-offscreen"),
         coupon: tools.coupon("#couponText", "[id*='coupon']", "[class*='coupon']"),

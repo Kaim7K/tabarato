@@ -223,6 +223,7 @@
       return {
         productName: tools.text(".ui-pdp-title", "h1") || tools.clean(structured.name) || tools.meta("og:title"),
         shortDescription: tools.description(".ui-pdp-description__content", ".ui-pdp-description") || tools.firstParagraph(structured.description) || tools.firstParagraph(tools.meta("og:description")),
+        sourceCategory: tools.text(".andes-breadcrumb__container", ".ui-pdp-breadcrumb"),
         currentPrice,
         previousPrice: tools.price(".ui-pdp-price__original-value .andes-money-amount", ".andes-money-amount--previous"),
         coupon,

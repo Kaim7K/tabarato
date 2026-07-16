@@ -61,6 +61,23 @@ export async function ensureSchema() {
       ALTER TABLE telegram_offers ADD COLUMN IF NOT EXISTS favorites INTEGER NOT NULL DEFAULT 0;
       ALTER TABLE telegram_offers ALTER COLUMN short_description DROP NOT NULL;
 
+      CREATE TABLE IF NOT EXISTS site_categories (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        name TEXT NOT NULL,
+        slug TEXT NOT NULL UNIQUE,
+        is_default BOOLEAN NOT NULL DEFAULT FALSE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      INSERT INTO site_categories (name, slug, is_default) VALUES
+        ('Casa e organização', 'casa-e-organizacao', TRUE),
+        ('Tecnologia', 'tecnologia', TRUE),
+        ('Escritório', 'escritorio', TRUE),
+        ('Ferramentas', 'ferramentas', TRUE),
+        ('Cozinha', 'cozinha', TRUE),
+        ('Beleza e cuidados', 'beleza-e-cuidados', TRUE)
+      ON CONFLICT (slug) DO UPDATE SET name=EXCLUDED.name, is_default=TRUE;
+
       CREATE TABLE IF NOT EXISTS offer_price_history (
         id BIGSERIAL PRIMARY KEY,
         offer_id UUID NOT NULL REFERENCES telegram_offers(id) ON DELETE CASCADE,

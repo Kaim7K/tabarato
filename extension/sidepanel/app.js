@@ -51,6 +51,8 @@ let toastTimer = null;
 let shareImagePromise = null;
 let shareImageKey = "";
 let shareImageTimer = null;
+let availableCategories = [...elements.fields.category.options].map((option) => option.value);
+let synchronizedOffers = [];
 
 function normalizeBaseUrl(value) {
   const url = new URL(String(value || "").trim());
@@ -175,15 +177,66 @@ function renderAuth() {
   if (connected) captureProduct();
 }
 
+function normalizedText(value = "") {
+  return String(value).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
+const CATEGORY_PROFILES = [
+  { categories: ["tecnologia", "eletronicos", "informatica"], words: ["celular", "smartphone", "galaxy", "iphone", "notebook", "computador", "monitor", "fone", "headset", "mouse", "teclado", "ssd", "tablet", "televisao", "smart tv", "console", "gamer"] },
+  { categories: ["cozinha", "utilidades domesticas"], words: ["panela", "frigideira", "air fryer", "cafeteira", "liquidificador", "batedeira", "micro-ondas", "coqueteleira", "squeeze", "copo", "garrafa", "talher", "cozinha"] },
+  { categories: ["ferramentas", "construcao"], words: ["furadeira", "parafusadeira", "serra", "chave", "broca", "alicate", "martelo", "ferramenta", "compressor", "solda"] },
+  { categories: ["casa", "organizacao", "moveis", "decoracao"], words: ["cama", "colchao", "travesseiro", "lencol", "sofa", "mesa", "armario", "prateleira", "organizador", "limpeza", "banheiro", "quarto", "cortina", "tapete", "decoracao"] },
+  { categories: ["beleza", "cuidados", "saude"], words: ["perfume", "maquiagem", "shampoo", "condicionador", "hidratante", "barbeador", "cabelo", "pele", "whey", "proteina", "creatina", "suplemento", "vitamina"] },
+  { categories: ["escritorio", "papelaria"], words: ["escritorio", "papel", "caneta", "caderno", "impressora", "toner", "grampeador", "arquivo", "mochila executiva"] },
+  { categories: ["moda", "roupas", "calcados"], words: ["tenis", "sapato", "sandalia", "camisa", "camiseta", "calca", "vestido", "jaqueta", "bolsa", "relogio"] },
+  { categories: ["esporte", "fitness", "academia"], words: ["academia", "halter", "bicicleta", "bike", "futebol", "corrida", "camping", "pesca", "esportivo"] },
+  { categories: ["automotivo", "carros", "motos"], words: ["carro", "moto", "automotivo", "pneu", "capacete", "oleo", "farol", "retrovisor"] },
+  { categories: ["pet", "animais"], words: ["cachorro", "gato", "pet", "racao", "coleira", "aquario"] },
+  { categories: ["bebe", "infantil"], words: ["bebe", "fralda", "mamadeira", "carrinho", "berco", "infantil"] },
+];
+
 function suggestCategory(product) {
-  const value = `${product.productName || ""} ${product.shortDescription || ""}`.toLowerCase();
-  if (/notebook|celular|smartphone|fone|monitor|mouse|teclado|ssd|tablet|tv\b/.test(value)) return "Tecnologia";
-  if (/panela|frigideira|liquidificador|cafeteira|air fryer|cozinha/.test(value)) return "Cozinha";
-  if (/furadeira|parafusadeira|chave|serra|ferramenta/.test(value)) return "Ferramentas";
-  if (/maquiagem|perfume|shampoo|hidratante|barbeador/.test(value)) return "Beleza e cuidados";
-  if (/cadeira|mesa|papel|caneta|escritorio|impressora/.test(value)) return "Escritório";
-  if (/casa|organizador|limpeza|quarto|banheiro/.test(value)) return "Casa e organização";
-  return "Tecnologia";
+  const productText = normalizedText(`${product.productName || ""} ${product.shortDescription || ""} ${product.sourceCategory || ""}`);
+  const sourceText = normalizedText(product.sourceCategory || "");
+  const scored = availableCategories.map((category, index) => {
+    const categoryText = normalizedText(category);
+    const categoryWords = categoryText.split(/[^a-z0-9]+/).filter((word) => word.length >= 4);
+    let score = categoryWords.reduce((total, word) => total + (productText.includes(word) ? 3 : 0), 0);
+    if (sourceText && categoryWords.some((word) => sourceText.includes(word))) score += 6;
+    CATEGORY_PROFILES.forEach((profile) => {
+      if (!profile.categories.some((term) => categoryText.includes(term))) return;
+      score += profile.words.reduce((total, word) => total + (productText.includes(word) ? 2 : 0), 0);
+    });
+    return { category, score, index };
+  }).sort((left, right) => right.score - left.score || left.index - right.index);
+  if (scored[0]?.score > 0) return scored[0].category;
+  const captured = availableCategories.find((category) => normalizedText(category) === normalizedText(product.category));
+  return captured || availableCategories.find((category) => normalizedText(category) === "tecnologia") || availableCategories[0] || "";
+}
+
+function updateCategoryOptions(categories) {
+  const names = [...new Set(categories.map((item) => String(item?.name || item || "").trim()).filter(Boolean))];
+  if (!names.length) return;
+  availableCategories = names;
+  const current = elements.fields.category.value;
+  const options = names.map((name) => {
+    const option = document.createElement("option");
+    option.value = name;
+    option.textContent = name;
+    return option;
+  });
+  elements.fields.category.replaceChildren(...options);
+  if (names.includes(current)) elements.fields.category.value = current;
+}
+
+async function synchronizeCatalog() {
+  const data = await requestApi("/api/admin/ofertas");
+  synchronizedOffers = data.offers || [];
+  const categories = data.categories?.length
+    ? data.categories
+    : [...new Set(synchronizedOffers.map((offer) => offer.category).filter(Boolean))];
+  updateCategoryOptions(categories);
+  return data;
 }
 
 function updateAffiliateNotice() {
@@ -353,8 +406,8 @@ async function checkDuplicate() {
   const link = normalizeLink(elements.fields.affiliateLink.value);
   if (!link) return;
   try {
-    const data = await requestApi("/api/admin/ofertas");
-    const duplicate = (data.offers || []).find((offer) => normalizeLink(offer.affiliateLink) === link);
+    if (!synchronizedOffers.length) await synchronizeCatalog();
+    const duplicate = synchronizedOffers.find((offer) => normalizeLink(offer.affiliateLink) === link);
     if (duplicate) {
       elements.duplicateWarning.textContent = `Este link ja esta cadastrado em: ${duplicate.productName}.`;
       elements.duplicateWarning.classList.remove("hidden");
@@ -374,6 +427,7 @@ async function captureProduct() {
   elements.empty.classList.add("hidden");
   elements.offerForm.classList.add("hidden");
   try {
+    const catalogRequest = synchronizeCatalog().catch(() => null);
     const tab = await activeTab();
     if (!tab?.id) throw new Error("Nenhuma aba ativa encontrada.");
     const result = await chrome.tabs.sendMessage(tab.id, { type: "TABARATO_EXTRACT_PRODUCT" });
@@ -392,6 +446,7 @@ async function captureProduct() {
       }
     }
     product.shortDescription = firstParagraph(product.shortDescription);
+    await catalogRequest;
     fillForm(product);
   } catch (error) {
     elements.empty.querySelector("p").textContent = error.message;
