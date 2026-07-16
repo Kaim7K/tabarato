@@ -36,7 +36,7 @@
     button.addEventListener("mouseleave", () => { button.style.background = "#111111"; });
     button.addEventListener("click", () => {
       adapter.prepareAffiliateLink?.();
-      chrome.runtime.sendMessage({ type: "TABARATO_OPEN_PANEL" });
+      chrome.runtime.sendMessage({ type: "TABARATO_OPEN_PANEL" }).catch(() => {});
     });
     document.body.appendChild(button);
   };

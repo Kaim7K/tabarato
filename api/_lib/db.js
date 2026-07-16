@@ -136,7 +136,12 @@ export async function ensureSchema() {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
 
+      ALTER TABLE telegram_auto_messages ADD COLUMN IF NOT EXISTS channel TEXT NOT NULL DEFAULT 'TELEGRAM';
+      ALTER TABLE telegram_auto_messages ADD COLUMN IF NOT EXISTS image_url TEXT;
+      ALTER TABLE telegram_auto_messages ADD COLUMN IF NOT EXISTS whatsapp_group TEXT;
+
       CREATE INDEX IF NOT EXISTS idx_telegram_auto_messages_due ON telegram_auto_messages (is_active, next_send_at, sort_order);
+      CREATE INDEX IF NOT EXISTS idx_auto_messages_channel_due ON telegram_auto_messages (channel, is_active, next_send_at, sort_order);
 
       CREATE INDEX IF NOT EXISTS idx_telegram_offers_status ON telegram_offers (status);
       CREATE INDEX IF NOT EXISTS idx_telegram_offers_scheduled_at ON telegram_offers (scheduled_at);
