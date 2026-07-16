@@ -71,7 +71,7 @@ export default function SmartSearch({ placeholder = "Buscar por nome, categoria.
               {results.map((offer) => (
                 <button key={offer.id} onClick={() => handleSelect(offer)} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[#F5F2EB] transition text-left border-b border-[#111111]/5 last:border-0">
                   <div className="w-10 h-10 rounded-lg overflow-hidden bg-[#F5F2EB] shrink-0 flex items-center justify-center">
-                    {offer.image ? <img src={offer.image} alt="" className="w-full h-full object-cover" /> : <Package className="w-4 h-4 text-[#111111]/30" />}
+                    {offer.image ? <img src={offer.image} alt="" className="w-full h-full object-contain bg-white" /> : <Package className="w-4 h-4 text-[#111111]/30" />}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-[#111111] truncate">{offer.name}</p>
@@ -93,4 +93,3 @@ export default function SmartSearch({ placeholder = "Buscar por nome, categoria.
     </div>
   );
 }
-

@@ -66,7 +66,7 @@ export default function OfferDetail() {
           <div className="lg:col-span-6">
             <div className="lg:sticky lg:top-28">
               <div className="aspect-square rounded-3xl overflow-hidden bg-white shadow-[0_20px_60px_rgba(0,0,0,0.06)] mb-6">
-                <img src={offer.image} alt={offer.name} className="w-full h-full object-cover" />
+                <img src={offer.image} alt={offer.name} className="w-full h-full object-contain bg-white" />
               </div>
               <div className="mt-4 bg-[#111111]/5 border border-[#111111]/8 rounded-xl px-4 py-3">
                 <p className="text-[#111111]/50 text-xs leading-relaxed" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
@@ -132,4 +132,3 @@ export default function OfferDetail() {
     </div>
   );
 }
-

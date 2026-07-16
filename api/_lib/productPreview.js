@@ -98,8 +98,14 @@ function normalizePrice(value) {
   if (!value) return "";
   const text = String(value).replace(/[^\d.,]/g, "");
   if (!text) return "";
-  if (text.includes(",")) return text.replace(/\./g, "").replace(",", ".");
-  return text;
+  const lastComma = text.lastIndexOf(",");
+  const lastDot = text.lastIndexOf(".");
+  const decimalIndex = Math.max(lastComma, lastDot);
+  if (decimalIndex === -1) return text;
+  const decimals = text.slice(decimalIndex + 1);
+  const integer = text.slice(0, decimalIndex).replace(/[.,]/g, "");
+  if (decimals.length === 2) return `${integer}.${decimals}`;
+  return `${integer}${decimals}`;
 }
 
 function platformFromUrl(url) {

@@ -13,7 +13,6 @@ import OfferDetail from '@/pages/OfferDetail';
 import SearchPage from '@/pages/SearchPage';
 import Favorites from '@/pages/Favorites';
 
-const Admin = lazy(() => import('@/pages/Admin'));
 const AdminOffers = lazy(() => import('@/pages/AdminOffers'));
 const AdminLogin = lazy(() => import('@/pages/AdminLogin'));
 
@@ -32,7 +31,7 @@ function App() {
             <Route path="/favoritos" element={<Favorites />} />
           </Route>
           <Route path="/admin/login" element={<AdminShell><AdminLogin /></AdminShell>} />
-          <Route path="/admin" element={<AdminRoute><AdminShell><Admin /></AdminShell></AdminRoute>} />
+          <Route path="/admin" element={<AdminRoute><AdminShell><AdminOffers /></AdminShell></AdminRoute>} />
           <Route path="/admin/ofertas" element={<AdminRoute><AdminShell><AdminOffers /></AdminShell></AdminRoute>} />
           <Route path="*" element={<PageNotFound />} />
         </Routes>

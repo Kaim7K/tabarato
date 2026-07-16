@@ -13,6 +13,7 @@ import {
   LayoutDashboard,
   Loader2,
   LogOut,
+  MessageSquareText,
   Plus,
   RefreshCw,
   Save,
@@ -21,12 +22,12 @@ import {
   Sparkles,
   Tag,
   Trash2,
-  Zap,
 } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { DEFAULT_CATEGORIES, formatPrice, SITE_NAME, slugify } from "@/lib/catalog";
 import { logoutAdmin } from "@/lib/adminAuth";
 import { formatTelegramPreview, telegramOffersApi, telegramStatuses } from "@/lib/telegramOffersApi";
+import { BRAND_LOGO } from "@/lib/brand";
 
 const CUSTOM_CATEGORIES_KEY = "tb_admin_custom_categories";
 
@@ -43,6 +44,15 @@ const emptyOffer = {
   extraText: "",
   status: "RASCUNHO",
   scheduledAt: "",
+};
+
+const emptyAutoMessage = {
+  title: "",
+  message: "",
+  isActive: true,
+  intervalMinutes: 1440,
+  sortOrder: 0,
+  nextSendAt: "",
 };
 
 const statusLabels = {
@@ -81,6 +91,19 @@ const number = (value) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+const normalizeFormPrice = (value = "") => {
+  const raw = String(value).replace(/[^\d.,]/g, "");
+  if (!raw) return "";
+  const lastComma = raw.lastIndexOf(",");
+  const lastDot = raw.lastIndexOf(".");
+  const decimalIndex = Math.max(lastComma, lastDot);
+  if (decimalIndex === -1) return raw;
+  const decimals = raw.slice(decimalIndex + 1);
+  const integer = raw.slice(0, decimalIndex).replace(/[.,]/g, "");
+  if (decimals.length === 2) return `${integer}.${decimals}`;
+  return `${integer}${decimals}`;
+};
+
 const loadCustomCategories = () => {
   try {
     return JSON.parse(localStorage.getItem(CUSTOM_CATEGORIES_KEY) || "[]");
@@ -102,9 +125,14 @@ const browserCaptureScript = `(() => {
   const normalizePrice = (value = "") => {
     const raw = clean(value).replace(/[^\\d,.]/g, "");
     if (!raw) return "";
-    if (raw.includes(",")) return raw.replace(/\\./g, "").replace(",", ".");
-    const parts = raw.split(".");
-    return parts.length > 2 ? parts.join("") : raw;
+    const lastComma = raw.lastIndexOf(",");
+    const lastDot = raw.lastIndexOf(".");
+    const decimalIndex = Math.max(lastComma, lastDot);
+    if (decimalIndex === -1) return raw;
+    const decimals = raw.slice(decimalIndex + 1);
+    const integer = raw.slice(0, decimalIndex).replace(/[.,]/g, "");
+    if (decimals.length === 2) return \`\${integer}.\${decimals}\`;
+    return \`\${integer}\${decimals}\`;
   };
   const money = (...selectors) => {
     for (const selector of selectors) {
@@ -191,16 +219,23 @@ const browserCaptureScript = `(() => {
 
 export default function AdminOffers() {
   const [offers, setOffers] = useState([]);
+  const [autoMessages, setAutoMessages] = useState([]);
   const [form, setForm] = useState(emptyOffer);
+  const [messageForm, setMessageForm] = useState(emptyAutoMessage);
   const [editingId, setEditingId] = useState("");
+  const [editingMessageId, setEditingMessageId] = useState("");
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
   const [category, setCategory] = useState("");
   const [activeView, setActiveView] = useState("dashboard");
   const [customCategories, setCustomCategories] = useState(loadCustomCategories);
   const [newCategory, setNewCategory] = useState("");
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [bulkStatus, setBulkStatus] = useState("");
+  const [bulkCategory, setBulkCategory] = useState("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [sendingMessageId, setSendingMessageId] = useState("");
   const [autoFilling, setAutoFilling] = useState(false);
   const [message, setMessage] = useState("");
 
@@ -266,8 +301,14 @@ export default function AdminOffers() {
   const load = async () => {
     setLoading(true);
     try {
-      const data = await telegramOffersApi.list();
-      setOffers(data.offers || []);
+      const [data, messagesData] = await Promise.all([
+        telegramOffersApi.list(),
+        telegramOffersApi.listMessages(),
+      ]);
+      const nextOffers = data.offers || [];
+      setOffers(nextOffers);
+      setAutoMessages(messagesData.messages || []);
+      setSelectedIds((current) => current.filter((id) => nextOffers.some((offer) => offer.id === id)));
     } catch (error) {
       showMessage(error.message);
     } finally {
@@ -341,8 +382,8 @@ export default function AdminOffers() {
         ...current,
         productName: product.productName || current.productName,
         shortDescription: product.shortDescription || current.shortDescription,
-        currentPrice: product.currentPrice || current.currentPrice,
-        previousPrice: product.previousPrice || current.previousPrice,
+        currentPrice: product.currentPrice ? normalizeFormPrice(product.currentPrice) : current.currentPrice,
+        previousPrice: product.previousPrice ? normalizeFormPrice(product.previousPrice) : current.previousPrice,
         imageUrl: product.imageUrl || current.imageUrl,
         affiliateLink: product.affiliateLink || current.affiliateLink,
         platform: product.platform || current.platform,
@@ -360,8 +401,8 @@ export default function AdminOffers() {
       ...current,
       productName: product.productName || current.productName,
       shortDescription: product.shortDescription || current.shortDescription,
-      currentPrice: product.currentPrice || current.currentPrice,
-      previousPrice: product.previousPrice || current.previousPrice,
+      currentPrice: product.currentPrice ? normalizeFormPrice(product.currentPrice) : current.currentPrice,
+      previousPrice: product.previousPrice ? normalizeFormPrice(product.previousPrice) : current.previousPrice,
       imageUrl: product.imageUrl || current.imageUrl,
       affiliateLink: product.affiliateLink || current.affiliateLink,
       platform: product.platform || current.platform,
@@ -499,6 +540,145 @@ export default function AdminOffers() {
     }
   };
 
+  const toggleSelected = (id) => {
+    setSelectedIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
+  };
+
+  const toggleAllVisible = (visibleOffers) => {
+    const visibleIds = visibleOffers.map((offer) => offer.id);
+    const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.includes(id));
+    setSelectedIds((current) => {
+      if (allSelected) return current.filter((id) => !visibleIds.includes(id));
+      return [...new Set([...current, ...visibleIds])];
+    });
+  };
+
+  const selectedOffers = () => offers.filter((offer) => selectedIds.includes(offer.id));
+
+  const clearSelection = () => setSelectedIds([]);
+
+  const bulkRemove = async () => {
+    const items = selectedOffers();
+    if (!items.length) {
+      showMessage("Selecione pelo menos uma oferta.");
+      return;
+    }
+    if (!window.confirm(`Excluir ${items.length} oferta(s) selecionada(s)?`)) return;
+    setSaving(true);
+    try {
+      await Promise.all(items.map((offer) => telegramOffersApi.remove(offer.id)));
+      showMessage(`${items.length} oferta(s) excluida(s).`);
+      clearSelection();
+      await load();
+      if (items.some((offer) => offer.id === editingId)) startNew();
+    } catch (error) {
+      showMessage(error.message);
+      await load();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const bulkUpdate = async () => {
+    const items = selectedOffers();
+    if (!items.length) {
+      showMessage("Selecione pelo menos uma oferta.");
+      return;
+    }
+    if (!bulkStatus && !bulkCategory) {
+      showMessage("Escolha um status ou categoria para aplicar.");
+      return;
+    }
+    if (!window.confirm(`Atualizar ${items.length} oferta(s) selecionada(s)?`)) return;
+    setSaving(true);
+    try {
+      await Promise.all(items.map((offer) => telegramOffersApi.update(offer.id, {
+        ...offer,
+        status: bulkStatus || offer.status,
+        category: bulkCategory || offer.category,
+      })));
+      showMessage(`${items.length} oferta(s) atualizada(s).`);
+      setBulkStatus("");
+      setBulkCategory("");
+      clearSelection();
+      await load();
+    } catch (error) {
+      showMessage(error.message);
+      await load();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveAutoMessage = async () => {
+    if (!messageForm.title.trim() || !messageForm.message.trim()) {
+      showMessage("Informe titulo e mensagem.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const payload = {
+        ...messageForm,
+        nextSendAt: fromDatetimeLocal(messageForm.nextSendAt) || new Date().toISOString(),
+      };
+      if (editingMessageId) await telegramOffersApi.updateMessage(editingMessageId, payload);
+      else await telegramOffersApi.createMessage(payload);
+      showMessage("Mensagem salva.");
+      setEditingMessageId("");
+      setMessageForm(emptyAutoMessage);
+      await load();
+    } catch (error) {
+      showMessage(error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const editAutoMessage = (message) => {
+    setEditingMessageId(message.id);
+    setMessageForm({
+      title: message.title || "",
+      message: message.message || "",
+      isActive: message.isActive !== false,
+      intervalMinutes: message.intervalMinutes || 1440,
+      sortOrder: message.sortOrder || 0,
+      nextSendAt: toDatetimeLocal(message.nextSendAt),
+    });
+  };
+
+  const removeAutoMessage = async (message) => {
+    if (!window.confirm(`Excluir "${message.title}"?`)) return;
+    setSaving(true);
+    try {
+      await telegramOffersApi.removeMessage(message.id);
+      showMessage("Mensagem excluida.");
+      if (editingMessageId === message.id) {
+        setEditingMessageId("");
+        setMessageForm(emptyAutoMessage);
+      }
+      await load();
+    } catch (error) {
+      showMessage(error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const sendAutoMessageNow = async (message) => {
+    if (!window.confirm(`Enviar "${message.title}" agora no Telegram?`)) return;
+    setSendingMessageId(message.id);
+    try {
+      await telegramOffersApi.sendMessageNow(message.id);
+      showMessage("Mensagem enviada no Telegram.");
+      await load();
+    } catch (error) {
+      showMessage(error.message);
+      await load();
+    } finally {
+      setSendingMessageId("");
+    }
+  };
+
   const testTelegram = async () => {
     setSaving(true);
     try {
@@ -522,6 +702,7 @@ export default function AdminOffers() {
               <NavButton icon={LayoutDashboard} label="Dashboard" active={activeView === "dashboard"} onClick={() => setActiveView("dashboard")} />
               <NavButton icon={ClipboardList} label="Ofertas" active={activeView === "offers"} onClick={() => setActiveView("offers")} />
               <NavButton icon={Plus} label={selected ? "Editar oferta" : "Nova oferta"} active={activeView === "editor"} onClick={() => setActiveView("editor")} />
+              <NavButton icon={MessageSquareText} label="Mensagens" active={activeView === "messages"} onClick={() => setActiveView("messages")} />
               <NavButton icon={FolderKanban} label="Categorias" active={activeView === "categories"} onClick={() => setActiveView("categories")} />
             </div>
 
@@ -556,6 +737,17 @@ export default function AdminOffers() {
                 onRefresh={load}
                 onRetry={retry}
                 onRemove={remove}
+                selectedIds={selectedIds}
+                toggleSelected={toggleSelected}
+                toggleAllVisible={toggleAllVisible}
+                clearSelection={clearSelection}
+                bulkStatus={bulkStatus}
+                setBulkStatus={setBulkStatus}
+                bulkCategory={bulkCategory}
+                setBulkCategory={setBulkCategory}
+                bulkUpdate={bulkUpdate}
+                bulkRemove={bulkRemove}
+                bulkBusy={saving}
               />
             )}
 
@@ -574,6 +766,26 @@ export default function AdminOffers() {
                 save={save}
                 publishNow={publishNow}
                 schedule={schedule}
+              />
+            )}
+
+            {activeView === "messages" && (
+              <MessagesView
+                messages={autoMessages}
+                form={messageForm}
+                setForm={setMessageForm}
+                editingId={editingMessageId}
+                setEditingId={setEditingMessageId}
+                edit={editAutoMessage}
+                save={saveAutoMessage}
+                remove={removeAutoMessage}
+                sendNow={sendAutoMessageNow}
+                reset={() => {
+                  setEditingMessageId("");
+                  setMessageForm(emptyAutoMessage);
+                }}
+                saving={saving}
+                sendingMessageId={sendingMessageId}
               />
             )}
 
@@ -602,9 +814,7 @@ function Header({ testTelegram, saving }) {
     <div className="border-b border-white/10 sticky top-0 z-40 bg-[#0D0D0D]/90 backdrop-blur-md">
       <div className="max-w-[1500px] mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center">
-            <Zap className="w-5 h-5 text-[#FF6B35]" fill="currentColor" />
-          </div>
+          <img src={BRAND_LOGO} alt={SITE_NAME} className="h-11 w-auto object-contain" />
           <span className="font-bold text-lg">{SITE_NAME} <span className="text-white/40 font-normal hidden sm:inline">/ Admin</span></span>
         </div>
         <div className="flex items-center gap-3">
@@ -699,7 +909,36 @@ function Dashboard({ analytics, offers, loading, onNew, onEdit, onRefresh }) {
   );
 }
 
-function OffersView({ offers, loading, search, setSearch, status, setStatus, category, setCategory, categories, onNew, onEdit, onRefresh, onRetry, onRemove }) {
+function OffersView({
+  offers,
+  loading,
+  search,
+  setSearch,
+  status,
+  setStatus,
+  category,
+  setCategory,
+  categories,
+  onNew,
+  onEdit,
+  onRefresh,
+  onRetry,
+  onRemove,
+  selectedIds,
+  toggleSelected,
+  toggleAllVisible,
+  clearSelection,
+  bulkStatus,
+  setBulkStatus,
+  bulkCategory,
+  setBulkCategory,
+  bulkUpdate,
+  bulkRemove,
+  bulkBusy,
+}) {
+  const allVisibleSelected = offers.length > 0 && offers.every((offer) => selectedIds.includes(offer.id));
+  const selectedCount = selectedIds.length;
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
@@ -728,8 +967,38 @@ function OffersView({ offers, loading, search, setSearch, status, setStatus, cat
         </div>
       </div>
 
+      {selectedCount > 0 && (
+        <div className="bg-[#FF6B35]/10 border border-[#FF6B35]/30 rounded-2xl p-4">
+          <div className="flex flex-col xl:flex-row xl:items-end gap-3">
+            <div className="xl:w-48">
+              <p className="text-sm font-semibold">{selectedCount} selecionada(s)</p>
+              <button onClick={clearSelection} className="text-xs text-white/45 hover:text-white mt-1">Limpar selecao</button>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-3 flex-1">
+              <Field label="Alterar status">
+                <select value={bulkStatus} onChange={(e) => setBulkStatus(e.target.value)} className={inputCls}>
+                  <option value="">Manter status</option>
+                  {telegramStatuses.map((item) => <option key={item} value={item}>{statusLabels[item]}</option>)}
+                </select>
+              </Field>
+              <Field label="Alterar categoria">
+                <select value={bulkCategory} onChange={(e) => setBulkCategory(e.target.value)} className={inputCls}>
+                  <option value="">Manter categoria</option>
+                  {categories.map((item) => <option key={item} value={item}>{item}</option>)}
+                </select>
+              </Field>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button disabled={bulkBusy} onClick={bulkUpdate} className="px-4 py-2.5 bg-white text-[#111111] rounded-xl font-semibold disabled:opacity-50 flex items-center gap-2"><Save className="w-4 h-4" /> Aplicar</button>
+              <button disabled={bulkBusy} onClick={bulkRemove} className="px-4 py-2.5 bg-red-500 text-white rounded-xl font-semibold disabled:opacity-50 flex items-center gap-2"><Trash2 className="w-4 h-4" /> Excluir</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden">
-        <div className="hidden md:grid grid-cols-[minmax(0,1fr)_130px_150px_120px_96px] gap-4 px-4 py-3 text-xs uppercase tracking-wide text-white/35 border-b border-white/10">
+        <div className="hidden md:grid grid-cols-[32px_minmax(0,1fr)_130px_150px_120px_96px] gap-4 px-4 py-3 text-xs uppercase tracking-wide text-white/35 border-b border-white/10">
+          <input type="checkbox" checked={allVisibleSelected} onChange={() => toggleAllVisible(offers)} className="w-4 h-4 accent-[#FF6B35]" aria-label="Selecionar ofertas visiveis" />
           <span>Produto</span>
           <span>Status</span>
           <span>Preco</span>
@@ -743,7 +1012,15 @@ function OffersView({ offers, loading, search, setSearch, status, setStatus, cat
         ) : (
           <div className="divide-y divide-white/10">
             {offers.map((offer) => (
-              <OfferRow key={offer.id} offer={offer} onEdit={onEdit} onRetry={onRetry} onRemove={onRemove} />
+              <OfferRow
+                key={offer.id}
+                offer={offer}
+                selected={selectedIds.includes(offer.id)}
+                onToggleSelected={toggleSelected}
+                onEdit={onEdit}
+                onRetry={onRetry}
+                onRemove={onRemove}
+              />
             ))}
           </div>
         )}
@@ -859,6 +1136,107 @@ function EditorView({ form, selected, categories, saving, autoFilling, set, star
   );
 }
 
+function MessagesView({ messages, form, setForm, editingId, setEditingId, edit, save, remove, sendNow, reset, saving, sendingMessageId }) {
+  const set = (key, value) => setForm((current) => ({ ...current, [key]: value }));
+  const sorted = [...messages].sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0));
+
+  return (
+    <div className="grid xl:grid-cols-[minmax(0,1fr)_420px] gap-5">
+      <div className="space-y-4">
+        <div>
+          <p className="text-white/45 text-sm">Disparos automaticos</p>
+          <h1 className="text-3xl font-bold mt-1">Mensagens recorrentes</h1>
+        </div>
+
+        <Panel title="Mensagens cadastradas" icon={MessageSquareText}>
+          {sorted.length ? (
+            <div className="space-y-3">
+              {sorted.map((item) => (
+                <div key={item.id} className="bg-white/[0.04] border border-white/10 rounded-2xl p-4">
+                  <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+                    <button onClick={() => edit(item)} className="text-left min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${item.isActive ? "bg-[#168A55]/15 text-[#4ade80]" : "bg-white/10 text-white/40"}`}>
+                          {item.isActive ? "Ativa" : "Inativa"}
+                        </span>
+                        <span className="text-xs text-white/35">Ordem {item.sortOrder}</span>
+                      </div>
+                      <h3 className="font-semibold truncate">{item.title}</h3>
+                      <p className="text-sm text-white/50 mt-1 line-clamp-2 whitespace-pre-wrap">{item.message}</p>
+                      <p className="text-xs text-white/35 mt-2">
+                        A cada {item.intervalMinutes} min / Proximo: {item.nextSendAt ? new Date(item.nextSendAt).toLocaleString("pt-BR") : "-"} / Envios: {item.sendCount || 0}
+                      </p>
+                      {item.errorMessage && <p className="text-xs text-red-300 mt-1">Erro: {item.errorMessage}</p>}
+                    </button>
+                    <div className="flex flex-wrap gap-1 md:justify-end">
+                      <button
+                        onClick={() => sendNow(item)}
+                        disabled={saving || sendingMessageId === item.id}
+                        className="px-3 py-2 bg-[#168A55] hover:bg-[#137247] rounded-xl text-sm font-semibold disabled:opacity-50 flex items-center gap-2"
+                      >
+                        {sendingMessageId === item.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                        Enviar agora
+                      </button>
+                      <button onClick={() => edit(item)} className="px-3 py-2 bg-white/10 rounded-xl text-sm font-semibold">Editar</button>
+                      <button onClick={() => remove(item)} className="p-2 text-white/50 hover:text-red-300" title="Excluir"><Trash2 className="w-4 h-4" /></button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <EmptyBlock label="Nenhuma mensagem automatica cadastrada." />
+          )}
+        </Panel>
+      </div>
+
+      <div className="space-y-4 xl:sticky xl:top-20 xl:self-start">
+        <Panel title={editingId ? "Editar mensagem" : "Nova mensagem"} icon={MessageSquareText}>
+          <div className="space-y-4">
+            <Field label="Titulo interno *">
+              <input value={form.title} onChange={(e) => set("title", e.target.value)} className={inputCls} placeholder="Ex.: Aviso grupo WhatsApp" />
+            </Field>
+            <Field label="Mensagem para o Telegram *">
+              <textarea value={form.message} onChange={(e) => set("message", e.target.value)} rows={7} className={`${inputCls} resize-none`} placeholder="Escreva exatamente como quer enviar no Telegram." />
+            </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Periodo">
+                <select value={form.intervalMinutes} onChange={(e) => set("intervalMinutes", Number(e.target.value))} className={inputCls}>
+                  <option value={30}>A cada 30 minutos</option>
+                  <option value={60}>A cada 1 hora</option>
+                  <option value={180}>A cada 3 horas</option>
+                  <option value={360}>A cada 6 horas</option>
+                  <option value={720}>A cada 12 horas</option>
+                  <option value={1440}>A cada 1 dia</option>
+                  <option value={10080}>A cada 7 dias</option>
+                </select>
+              </Field>
+              <Field label="Ordem">
+                <input type="number" value={form.sortOrder} onChange={(e) => set("sortOrder", e.target.value)} className={inputCls} />
+              </Field>
+            </div>
+            <Field label="Proximo envio">
+              <input type="datetime-local" value={form.nextSendAt} onChange={(e) => set("nextSendAt", e.target.value)} className={inputCls} />
+            </Field>
+            <label className="flex items-center gap-3 text-sm text-white/70">
+              <input type="checkbox" checked={form.isActive} onChange={(e) => set("isActive", e.target.checked)} className="w-4 h-4 accent-[#FF6B35]" />
+              Mensagem ativa
+            </label>
+            <div className="flex flex-wrap gap-2">
+              <button disabled={saving} onClick={save} className="px-4 py-2.5 bg-[#FF6B35] rounded-xl font-semibold disabled:opacity-50 flex items-center gap-2"><Save className="w-4 h-4" /> Salvar</button>
+              <button onClick={() => { setEditingId(""); reset(); }} className="px-4 py-2.5 bg-white/10 rounded-xl font-semibold">Limpar</button>
+            </div>
+          </div>
+        </Panel>
+
+        <Panel title="Previa" icon={Send}>
+          <pre className="text-sm text-white/75 whitespace-pre-wrap font-sans leading-relaxed">{form.message || "Sua mensagem aparecera aqui."}</pre>
+        </Panel>
+      </div>
+    </div>
+  );
+}
+
 function CategoriesView({ baseCategories, customCategories, newCategory, setNewCategory, addCategory, removeCategory, offers }) {
   return (
     <div className="space-y-5">
@@ -911,12 +1289,13 @@ function CategoryList({ items, offers, onRemove = (_name) => {} }) {
   );
 }
 
-function OfferRow({ offer, onEdit, onRetry, onRemove }) {
+function OfferRow({ offer, selected, onToggleSelected, onEdit, onRetry, onRemove }) {
   return (
-    <div className="grid md:grid-cols-[minmax(0,1fr)_130px_150px_120px_96px] gap-4 p-4 items-center hover:bg-white/[0.03]">
+    <div className={`grid md:grid-cols-[32px_minmax(0,1fr)_130px_150px_120px_96px] gap-4 p-4 items-center hover:bg-white/[0.03] ${selected ? "bg-[#FF6B35]/10" : ""}`}>
+      <input type="checkbox" checked={selected} onChange={() => onToggleSelected(offer.id)} className="w-4 h-4 accent-[#FF6B35]" aria-label={`Selecionar ${offer.productName}`} />
       <button onClick={() => onEdit(offer)} className="flex items-center gap-3 min-w-0 text-left">
-        <div className="w-14 h-14 bg-white/10 rounded-xl overflow-hidden shrink-0">
-          {offer.imageUrl && <img src={offer.imageUrl} alt="" className="w-full h-full object-cover" />}
+        <div className="w-14 h-14 bg-white rounded-xl overflow-hidden shrink-0">
+          {offer.imageUrl && <img src={offer.imageUrl} alt="" className="w-full h-full object-contain" />}
         </div>
         <div className="min-w-0">
           <p className="font-medium truncate">{offer.productName}</p>
@@ -953,7 +1332,7 @@ function CompactOffer({ offer, onEdit }) {
 function OfferPreview({ form }) {
   return (
     <div className="bg-white text-[#111111] rounded-2xl overflow-hidden">
-      <div className="aspect-[4/3] bg-[#F5F2EB]">{form.imageUrl && <img src={form.imageUrl} alt="" className="w-full h-full object-cover" />}</div>
+      <div className="aspect-[4/3] bg-white">{form.imageUrl && <img src={form.imageUrl} alt="" className="w-full h-full object-contain" />}</div>
       <div className="p-4">
         <p className="text-xs text-[#111111]/50 mb-1">{form.category || "Categoria"}</p>
         <h3 className="font-bold leading-snug">{form.productName || "Nome do produto"}</h3>

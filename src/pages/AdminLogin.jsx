@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { Navigate, useLocation } from "react-router-dom";
-import { Loader2, LockKeyhole, Zap } from "lucide-react";
+import { Loader2, LockKeyhole } from "lucide-react";
 import { SITE_NAME } from "@/lib/catalog";
 import { isAdminLoggedIn, loginAdmin } from "@/lib/adminAuth";
+import { BRAND_LOGO } from "@/lib/brand";
 
 export default function AdminLogin() {
   const location = useLocation();
@@ -33,9 +34,7 @@ export default function AdminLogin() {
     <div className="min-h-screen bg-[#0D0D0D] text-white flex items-center justify-center px-4">
       <form onSubmit={submit} className="w-full max-w-sm bg-white/5 border border-white/10 rounded-2xl p-6 shadow-2xl">
         <div className="flex items-center gap-3 mb-7">
-          <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center">
-            <Zap className="w-6 h-6 text-[#FF6B35]" fill="currentColor" />
-          </div>
+          <img src={BRAND_LOGO} alt={SITE_NAME} className="h-14 w-auto object-contain" />
           <div>
             <h1 className="font-bold text-xl">{SITE_NAME}</h1>
             <p className="text-white/45 text-sm">Painel administrativo</p>

@@ -4,6 +4,19 @@ export const STATUSES = ["RASCUNHO", "APROVADO", "AGENDADO", "PUBLICANDO", "PUBL
 
 const URL_FIELDS = ["imageUrl", "affiliateLink"];
 
+function parsePrice(value) {
+  const raw = String(value || "").replace(/[^\d.,]/g, "");
+  if (!raw) return NaN;
+  const lastComma = raw.lastIndexOf(",");
+  const lastDot = raw.lastIndexOf(".");
+  const decimalIndex = Math.max(lastComma, lastDot);
+  if (decimalIndex === -1) return Number(raw);
+  const decimals = raw.slice(decimalIndex + 1);
+  const integer = raw.slice(0, decimalIndex).replace(/[.,]/g, "");
+  const normalized = decimals.length === 2 ? `${integer}.${decimals}` : `${integer}${decimals}`;
+  return Number(normalized);
+}
+
 export function mapOffer(row) {
   if (!row) return null;
   return {
@@ -58,11 +71,11 @@ export function validateOffer(input, { requireSchedule = false } = {}) {
     if (!String(input[key] || "").trim()) errors.push(`${label} é obrigatório.`);
   });
 
-  const currentPrice = Number(input.currentPrice);
+  const currentPrice = parsePrice(input.currentPrice);
   if (!Number.isFinite(currentPrice) || currentPrice <= 0) errors.push("Preço atual deve ser maior que zero.");
 
   if (input.previousPrice) {
-    const previousPrice = Number(input.previousPrice);
+    const previousPrice = parsePrice(input.previousPrice);
     if (!Number.isFinite(previousPrice) || previousPrice <= 0) errors.push("Preço anterior inválido.");
   }
 
@@ -82,8 +95,8 @@ export function toDbParams(input) {
   return {
     product_name: String(input.productName || "").trim(),
     short_description: String(input.shortDescription || "").trim(),
-    current_price: Number(input.currentPrice),
-    previous_price: input.previousPrice ? Number(input.previousPrice) : null,
+    current_price: parsePrice(input.currentPrice),
+    previous_price: input.previousPrice ? parsePrice(input.previousPrice) : null,
     coupon: input.coupon ? String(input.coupon).trim() : null,
     category: String(input.category || "").trim(),
     image_url: input.imageUrl ? String(input.imageUrl).trim() : null,

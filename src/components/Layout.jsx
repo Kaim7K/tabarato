@@ -1,27 +1,21 @@
 import { Link, Outlet } from "react-router-dom";
 import { useState } from "react";
-import { Menu, X, Zap, Heart, MessageCircle } from "lucide-react";
+import { Menu, X, Heart, MessageCircle } from "lucide-react";
 import SmartSearch from "@/components/SmartSearch";
 import { FavoritesProvider } from "@/lib/FavoritesContext";
-import { DEFAULT_CATEGORIES, SITE_NAME } from "@/lib/catalog";
+import { DEFAULT_CATEGORIES } from "@/lib/catalog";
 import { WHATSAPP_GROUP_URL } from "@/lib/publicLinks";
+import { BRAND_LOGO } from "@/lib/brand";
 
 function Header() {
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [firstWord, ...rest] = SITE_NAME.split(" ");
-  const restName = rest.join(" ");
 
   return (
     <header className="sticky top-0 z-50 bg-[#F5F2EB]/85 backdrop-blur-md border-b border-[#111111]/8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16 sm:h-20 gap-4">
           <Link to="/" className="flex items-center gap-2 shrink-0">
-            <div className="w-8 h-8 bg-[#111111] rounded-lg flex items-center justify-center">
-              <Zap className="w-5 h-5 text-[#FF6B35]" fill="currentColor" />
-            </div>
-            <span className="font-bold text-[#111111] text-lg sm:text-xl tracking-tight">
-              {firstWord} {restName && <span className="text-[#FF6B35]">{restName}</span>}
-            </span>
+            <img src={BRAND_LOGO} alt="Tá Barato" className="h-11 sm:h-14 w-auto object-contain" />
           </Link>
 
           <div className="hidden md:flex flex-1 max-w-md mx-8">
@@ -52,9 +46,6 @@ function Header() {
                 WhatsApp
               </a>
             )}
-            <Link to="/admin/ofertas" className="px-5 py-2.5 bg-[#FF6B35] hover:bg-[#D95426] text-white text-sm font-semibold rounded-full transition shadow-sm">
-              Painel
-            </Link>
           </nav>
 
           <button onClick={() => setMobileOpen(!mobileOpen)} className="lg:hidden p-2 text-[#111111]" aria-label="Abrir menu">
@@ -81,9 +72,6 @@ function Header() {
               <MessageCircle className="w-4 h-4" /> Grupo no WhatsApp
             </a>
           )}
-          <Link to="/admin/ofertas" onClick={() => setMobileOpen(false)} className="block text-center px-5 py-3 bg-[#FF6B35] text-white text-sm font-semibold rounded-full">
-            Painel
-          </Link>
         </div>
       )}
     </header>

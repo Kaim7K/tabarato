@@ -1,12 +1,10 @@
 import { Link } from "react-router-dom";
-import { MessageCircle, Send, Zap } from "lucide-react";
+import { MessageCircle, Send } from "lucide-react";
 import { SITE_NAME } from "@/lib/catalog";
 import { TELEGRAM_CHANNEL_URL, WHATSAPP_GROUP_URL } from "@/lib/publicLinks";
+import { BRAND_LOGO } from "@/lib/brand";
 
 export default function Footer() {
-  const [firstWord, ...rest] = SITE_NAME.split(" ");
-  const restName = rest.join(" ");
-
   return (
     <footer className="mt-24">
       <div id="grupo" className="bg-[#FF6B35] py-20 sm:py-28">
@@ -35,12 +33,7 @@ export default function Footer() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mb-10">
             <div className="col-span-2">
               <Link to="/" className="flex items-center gap-2 mb-4">
-                <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center">
-                  <Zap className="w-5 h-5 text-[#FF6B35]" fill="currentColor" />
-                </div>
-                <span className="font-bold text-white text-xl tracking-tight">
-                  {firstWord} {restName && <span className="text-[#FF6B35]">{restName}</span>}
-                </span>
+                <img src={BRAND_LOGO} alt={SITE_NAME} className="h-16 w-auto object-contain" />
               </Link>
               <p className="text-white/50 text-sm max-w-xs leading-relaxed">
                 Um catálogo editorial de ofertas realmente úteis. Filtramos o melhor para você encontrar com facilidade.
@@ -61,7 +54,6 @@ export default function Footer() {
                 <li><Link to="/" className="text-white/50 text-sm hover:text-[#FF6B35] transition">Início</Link></li>
                 <li><Link to="/categoria/abaixo-de-50" className="text-white/50 text-sm hover:text-[#FF6B35] transition">Abaixo de R$ 50</Link></li>
                 <li><Link to="/categoria/abaixo-de-100" className="text-white/50 text-sm hover:text-[#FF6B35] transition">Abaixo de R$ 100</Link></li>
-                <li><Link to="/admin/ofertas" className="text-white/50 text-sm hover:text-[#FF6B35] transition">Painel admin</Link></li>
               </ul>
             </div>
           </div>
