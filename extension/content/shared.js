@@ -1,4 +1,6 @@
 (() => {
+  if (globalThis.TaBaratoCapture && Array.isArray(globalThis.TaBaratoStores)) return;
+
   const clean = (value = "") => String(value).replace(/\s+/g, " ").trim();
 
   const text = (...selectors) => {
@@ -101,18 +103,6 @@
     return "";
   };
 
-  const coupon = (...selectors) => {
-    for (const selector of selectors) {
-      const candidates = [...document.querySelectorAll(selector)];
-      for (const candidate of candidates) {
-        const value = clean(candidate.value || candidate.textContent);
-        const match = value.match(/(?:cupom|coupon|c[oó]digo)\s*[:\-]?\s*([A-Z0-9_-]{4,30})/i);
-        if (match) return match[1].toUpperCase();
-      }
-    }
-    return "";
-  };
-
   const commerceBenefits = (value = "") => {
     const text = clean(value);
     const benefits = [];
@@ -159,7 +149,6 @@
     bestImage,
     canonicalUrl,
     clean,
-    coupon,
     commerceBenefits,
     description,
     findAffiliateLink,

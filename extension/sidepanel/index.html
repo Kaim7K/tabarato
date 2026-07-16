@@ -55,7 +55,7 @@
         <div class="capture-bar">
           <div>
             <p class="eyebrow">PRODUTO DETECTADO</p>
-            <p id="capture-source" class="capture-source">Aguardando p&aacute;gina</p>
+            <p id="capture-source" class="capture-source" aria-live="polite">Aguardando p&aacute;gina</p>
           </div>
           <button id="refresh-button" class="icon-button" type="button" title="Capturar novamente" aria-label="Capturar novamente">&#8635;</button>
         </div>
@@ -126,6 +126,7 @@
     </main>
 
     <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+    <script src="../shared/runtime.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

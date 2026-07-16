@@ -1,6 +1,8 @@
 (() => {
   if (globalThis.__TABARATO_WHATSAPP_AUTOMATION__) return;
   globalThis.__TABARATO_WHATSAPP_AUTOMATION__ = true;
+  const runtime = globalThis.TaBaratoRuntime;
+  let activeSend = null;
 
   const clean = (value = "") => String(value).replace(/\s+/g, " ").trim();
   const normalized = (value = "") => clean(value)
@@ -19,13 +21,20 @@
       || (plainExpected && plainCandidate.includes(plainExpected));
   };
 
-  const waitFor = async (read, timeout = 30000) => {
+  const aborted = (signal) => {
+    if (signal?.aborted) throw new Error("O envio anterior foi cancelado.");
+  };
+
+  const waitFor = async (read, timeout = 30000, signal) => {
     const startedAt = Date.now();
+    aborted(signal);
     let value = read();
     while (!value && Date.now() - startedAt < timeout) {
+      aborted(signal);
       await new Promise((resolve) => window.setTimeout(resolve, 200));
       value = read();
     }
+    aborted(signal);
     return value || null;
   };
 
@@ -105,8 +114,9 @@
     });
 
   const dataUrlFile = async (dataUrl, fileName) => {
-    const response = await fetch(dataUrl);
-    return new File([await response.blob()], fileName || "oferta.png", { type: "image/png" });
+    const response = await runtime.fetchWithTimeout(dataUrl, {}, 8000, "A imagem demorou para ser aberta no WhatsApp.");
+    const blob = await runtime.withTimeout(response.blob(), 8000, "A imagem demorou para ser lida no WhatsApp.");
+    return new File([blob], fileName || "oferta.png", { type: "image/png" });
   };
 
   const clickableGroupRow = (group) => {
@@ -133,20 +143,23 @@
     element.click();
   };
 
-  async function selectGroup(groupName) {
+  async function selectGroup(groupName, signal) {
+    aborted(signal);
     if (currentGroupIs(groupName)) return;
 
-    const search = await waitFor(searchBox, 12000);
+    const search = await waitFor(searchBox, 12000, signal);
     if (!search) throw new Error("Entre no WhatsApp Web antes de enviar a oferta.");
     await setEditableText(search, groupName);
-    const group = await waitFor(() => exactGroup(groupName), 15000);
+    const group = await waitFor(() => exactGroup(groupName), 15000, signal);
     if (!group) throw new Error(`Grupo "${groupName}" nao encontrado no WhatsApp.`);
     const groupRow = clickableGroupRow(group);
+    aborted(signal);
     activateGroupRow(groupRow);
-    let selected = await waitFor(() => currentGroupIs(groupName), 5000);
+    let selected = await waitFor(() => currentGroupIs(groupName), 5000, signal);
     if (!selected && groupRow !== group) {
+      aborted(signal);
       activateGroupRow(group);
-      selected = await waitFor(() => currentGroupIs(groupName), 5000);
+      selected = await waitFor(() => currentGroupIs(groupName), 5000, signal);
     }
     if (!selected) throw new Error(`Nao foi possivel abrir o grupo "${groupName}".`);
   }
@@ -200,23 +213,25 @@
     if (pasted) document.execCommand("paste");
   }
 
-  async function pasteOffer(file, caption) {
-    const composer = await waitFor(messageComposer, 10000);
+  async function pasteOffer(file, caption, signal) {
+    const composer = await waitFor(messageComposer, 10000, signal);
     if (!composer) throw new Error("O campo de mensagem do WhatsApp nao foi encontrado.");
     const messageCountBefore = outgoingMessages().length;
 
     await setEditableText(composer, caption);
+    aborted(signal);
     pasteImageFromClipboard(composer, file);
 
-    let captionBox = await waitFor(() => captionEditor(composer), 3000);
+    let captionBox = await waitFor(() => captionEditor(composer), 3000, signal);
     if (!captionBox && await copyImageToClipboard(file)) {
+      aborted(signal);
       window.focus();
       composer.focus();
       document.execCommand("paste");
-      captionBox = await waitFor(() => captionEditor(composer), 12000);
+      captionBox = await waitFor(() => captionEditor(composer), 12000, signal);
     }
     if (!captionBox) {
-      const sent = await waitFor(() => sentMessageAppeared(messageCountBefore, caption), 3000);
+      const sent = await waitFor(() => sentMessageAppeared(messageCountBefore, caption), 3000, signal);
       if (sent) return;
       throw new Error("A imagem foi copiada, mas o WhatsApp nao abriu a previa de envio.");
     }
@@ -227,35 +242,58 @@
     await new Promise((resolve) => window.setTimeout(resolve, 250));
 
     const send = await waitFor(() => actionByLabel(["enviar", "send"])
-      || [...document.querySelectorAll('[data-icon="send"]')].map((element) => element.closest("button, [role='button']")).find(visible), 10000);
+      || [...document.querySelectorAll('[data-icon="send"]')].map((element) => element.closest("button, [role='button']")).find(visible), 10000, signal);
     if (!send) throw new Error("O botao Enviar do WhatsApp nao foi encontrado.");
+    aborted(signal);
     send.click();
-    await waitFor(() => sentMessageAppeared(messageCountBefore, caption) || !visible(captionBox), 5000);
+    const sent = await waitFor(() => sentMessageAppeared(messageCountBefore, caption) || !visible(captionBox), 7000, signal);
+    if (!sent) throw new Error("O WhatsApp nao confirmou o envio da imagem.");
   }
 
-  async function sendTextMessage(text) {
-    const composer = await waitFor(() => messageComposer(), 10000);
+  async function sendTextMessage(text, signal) {
+    const composer = await waitFor(() => messageComposer(), 10000, signal);
     if (!composer) throw new Error("O campo de mensagem do WhatsApp não foi encontrado.");
     const messageCountBefore = document.querySelectorAll('[data-testid="msg-container"], .message-out').length;
     await setEditableText(composer, text);
     const send = await waitFor(() => actionByLabel(["enviar", "send"])
-      || [...document.querySelectorAll('[data-icon="send"]')].map((element) => element.closest("button, [role='button']")).find(visible), 10000);
+      || [...document.querySelectorAll('[data-icon="send"]')].map((element) => element.closest("button, [role='button']")).find(visible), 10000, signal);
     if (!send) throw new Error("O botão Enviar do WhatsApp não foi encontrado.");
+    aborted(signal);
     send.click();
-    await waitFor(() => sentMessageAppeared(messageCountBefore, text), 5000);
+    const sent = await waitFor(() => sentMessageAppeared(messageCountBefore, text), 7000, signal);
+    if (!sent) throw new Error("O WhatsApp nao confirmou o envio da mensagem.");
   }
+
+  const performSend = async (message, signal) => {
+    if (!clean(message.groupName)) throw new Error("Informe o nome do grupo do WhatsApp.");
+    if (!clean(message.text)) throw new Error("A mensagem do WhatsApp esta vazia.");
+    await selectGroup(message.groupName, signal);
+    if (message.imageDataUrl) await pasteOffer(await dataUrlFile(message.imageDataUrl, message.fileName), message.text, signal);
+    else await sendTextMessage(message.text, signal);
+    return { ok: true };
+  };
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message?.type !== "TABARATO_WHATSAPP_SEND") return;
-    Promise.resolve()
-      .then(async () => {
-        await selectGroup(message.groupName);
-        if (message.imageDataUrl) await pasteOffer(await dataUrlFile(message.imageDataUrl, message.fileName), message.text);
-        else await sendTextMessage(message.text);
-        return { ok: true };
-      })
+    if (activeSend) {
+      sendResponse({ ok: false, error: "Ja existe um envio para o WhatsApp em andamento." });
+      return;
+    }
+    const controller = new AbortController();
+    activeSend = runtime.withTimeout(
+      performSend(message, controller.signal),
+      62000,
+      "O envio para o WhatsApp demorou demais. Tente novamente.",
+    ).finally(() => {
+      controller.abort();
+      activeSend = null;
+    });
+    activeSend
       .then(sendResponse)
-      .catch((error) => sendResponse({ ok: false, error: error.message || "Falha ao enviar para o WhatsApp." }));
+      .catch((error) => {
+        runtime.reportError("whatsapp-content", error);
+        sendResponse({ ok: false, error: runtime.errorMessage(error, "Falha ao enviar para o WhatsApp.") });
+      });
     return true;
   });
 })();

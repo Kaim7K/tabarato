@@ -1,6 +1,10 @@
 const STORAGE_KEY = "tabarato_extension_session";
 const WHATSAPP_GROUP_KEY = "tabarato_whatsapp_group";
 const LAST_BASE_URL_KEY = "tabarato_last_base_url";
+const runtime = globalThis.TaBaratoRuntime;
+const REQUEST_TIMEOUT = 20000;
+const CAPTURE_TIMEOUT = 30000;
+const WHATSAPP_TIMEOUT = 95000;
 
 const elements = {
   setup: document.getElementById("setup-view"),
@@ -55,6 +59,12 @@ let shareImageKey = "";
 let shareImageTimer = null;
 let availableCategories = [...elements.fields.category.options].map((option) => option.value);
 let synchronizedOffers = [];
+let capturedTabId = null;
+let capturedPageUrl = "";
+let catalogPromise = null;
+let captureSequence = 0;
+let offerActionsLockCount = 0;
+const idleButtonContent = new WeakMap();
 
 function normalizeBaseUrl(value) {
   const url = new URL(String(value || "").trim());
@@ -89,26 +99,23 @@ function showToast(message, tone = "neutral") {
 }
 
 function setBusy(button, busy, label) {
+  if (!button) return;
   button.disabled = busy;
   if (busy) {
-    if (!button.dataset.label) button.dataset.label = button.textContent;
-    button.textContent = label;
-  } else if (button.dataset.label) {
-    button.textContent = button.dataset.label;
-    delete button.dataset.label;
+    if (!idleButtonContent.has(button)) idleButtonContent.set(button, [...button.childNodes].map((node) => node.cloneNode(true)));
+    button.replaceChildren(document.createTextNode(label));
+  } else if (idleButtonContent.has(button)) {
+    button.replaceChildren(...idleButtonContent.get(button).map((node) => node.cloneNode(true)));
+    idleButtonContent.delete(button);
   }
 }
 
 function setOfferActionsBusy(activeButton, busy, label) {
-  [elements.saveButton, elements.saveOpenButton, elements.publishButton, elements.whatsappButton].forEach((button) => {
-    button.disabled = busy;
-  });
+  offerActionsLockCount = Math.max(0, offerActionsLockCount + (busy ? 1 : -1));
   setBusy(activeButton, busy, label);
-  if (!busy) {
-    [elements.saveButton, elements.saveOpenButton, elements.publishButton, elements.whatsappButton].forEach((button) => {
-      button.disabled = false;
-    });
-  }
+  [elements.saveButton, elements.saveOpenButton, elements.publishButton, elements.whatsappButton].forEach((button) => {
+    button.disabled = offerActionsLockCount > 0;
+  });
 }
 
 async function saveSession(value) {
@@ -141,21 +148,26 @@ async function openAdminPanel() {
     }
     await chrome.tabs.create({ url: targetUrl });
   } catch (error) {
-    showToast(error.message, "error");
+    showToast(runtime.errorMessage(error), "error");
   }
 }
 
 async function requestApi(path, options = {}) {
   if (!session?.baseUrl || !session?.token) throw new Error("Conecte a extensao ao painel.");
-  const response = await fetch(`${session.baseUrl}${path}`, {
+  const response = await runtime.fetchWithTimeout(`${session.baseUrl}${path}`, {
     method: options.method || "GET",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${session.token}`,
     },
     body: options.body ? JSON.stringify(options.body) : undefined,
-  });
-  const payload = await response.json().catch(() => ({}));
+    signal: options.signal,
+  }, options.timeout || REQUEST_TIMEOUT);
+  const payload = await runtime.withTimeout(
+    response.json(),
+    5000,
+    "O painel retornou uma resposta incompleta.",
+  ).catch(() => ({}));
   if (response.status === 401) {
     await clearSession();
     renderAuth();
@@ -232,13 +244,18 @@ function updateCategoryOptions(categories) {
 }
 
 async function synchronizeCatalog() {
-  const data = await requestApi("/api/admin/ofertas");
-  synchronizedOffers = data.offers || [];
-  const categories = data.categories?.length
-    ? data.categories
-    : [...new Set(synchronizedOffers.map((offer) => offer.category).filter(Boolean))];
-  updateCategoryOptions(categories);
-  return data;
+  if (catalogPromise) return catalogPromise;
+  catalogPromise = requestApi("/api/admin/ofertas")
+    .then((data) => {
+      synchronizedOffers = data.offers || [];
+      const categories = data.categories?.length
+        ? data.categories
+        : [...new Set(synchronizedOffers.map((offer) => offer.category).filter(Boolean))];
+      updateCategoryOptions(categories);
+      return data;
+    })
+    .finally(() => { catalogPromise = null; });
+  return catalogPromise;
 }
 
 function updateAffiliateNotice() {
@@ -263,7 +280,7 @@ function fillForm(product) {
     previousPrice: product.previousPrice || "",
     platform: product.platform || "Outra",
     category: suggestCategory(product),
-    coupon: product.coupon || "",
+    coupon: "",
     shortDescription: product.shortDescription || "",
     imageUrl: product.imageUrl || "",
     extraText: product.extraText || "",
@@ -336,6 +353,7 @@ async function productImageBlob(url) {
     if (!response.ok) throw new Error(`A loja respondeu com status ${response.status} ao carregar a imagem.`);
     const blob = await response.blob();
     if (!/^image\/(?:png|jpe?g|webp)$/i.test(blob.type)) throw new Error("A imagem precisa estar em PNG, JPG ou WebP.");
+    if (blob.size > 12 * 1024 * 1024) throw new Error("A imagem do produto excede o limite de 12 MB.");
     return blob;
   } catch (error) {
     if (error?.name === "AbortError") throw new Error("A imagem original do produto demorou para carregar.");
@@ -347,35 +365,46 @@ async function productImageBlob(url) {
 
 async function pngFromImage(blob) {
   if (blob.type === "image/png") return blob;
-  const image = await createImageBitmap(blob);
+  const image = await runtime.withTimeout(createImageBitmap(blob), 12000, "A imagem demorou para ser processada.");
   const canvas = document.createElement("canvas");
   canvas.width = image.width;
   canvas.height = image.height;
   const context = canvas.getContext("2d");
   context.drawImage(image, 0, 0);
   image.close?.();
-  const pngBlob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+  const pngBlob = await runtime.withTimeout(
+    new Promise((resolve) => canvas.toBlob(resolve, "image/png")),
+    12000,
+    "A conversao da imagem demorou demais.",
+  );
   if (!pngBlob) throw new Error("Nao foi possivel preparar a imagem original do produto.");
   return pngBlob;
 }
 
 function fileToDataUrl(file) {
-  return new Promise((resolve, reject) => {
+  return runtime.withTimeout(new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result);
     reader.onerror = () => reject(new Error("Nao foi possivel preparar a imagem para o WhatsApp."));
+    reader.onabort = () => reject(new Error("A preparacao da imagem foi cancelada."));
     reader.readAsDataURL(file);
-  });
+  }), 12000, "A imagem demorou para ser preparada para o WhatsApp.");
 }
 
 function prepareWhatsAppImage(payload) {
   const key = payload.imageUrl;
   if (key === shareImageKey && shareImagePromise) return shareImagePromise;
   shareImageKey = key;
-  shareImagePromise = productImageBlob(payload.imageUrl).then(async (sourceBlob) => {
+  const pendingImage = productImageBlob(payload.imageUrl).then(async (sourceBlob) => {
     const imageBlob = await pngFromImage(sourceBlob);
     const slug = payload.productName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || "produto";
     return new File([imageBlob], `${slug}.png`, { type: "image/png" });
+  });
+  shareImagePromise = pendingImage;
+  pendingImage.catch(() => {
+    if (shareImagePromise !== pendingImage) return;
+    shareImagePromise = null;
+    shareImageKey = "";
   });
   return shareImagePromise;
 }
@@ -442,6 +471,36 @@ async function activeTab() {
   return tab;
 }
 
+function comparablePageUrl(value) {
+  try {
+    const url = new URL(value);
+    url.hash = "";
+    return url.href;
+  } catch {
+    return "";
+  }
+}
+
+function clearRefreshAttention() {
+  elements.refreshButton.classList.remove("needs-refresh");
+  elements.refreshButton.title = "Capturar novamente";
+  elements.refreshButton.setAttribute("aria-label", "Capturar novamente");
+}
+
+function highlightProductChange(tab) {
+  const nextUrl = comparablePageUrl(tab?.url);
+  if (!session || !tab?.id || !nextUrl || !captureScriptsForUrl(nextUrl).length) return;
+  if (tab.id === capturedTabId && nextUrl === capturedPageUrl) return;
+
+  window.scrollTo(0, 0);
+  document.scrollingElement?.scrollTo(0, 0);
+  elements.captureSource.textContent = "A pagina do produto mudou. Recarregue os dados.";
+  elements.refreshButton.classList.add("needs-refresh");
+  elements.refreshButton.title = "Recarregar novo produto";
+  elements.refreshButton.setAttribute("aria-label", "Recarregar novo produto");
+  elements.refreshButton.focus({ preventScroll: true });
+}
+
 function captureScriptsForUrl(value) {
   try {
     const hostname = new URL(value).hostname;
@@ -458,22 +517,37 @@ function captureScriptsForUrl(value) {
 
 async function extractProductFromTab(tab) {
   try {
-    return await chrome.tabs.sendMessage(tab.id, { type: "TABARATO_EXTRACT_PRODUCT" });
+    return await runtime.withTimeout(
+      chrome.tabs.sendMessage(tab.id, { type: "TABARATO_EXTRACT_PRODUCT" }),
+      CAPTURE_TIMEOUT,
+      "A loja demorou para responder. Recarregue a pagina do produto e tente novamente.",
+    );
   } catch (error) {
     const missingReceiver = /receiving end does not exist|could not establish connection/i.test(error?.message || "");
     if (!missingReceiver) throw error;
     const files = captureScriptsForUrl(tab.url);
     if (!files.length) throw new Error("Abra uma página de produto do Mercado Livre ou Shopee.");
-    await chrome.scripting.executeScript({ target: { tabId: tab.id }, files });
-    await new Promise((resolve) => window.setTimeout(resolve, 150));
-    return chrome.tabs.sendMessage(tab.id, { type: "TABARATO_EXTRACT_PRODUCT" });
+    await runtime.withTimeout(
+      chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["shared/runtime.js", ...files] }),
+      10000,
+      "Nao foi possivel preparar a captura nesta pagina.",
+    );
+    await runtime.delay(150);
+    return runtime.withTimeout(
+      chrome.tabs.sendMessage(tab.id, { type: "TABARATO_EXTRACT_PRODUCT" }),
+      CAPTURE_TIMEOUT,
+      "A captura do produto demorou demais. Tente recarregar a pagina.",
+    );
   }
 }
 
 async function captureProduct() {
+  const runId = ++captureSequence;
+  clearRefreshAttention();
+  setBusy(elements.refreshButton, true, "...");
   elements.loading.classList.remove("hidden");
   elements.empty.classList.add("hidden");
-  elements.offerForm.classList.add("hidden");
+  if (!activeProduct) elements.offerForm.classList.add("hidden");
   try {
     const catalogRequest = synchronizeCatalog().catch(() => null);
     const tab = await activeTab();
@@ -495,12 +569,26 @@ async function captureProduct() {
     }
     product.shortDescription = firstParagraph(product.shortDescription);
     await catalogRequest;
+    if (runId !== captureSequence) return;
     fillForm(product);
+    capturedTabId = tab.id;
+    capturedPageUrl = comparablePageUrl(tab.url);
+    clearRefreshAttention();
   } catch (error) {
-    elements.empty.querySelector("p").textContent = error.message;
+    if (runId !== captureSequence) return;
+    const message = runtime.reportError("capture-product", error);
+    elements.empty.querySelector("p").textContent = message;
     elements.empty.classList.remove("hidden");
+    elements.captureSource.textContent = "Falha na captura. Tente novamente.";
+    elements.refreshButton.classList.add("needs-refresh");
+    elements.refreshButton.title = "Tentar capturar novamente";
+    elements.refreshButton.setAttribute("aria-label", "Tentar capturar novamente");
+    if (activeProduct) elements.offerForm.classList.remove("hidden");
   } finally {
-    elements.loading.classList.add("hidden");
+    if (runId === captureSequence) {
+      elements.loading.classList.add("hidden");
+      setBusy(elements.refreshButton, false);
+    }
   }
 }
 
@@ -519,7 +607,8 @@ async function saveOffer(openPanel = false) {
     showToast(`Rascunho salvo: ${data.offer.productName}`, "success");
     if (openPanel) await chrome.tabs.create({ url: `${session.baseUrl}/admin/ofertas` });
   } catch (error) {
-    showToast(error.message, "error");
+    runtime.reportError("save-offer", error);
+    showToast(runtime.errorMessage(error), "error");
   } finally {
     setOfferActionsBusy(button, false);
   }
@@ -528,13 +617,17 @@ async function saveOffer(openPanel = false) {
 async function sendOfferToWhatsApp(payload, groupName, onProgress = () => {}) {
   const file = await prepareWhatsAppImage(payload);
   onProgress("Abrindo WhatsApp...");
-  const result = await chrome.runtime.sendMessage({
-    type: "TABARATO_SHARE_WHATSAPP",
-    groupName,
-    text: whatsappMessage(payload),
-    imageDataUrl: await fileToDataUrl(file),
-    fileName: file.name,
-  });
+  const result = await runtime.withTimeout(
+    chrome.runtime.sendMessage({
+      type: "TABARATO_SHARE_WHATSAPP",
+      groupName,
+      text: whatsappMessage(payload),
+      imageDataUrl: await fileToDataUrl(file),
+      fileName: file.name,
+    }),
+    WHATSAPP_TIMEOUT,
+    "O WhatsApp demorou para responder. Tente novamente.",
+  );
   if (!result?.ok) throw new Error(result?.error || "Nao foi possivel enviar para o grupo.");
 }
 
@@ -560,13 +653,17 @@ async function sendScheduledMessage() {
       fileName = file.name;
     }
     setBusy(elements.scheduledMessageButton, true, "Abrindo WhatsApp...");
-    const result = await chrome.runtime.sendMessage({
-      type: "TABARATO_SHARE_WHATSAPP",
-      groupName,
-      text: scheduledMessage.message,
-      imageDataUrl,
-      fileName,
-    });
+    const result = await runtime.withTimeout(
+      chrome.runtime.sendMessage({
+        type: "TABARATO_SHARE_WHATSAPP",
+        groupName,
+        text: scheduledMessage.message,
+        imageDataUrl,
+        fileName,
+      }),
+      WHATSAPP_TIMEOUT,
+      "O WhatsApp demorou para responder. Tente novamente.",
+    );
     if (!result?.ok) throw new Error(result?.error || "Não foi possível enviar a mensagem agendada.");
     await requestApi(`/api/admin/mensagens?action=complete-whatsapp&id=${encodeURIComponent(scheduledMessage.id)}`, {
       method: "POST",
@@ -577,10 +674,11 @@ async function sendScheduledMessage() {
     if (scheduledMessage?.id) {
       await requestApi(`/api/admin/mensagens?action=complete-whatsapp&id=${encodeURIComponent(scheduledMessage.id)}`, {
         method: "POST",
-        body: { success: false, errorMessage: error.message },
+        body: { success: false, errorMessage: runtime.errorMessage(error) },
       }).catch(() => {});
     }
-    showToast(error.message, "error");
+    runtime.reportError("scheduled-whatsapp", error);
+    showToast(runtime.errorMessage(error), "error");
   } finally {
     setBusy(elements.scheduledMessageButton, false);
   }
@@ -617,11 +715,14 @@ async function publishOffer() {
       await requestApi(`/api/admin/ofertas/${created.offer.id}/publicar`, { method: "POST", body: { action: "record-channel", channel: "WHATSAPP", status: "SUCESSO" } }).catch(() => {});
       showToast(`Oferta publicada no Telegram e enviada para ${groupName}.`, "success");
     } catch (whatsappError) {
-      await requestApi(`/api/admin/ofertas/${created.offer.id}/publicar`, { method: "POST", body: { action: "record-channel", channel: "WHATSAPP", status: "ERRO", errorMessage: whatsappError.message } }).catch(() => {});
-      showToast(`Publicada no Telegram, mas o WhatsApp falhou: ${whatsappError.message}`, "error");
+      const message = runtime.errorMessage(whatsappError);
+      runtime.reportError("publish-whatsapp", whatsappError);
+      await requestApi(`/api/admin/ofertas/${created.offer.id}/publicar`, { method: "POST", body: { action: "record-channel", channel: "WHATSAPP", status: "ERRO", errorMessage: message } }).catch(() => {});
+      showToast(`Publicada no Telegram, mas o WhatsApp falhou: ${message}`, "error");
     }
   } catch (error) {
-    showToast(error.message, "error");
+    runtime.reportError("publish-offer", error);
+    showToast(runtime.errorMessage(error), "error");
   } finally {
     setOfferActionsBusy(elements.publishButton, false);
   }
@@ -643,7 +744,8 @@ async function shareOnWhatsApp() {
     });
     showToast(`Oferta enviada para ${groupName}.`, "success");
   } catch (error) {
-    showToast(error.message, "error");
+    runtime.reportError("share-whatsapp", error);
+    showToast(runtime.errorMessage(error), "error");
   } finally {
     setOfferActionsBusy(elements.whatsappButton, false);
   }
@@ -655,7 +757,7 @@ elements.loginForm.addEventListener("submit", async (event) => {
   try {
     const baseUrl = normalizeBaseUrl(elements.baseUrl.value);
     await requestApiPermission(baseUrl);
-    const response = await fetch(`${baseUrl}/api/admin/login`, {
+    const response = await runtime.fetchWithTimeout(`${baseUrl}/api/admin/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -663,8 +765,12 @@ elements.loginForm.addEventListener("submit", async (event) => {
         password: elements.password.value,
         client: "extension",
       }),
-    });
-    const payload = await response.json().catch(() => ({}));
+    }, REQUEST_TIMEOUT, "O painel demorou para responder. Tente conectar novamente.");
+    const payload = await runtime.withTimeout(
+      response.json(),
+      5000,
+      "O painel retornou uma resposta incompleta.",
+    ).catch(() => ({}));
     if (!response.ok || !payload.token) throw new Error(payload.error || "Login nao autorizado.");
     await saveSession({ baseUrl, token: payload.token, expiresAt: payload.expiresAt });
     await chrome.storage.local.set({ [LAST_BASE_URL_KEY]: baseUrl });
@@ -672,8 +778,9 @@ elements.loginForm.addEventListener("submit", async (event) => {
     renderAuth();
     showToast("Extensao conectada ao painel.", "success");
   } catch (error) {
+    runtime.reportError("admin-login", error);
     setStatus("Erro de conexao", "error");
-    showToast(error.message, "error");
+    showToast(runtime.errorMessage(error), "error");
   } finally {
     setBusy(elements.loginButton, false);
   }
@@ -689,15 +796,35 @@ elements.whatsappButton.addEventListener("click", shareOnWhatsApp);
 elements.scheduledMessageButton.addEventListener("click", sendScheduledMessage);
 elements.adminPanelButton.addEventListener("click", openAdminPanel);
 elements.whatsappGroup.addEventListener("input", () => {
-  chrome.storage.local.set({ [WHATSAPP_GROUP_KEY]: elements.whatsappGroup.value.trim() });
+  chrome.storage.local.set({ [WHATSAPP_GROUP_KEY]: elements.whatsappGroup.value.trim() })
+    .catch((error) => runtime.reportError("save-whatsapp-group", error));
 });
 elements.refreshButton.addEventListener("click", captureProduct);
 elements.logoutButton.addEventListener("click", async () => {
-  await clearSession();
-  renderAuth();
+  try {
+    await clearSession();
+    renderAuth();
+  } catch (error) {
+    runtime.reportError("admin-logout", error);
+    showToast(runtime.errorMessage(error), "error");
+  }
 });
 elements.fields.affiliateLink.addEventListener("change", checkDuplicate);
 Object.values(elements.fields).forEach((field) => field.addEventListener("input", updatePreview));
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (!changeInfo.url || !tab.active) return;
+  highlightProductChange({ ...tab, id: tabId, url: changeInfo.url });
+});
+
+chrome.tabs.onActivated.addListener(async ({ tabId }) => {
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    highlightProductChange(tab);
+  } catch {
+    // Closed and browser-internal tabs do not need product refresh feedback.
+  }
+});
 
 chrome.storage.local.get([STORAGE_KEY, WHATSAPP_GROUP_KEY, LAST_BASE_URL_KEY]).then((stored) => {
   session = stored[STORAGE_KEY] || null;
@@ -705,4 +832,9 @@ chrome.storage.local.get([STORAGE_KEY, WHATSAPP_GROUP_KEY, LAST_BASE_URL_KEY]).t
   elements.baseUrl.value = session?.baseUrl || stored[LAST_BASE_URL_KEY] || "";
   if (session?.expiresAt && new Date(session.expiresAt).getTime() <= Date.now()) session = null;
   renderAuth();
+}).catch((error) => {
+  runtime.reportError("load-settings", error);
+  session = null;
+  renderAuth();
+  showToast("Nao foi possivel carregar as configuracoes. Tente reabrir o painel.", "error");
 });

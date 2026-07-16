@@ -23,6 +23,7 @@ test("extension manifest is valid Manifest V3 with restricted product matches", 
   assert.ok(manifest.content_scripts[0].matches.some((match) => match.includes("mercadolivre")));
   assert.ok(manifest.content_scripts[0].matches.some((match) => match.includes("shopee")));
   assert.doesNotMatch(JSON.stringify(manifest), /amazon/i);
+  assert.doesNotMatch(JSON.stringify(manifest), /coupon-observer/i);
   assert.doesNotMatch(JSON.stringify(manifest.content_scripts), /<all_urls>/);
   const referencedFiles = [
     manifest.background.service_worker,
@@ -72,29 +73,9 @@ test("Mercado Livre capture waits for and requires the generated meli.la link", 
   assert.match(sidePanel, /Use o link meli\.la gerado pelo botao Compartilhar/);
 });
 
-test("Mercado Livre captures product coupons, payment promotions and interest-free installments", () => {
+test("Mercado Livre captures payment promotions and installments without scanning coupons", () => {
   const mercadoLivre = readFileSync(join(extensionRoot, "content", "stores", "mercado-livre.js"), "utf8");
   const sidePanel = readFileSync(join(extensionRoot, "sidepanel", "app.js"), "utf8");
-  assert.match(mercadoLivre, /productCoupon/);
-  assert.match(mercadoLivre, /couponConditions/);
-  assert.match(mercadoLivre, /const discount = text\.match/);
-  assert.match(mercadoLivre, /namedCode/);
-  assert.match(mercadoLivre, /CUPOM\[A-Z0-9_/);
-  assert.match(mercadoLivre, /CUPONS\|COUPON/);
-  assert.match(mercadoLivre, /couponElementText/);
-  assert.match(mercadoLivre, /storeCouponLabel/);
-  assert.match(mercadoLivre, /observedCouponCode/);
-  assert.match(mercadoLivre, /data-tabarato-coupon-candidates/);
-  assert.match(mercadoLivre, /Use o cupom da loja/);
-  assert.match(mercadoLivre, /cupom da loja|cupons\?/);
-  assert.match(mercadoLivre, /data-clipboard-text/);
-  assert.match(mercadoLivre, /interactiveControl/);
-  assert.match(mercadoLivre, /activateControl/);
-  assert.match(mercadoLivre, /couponSurface/);
-  assert.match(mercadoLivre, /couponModalText/);
-  assert.match(mercadoLivre, /span, p, div, strong/);
-  assert.match(mercadoLivre, /cupons\?\\s\+dispon/);
-  assert.match(mercadoLivre, /Condi\\u00e7\\u00f5es do cupom/);
   assert.match(mercadoLivre, /paymentPromotions/);
   assert.match(mercadoLivre, /paymentModalText/);
   assert.match(mercadoLivre, /sourceText\.split/);
@@ -106,13 +87,8 @@ test("Mercado Livre captures product coupons, payment promotions and interest-fr
   assert.match(mercadoLivre, /saiba mais\|ver/);
   assert.match(mercadoLivre, /if \(MELI_LINK_PATTERN\.test\(affiliateLink\)\)/);
   assert.match(mercadoLivre, /await closeAffiliateDialog\(\)/);
+  assert.doesNotMatch(mercadoLivre, /productCoupon|couponSurface|observedCouponCode|data-tabarato-coupon-candidates/);
   assert.match(sidePanel, /extraText: product\.extraText \|\| ""/);
-  const observer = readFileSync(join(extensionRoot, "content", "stores", "mercado-livre-coupon-observer.js"), "utf8");
-  assert.match(observer, /ROUTE_PATTERN/);
-  assert.match(observer, /CUPOM\[A-Z0-9_/);
-  assert.match(observer, /response\.clone\(\)\.text/);
-  assert.match(observer, /XMLHttpRequest\.prototype/);
-  assert.match(observer, /data-tabarato-coupon-candidates/);
 });
 
 test("extension publishes through the protected existing publisher", () => {
@@ -208,6 +184,62 @@ test("extension reinjects the store capture script when a tab has no receiver", 
   assert.match(app, /content\/stores\/shopee\.js/);
 });
 
+test("extension highlights product refresh when the active store page changes", () => {
+  const html = readFileSync(join(extensionRoot, "sidepanel", "index.html"), "utf8");
+  const styles = readFileSync(join(extensionRoot, "sidepanel", "styles.css"), "utf8");
+  const app = readFileSync(join(extensionRoot, "sidepanel", "app.js"), "utf8");
+  assert.match(html, /capture-source[^>]+aria-live="polite"/);
+  assert.match(styles, /\.icon-button\.needs-refresh/);
+  assert.match(styles, /@keyframes refresh-attention/);
+  assert.match(app, /chrome\.tabs\.onUpdated\.addListener/);
+  assert.match(app, /chrome\.tabs\.onActivated\.addListener/);
+  assert.match(app, /function highlightProductChange/);
+  assert.match(app, /window\.scrollTo\(0, 0\)/);
+  assert.match(app, /classList\.add\("needs-refresh"\)/);
+  assert.match(app, /Recarregar novo produto/);
+});
+
+test("extension runtime releases timed out operations", async () => {
+  const source = readFileSync(join(extensionRoot, "shared", "runtime.js"), "utf8");
+  const context = {
+    AbortController,
+    Date,
+    Error,
+    Promise,
+    clearTimeout,
+    console: { error() {} },
+    fetch,
+    setTimeout,
+  };
+  context.globalThis = context;
+  vm.runInNewContext(source, context, { filename: "runtime.js" });
+  await assert.rejects(
+    context.TaBaratoRuntime.withTimeout(new Promise(() => {}), 5, "tempo limite"),
+    /tempo limite/,
+  );
+  assert.equal(await context.TaBaratoRuntime.withTimeout(Promise.resolve("ok"), 20), "ok");
+});
+
+test("extension recovers UI, capture and image state after failures", () => {
+  const app = readFileSync(join(extensionRoot, "sidepanel", "app.js"), "utf8");
+  const content = readFileSync(join(extensionRoot, "content", "index.js"), "utf8");
+  const background = readFileSync(join(extensionRoot, "background", "service-worker.js"), "utf8");
+  assert.match(app, /runtime\.fetchWithTimeout/);
+  assert.match(app, /const runId = \+\+captureSequence/);
+  assert.match(app, /if \(!activeProduct\) elements\.offerForm\.classList\.add/);
+  assert.match(app, /if \(runId === captureSequence\)/);
+  assert.match(app, /shareImagePromise = null/);
+  assert.match(app, /setBusy\(elements\.refreshButton, false\)/);
+  assert.match(content, /__TABARATO_STORE_CONTENT__/);
+  assert.match(content, /extractionUrl !== currentUrl/);
+  assert.match(background, /\.finally\(\(\) => \{ whatsappOperation = null; \}\)/);
+  assert.match(background, /chrome\.tabs\.onUpdated\.removeListener\(listener\)/);
+  const whatsapp = readFileSync(join(extensionRoot, "content", "whatsapp.js"), "utf8");
+  assert.match(whatsapp, /const controller = new AbortController\(\)/);
+  assert.match(whatsapp, /aborted\(signal\);\s*send\.click\(\)/);
+  assert.match(whatsapp, /controller\.abort\(\)/);
+});
+
 test("extension manually sends due WhatsApp scheduler messages", () => {
   const html = readFileSync(join(extensionRoot, "sidepanel", "index.html"), "utf8");
   const app = readFileSync(join(extensionRoot, "sidepanel", "app.js"), "utf8");
@@ -232,15 +264,19 @@ test("extension synchronizes site categories and classifies captured products", 
   stores.forEach((source) => assert.match(source, /sourceCategory\s*[:,]/));
 });
 
-test("extension captures useful commerce benefits without using discount as coupon text", () => {
+test("extension captures commerce benefits without automatic coupon detection", () => {
   const shared = readFileSync(join(extensionRoot, "content", "shared.js"), "utf8");
   const mercadoLivre = readFileSync(join(extensionRoot, "content", "stores", "mercado-livre.js"), "utf8");
+  const shopee = readFileSync(join(extensionRoot, "content", "stores", "shopee.js"), "utf8");
   const sidePanel = readFileSync(join(extensionRoot, "sidepanel", "app.js"), "utf8");
   assert.match(shared, /commerceBenefits/);
   assert.match(shared, /Frete grátis/);
   assert.match(shared, /sem\\s\+juros/);
-  assert.match(mercadoLivre, /couponDiscountPercent/);
-  assert.match(mercadoLivre, /const conditions = \[minimum, limit, expires\]/);
-  assert.doesNotMatch(mercadoLivre, /const conditions = \[discount, minimum/);
+  assert.doesNotMatch(shared, /const coupon =/);
+  assert.doesNotMatch(mercadoLivre, /productCoupon|couponConditions|tools\.coupon/);
+  assert.doesNotMatch(shopee, /tools\.coupon/);
+  assert.doesNotMatch(mercadoLivre, /coupon\s*:/);
+  assert.doesNotMatch(shopee, /coupon\s*:/);
+  assert.match(sidePanel, /coupon: ""/);
   assert.match(sidePanel, /captureQuality/);
 });

@@ -47,4 +47,13 @@ Ofertas do Mercado Livre nao podem ser salvas pela extensao com a URL comum do p
 
 A descricao capturada usa somente o primeiro paragrafo encontrado na pagina ou nos metadados do produto.
 
-No Mercado Livre, a extensao tambem identifica cupons vinculados ao produto e promocoes de pagamento. Para produtos acima de R$ 500, consulta as opcoes exibidas de parcelamento sem juros e adiciona essas informacoes ao texto complementar da oferta.
+Cupons devem ser informados manualmente. No Mercado Livre, a extensao identifica promocoes de pagamento. Para produtos acima de R$ 500, consulta as opcoes exibidas de parcelamento sem juros e adiciona essas informacoes ao texto complementar da oferta.
+
+## Recuperacao de erros
+
+- Capturas, APIs, imagens e mensagens entre abas possuem tempo limite.
+- Uma falha preserva os dados que ja estavam no formulario e libera imediatamente uma nova tentativa.
+- Promessas de imagem com erro nao ficam armazenadas no cache da extensao.
+- Os scripts podem ser reinjetados sem duplicar listeners, botoes ou intervalos.
+- Envios expirados ao WhatsApp sao cancelados antes de novos cliques no campo de mensagem.
+- O ultimo erro tecnico fica registrado apenas em `chrome.storage.session`, sem produto, token ou credencial.

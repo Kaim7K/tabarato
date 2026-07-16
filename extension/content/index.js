@@ -1,5 +1,11 @@
 (() => {
+  if (globalThis.__TABARATO_STORE_CONTENT__) return;
+  globalThis.__TABARATO_STORE_CONTENT__ = true;
+
   const BUTTON_ID = "tabarato-send-product";
+  const runtime = globalThis.TaBaratoRuntime;
+  let extractionPromise = null;
+  let extractionUrl = "";
 
   const currentAdapter = () => globalThis.TaBaratoStores.find((adapter) => adapter.matches());
 
@@ -48,17 +54,38 @@
       sendResponse({ ok: false, error: "Abra a pagina exata de um produto compativel." });
       return;
     }
-    Promise.resolve()
-      .then(() => adapter.extract())
+    const currentUrl = location.href;
+    if (!extractionPromise || extractionUrl !== currentUrl) {
+      extractionUrl = currentUrl;
+      const pendingExtraction = runtime.withTimeout(
+        Promise.resolve().then(() => adapter.extract()),
+        28000,
+        "A leitura desta pagina demorou demais. Recarregue o produto e tente novamente.",
+      );
+      extractionPromise = pendingExtraction;
+      pendingExtraction.finally(() => {
+        if (extractionPromise !== pendingExtraction) return;
+        extractionPromise = null;
+        extractionUrl = "";
+      }).catch(() => {});
+    }
+    extractionPromise
       .then((product) => sendResponse({ ok: true, product }))
-      .catch(() => sendResponse({ ok: false, error: "Nao foi possivel ler os dados desta pagina." }));
+      .catch((error) => {
+        runtime.reportError("store-extraction", error);
+        sendResponse({ ok: false, error: runtime.errorMessage(error, "Nao foi possivel ler os dados desta pagina.") });
+      });
     return true;
   });
 
   updateButton();
   let lastUrl = location.href;
   window.setInterval(() => {
-    if (lastUrl !== location.href) lastUrl = location.href;
-    updateButton();
+    try {
+      if (lastUrl !== location.href) lastUrl = location.href;
+      updateButton();
+    } catch (error) {
+      runtime.reportError("store-button", error);
+    }
   }, 1500);
 })();
