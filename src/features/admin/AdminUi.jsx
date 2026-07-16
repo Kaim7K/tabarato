@@ -13,7 +13,7 @@ export function AdminHeader({ testTelegram, saving }) {
           <span className="font-bold text-lg">{SITE_NAME} <span className="text-white/40 font-normal hidden sm:inline">/ Admin</span></span>
         </div>
         <div className="flex items-center gap-3">
-          <button onClick={testTelegram} disabled={saving} className="hidden sm:flex px-4 py-2 bg-[#168A55] rounded-xl text-sm font-semibold disabled:opacity-50 items-center gap-2">
+          <button onClick={testTelegram} disabled={saving} className="hidden sm:flex px-4 py-2 bg-[#168A55] rounded-lg text-sm font-semibold disabled:opacity-50 items-center gap-2">
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
             Telegram
           </button>
@@ -31,7 +31,7 @@ export function AdminHeader({ testTelegram, saving }) {
 
 export function Panel({ title, icon: Icon, children }) {
   return (
-    <section className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5">
+    <section className="bg-white/5 border border-white/10 rounded-lg p-4 sm:p-5">
       <div className="flex items-center gap-2 mb-4">
         <Icon className="w-4 h-4 text-[#FF6B35]" />
         <h2 className="font-bold">{title}</h2>
@@ -43,7 +43,7 @@ export function Panel({ title, icon: Icon, children }) {
 
 export function AdminNavButton({ icon: Icon, label, active, onClick }) {
   return (
-    <button onClick={onClick} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition ${active ? "bg-[#FF6B35] text-white" : "text-white/60 hover:text-white hover:bg-white/10"}`}>
+    <button onClick={onClick} className={`shrink-0 lg:w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-semibold transition ${active ? "bg-[#FF6B35] text-white" : "text-white/60 hover:text-white hover:bg-white/10"}`}>
       <Icon className="w-4 h-4" />
       {label}
     </button>
@@ -76,5 +76,5 @@ export function EmptyBlock({ label }) {
   return <div className="min-h-28 flex items-center justify-center text-center text-white/35 text-sm">{label}</div>;
 }
 
-export const inputCls = "w-full min-h-10 px-3.5 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm placeholder:text-white/30 focus:outline-none focus:border-[#FF6B35]/50 focus:ring-2 focus:ring-[#FF6B35]/15";
+export const inputCls = "w-full min-h-10 px-3.5 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white text-sm placeholder:text-white/30 focus:outline-none focus:border-[#FF6B35]/50 focus:ring-2 focus:ring-[#FF6B35]/15";
 

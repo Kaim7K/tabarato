@@ -17,6 +17,7 @@ const FILTERS = [
 
 export default function CategoryPage() {
   const { slug } = useParams();
+  const categoryName = categoryNameBySlug(slug);
   const [offers, setOffers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -26,18 +27,20 @@ export default function CategoryPage() {
   useEffect(() => {
     setLoading(true);
     setError("");
-    listPublicOffers({ limit: 200 })
+    const params = categoryName && !categoryName.startsWith("Abaixo de")
+      ? { category: categoryName, limit: 200 }
+      : { limit: 200 };
+    listPublicOffers(params)
       .then(setOffers)
       .catch((err) => setError(err.message || "Não foi possível carregar ofertas."))
       .finally(() => setLoading(false));
-  }, []);
+  }, [categoryName]);
 
   let filtered = offers;
   if (slug === "abaixo-de-50") filtered = offers.filter((offer) => offer.price < 50);
   else if (slug === "abaixo-de-100") filtered = offers.filter((offer) => offer.price < 100);
   else {
-    const catName = categoryNameBySlug(slug);
-    if (catName) filtered = offers.filter((offer) => offer.category === catName);
+    if (categoryName) filtered = offers.filter((offer) => offer.category === categoryName);
   }
 
   if (platformFilter !== "all") filtered = filtered.filter((offer) => offer.platform === platformFilter);
@@ -48,7 +51,7 @@ export default function CategoryPage() {
   else filtered = [...filtered].sort((a, b) => new Date(b.published_date || 0).getTime() - new Date(a.published_date || 0).getTime());
 
   const platforms = [...new Set(offers.map((offer) => offer.platform).filter(Boolean))];
-  const title = categoryNameBySlug(slug) || (slug === "abaixo-de-50" ? "Produtos abaixo de R$ 50" : slug === "abaixo-de-100" ? "Produtos abaixo de R$ 100" : slug);
+  const title = categoryName || (slug === "abaixo-de-50" ? "Produtos abaixo de R$ 50" : slug === "abaixo-de-100" ? "Produtos abaixo de R$ 100" : slug);
   useDocumentMetadata(`${title} | Tá Barato`, `Ofertas de ${title} selecionadas pelo Tá Barato.`);
 
   return (
@@ -58,7 +61,7 @@ export default function CategoryPage() {
         title={title}
         description={`${filtered.length} ${filtered.length === 1 ? "achado encontrado" : "achados encontrados"}`}
       />
-      <section className="sticky top-16 sm:top-20 z-30 bg-[#F5F2EB]/85 backdrop-blur-md border-b border-[#111111]/8">
+      <section className="bg-white border-b border-[#111111]/10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
             {FILTERS.map((f) => (
@@ -67,7 +70,7 @@ export default function CategoryPage() {
               </FilterChip>
             ))}
             {platforms.length > 0 && (
-              <select aria-label="Filtrar por plataforma" value={platformFilter} onChange={(e) => setPlatformFilter(e.target.value)} className="min-h-10 px-4 py-2 text-sm font-medium rounded-full bg-white text-[#111111]/65 border border-[#111111]/8 focus:outline-none focus:ring-2 focus:ring-[#FF6B35]/35 cursor-pointer">
+              <select aria-label="Filtrar por plataforma" value={platformFilter} onChange={(e) => setPlatformFilter(e.target.value)} className="min-h-10 px-4 py-2 text-sm font-medium rounded-md bg-white text-[#111111]/65 border border-[#111111]/10 focus:outline-none focus:ring-2 focus:ring-[#FF6B35]/35 cursor-pointer">
                 <option value="all">Todas as plataformas</option>
                 {platforms.map((p) => <option key={p} value={p}>{p}</option>)}
               </select>
@@ -75,7 +78,7 @@ export default function CategoryPage() {
           </div>
         </div>
       </section>
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-14">
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
         {loading ? <LoadingState />
           : error ? <EmptyState title="Não foi possível carregar as ofertas." description={error} />
           : filtered.length === 0 ? <EmptyState title="Nenhum achado nesta categoria ainda." description="Novas ofertas aparecem aqui assim que forem publicadas." />

@@ -7,10 +7,10 @@ export default function PageNotFound() {
   const pageName = location.pathname.substring(1);
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-6 bg-[#F5F2EB]">
-      <div className="max-w-md w-full text-center space-y-6">
+    <div className="min-h-screen flex items-center justify-center p-6 bg-[#F3F3F3]">
+      <div className="max-w-md w-full text-center space-y-6 bg-white border border-[#111111]/8 rounded-lg p-8">
         <div className="space-y-2">
-          <h1 className="text-7xl font-light text-[#111111]/20">404</h1>
+          <h1 className="text-6xl font-light text-[#111111]/20">404</h1>
           <div className="h-0.5 w-16 bg-[#111111]/10 mx-auto"></div>
         </div>
         <div className="space-y-3">
@@ -22,7 +22,7 @@ export default function PageNotFound() {
         <div className="pt-4">
           <Link
             to="/"
-            className="inline-flex items-center px-5 py-3 text-sm font-semibold text-white bg-[#FF6B35] rounded-full hover:bg-[#D95426] transition"
+            className="min-h-11 inline-flex items-center px-5 py-2.5 text-sm font-semibold text-white bg-[#FF6B35] rounded-md hover:bg-[#D95426] transition"
           >
             Voltar para o início
           </Link>

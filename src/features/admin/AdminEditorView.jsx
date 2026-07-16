@@ -22,25 +22,25 @@ export function EditorView({ form, selected, categories, saving, autoFilling, se
             <p className="text-white/45 text-sm">Cadastro de oferta</p>
             <h1 className="text-3xl font-bold mt-1">{selected ? "Editar oferta" : "Nova oferta"}</h1>
           </div>
-          <button onClick={startNew} className="px-4 py-2.5 bg-white/10 rounded-xl font-semibold flex items-center justify-center gap-2"><Plus className="w-4 h-4" /> Limpar</button>
+          <button onClick={startNew} className="px-4 py-2.5 bg-white/10 rounded-lg font-semibold flex items-center justify-center gap-2"><Plus className="w-4 h-4" /> Limpar</button>
         </div>
 
         <Panel title="1. Link e preenchimento" icon={Sparkles}>
           <Field label="Link oficial de afiliado *">
             <div className="grid sm:grid-cols-[1fr_auto] gap-2">
               <input value={form.affiliateLink} onChange={(e) => set("affiliateLink", e.target.value)} className={inputCls} placeholder="https://..." />
-              <button type="button" onClick={autoFillFromLink} disabled={autoFilling || !form.affiliateLink} className="px-4 py-2.5 bg-white text-[#0D0D0D] rounded-xl text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2">
+              <button type="button" onClick={autoFillFromLink} disabled={autoFilling || !form.affiliateLink} className="px-4 py-2.5 bg-white text-[#0D0D0D] rounded-lg text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2">
                 {autoFilling ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
                 Servidor
               </button>
             </div>
           </Field>
           <div className="mt-3 grid sm:grid-cols-2 gap-2">
-            <button type="button" onClick={openBrowserCapture} disabled={!form.affiliateLink} className="px-4 py-2.5 bg-white/10 rounded-xl text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2">
+            <button type="button" onClick={openBrowserCapture} disabled={!form.affiliateLink} className="px-4 py-2.5 bg-white/10 rounded-lg text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2">
               <ExternalLink className="w-4 h-4" />
               Abrir e copiar script
             </button>
-            <button type="button" onClick={importBrowserCapture} className="px-4 py-2.5 bg-[#168A55] rounded-xl text-sm font-semibold flex items-center justify-center gap-2">
+            <button type="button" onClick={importBrowserCapture} className="px-4 py-2.5 bg-[#168A55] rounded-lg text-sm font-semibold flex items-center justify-center gap-2">
               <Clipboard className="w-4 h-4" />
               Importar captura
             </button>
@@ -83,9 +83,9 @@ export function EditorView({ form, selected, categories, saving, autoFilling, se
           <div className="grid md:grid-cols-[1fr_auto] gap-4 md:items-end">
             <Field label="Data e horario do agendamento"><input type="datetime-local" value={form.scheduledAt} onChange={(e) => set("scheduledAt", e.target.value)} className={inputCls} /></Field>
             <div className="flex flex-wrap gap-2">
-              <button disabled={saving} onClick={() => save({ status: "RASCUNHO" })} className="px-4 py-2.5 bg-white/10 rounded-xl font-semibold flex items-center gap-2 disabled:opacity-50"><Save className="w-4 h-4" /> Rascunho</button>
-              <button disabled={saving} onClick={schedule} className="px-4 py-2.5 bg-blue-500 rounded-xl font-semibold flex items-center gap-2 disabled:opacity-50"><CalendarClock className="w-4 h-4" /> Agendar</button>
-              <button disabled={saving} onClick={publishNow} className="px-4 py-2.5 bg-[#FF6B35] rounded-xl font-semibold flex items-center gap-2 disabled:opacity-50"><Send className="w-4 h-4" /> Publicar</button>
+              <button disabled={saving} onClick={() => save({ status: "RASCUNHO" })} className="px-4 py-2.5 bg-white/10 rounded-lg font-semibold flex items-center gap-2 disabled:opacity-50"><Save className="w-4 h-4" /> Rascunho</button>
+              <button disabled={saving} onClick={schedule} className="px-4 py-2.5 bg-blue-500 rounded-lg font-semibold flex items-center gap-2 disabled:opacity-50"><CalendarClock className="w-4 h-4" /> Agendar</button>
+              <button disabled={saving} onClick={publishNow} className="px-4 py-2.5 bg-[#FF6B35] rounded-lg font-semibold flex items-center gap-2 disabled:opacity-50"><Send className="w-4 h-4" /> Publicar</button>
             </div>
           </div>
         </Panel>
@@ -113,7 +113,7 @@ export function EditorView({ form, selected, categories, saving, autoFilling, se
 
 function OfferPreview({ form }) {
   return (
-    <div className="bg-white text-[#111111] rounded-2xl overflow-hidden">
+    <div className="bg-white text-[#111111] rounded-lg overflow-hidden">
       <div className="aspect-[4/3] bg-white">{form.imageUrl && <img src={form.imageUrl} alt="" className="w-full h-full object-contain" />}</div>
       <div className="p-4">
         <p className="text-xs text-[#111111]/50 mb-1">{form.category || "Categoria"}</p>

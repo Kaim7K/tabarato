@@ -91,7 +91,7 @@ export default function SmartSearch({ placeholder = "Buscar por nome, categoria.
         />
       </form>
       {open && query.trim() && (
-        <div id={resultsId} role="listbox" className="absolute top-full mt-2 w-full bg-white rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.12)] border border-[#111111]/8 overflow-hidden z-50 max-h-[28rem] overflow-y-auto">
+        <div id={resultsId} role="listbox" className="absolute top-full mt-2 w-full bg-white rounded-lg shadow-[0_12px_32px_rgba(0,0,0,0.12)] border border-[#111111]/10 overflow-hidden z-50 max-h-[28rem] overflow-y-auto">
           {results.length === 0 ? (
             <div className="p-6 text-center">
               <p className="text-sm text-[#111111]/40 mb-1">Nenhum resultado para "{query}"</p>
@@ -99,7 +99,7 @@ export default function SmartSearch({ placeholder = "Buscar por nome, categoria.
             </div>
           ) : (
             <>
-              <div className="px-4 pt-3 pb-1 text-[#111111]/30 text-xs font-medium uppercase tracking-wide">
+              <div className="px-4 pt-3 pb-1 text-[#111111]/30 text-xs font-medium uppercase">
                 {results.length} resultado{results.length === 1 ? "" : "s"}
               </div>
               {results.map((offer) => (

@@ -1,7 +1,5 @@
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import OfferCard from "@/components/OfferCard";
-import Footer from "@/components/Footer";
 import {
   ArrowUpRight,
   BadgeDollarSign,
@@ -9,19 +7,20 @@ import {
   Flame,
   Home as HomeIcon,
   Laptop,
-  Loader2,
   MessageCircle,
   PackageSearch,
   Paperclip,
   Search,
   Send,
   Sparkles,
-  TrendingUp,
   UsersRound,
   Wrench,
 } from "lucide-react";
-import { DEFAULT_CATEGORIES, formatPrice, normalizeText } from "@/lib/catalog";
-import { listPublicOffers } from "@/lib/offersApi";
+import Footer from "@/components/Footer";
+import OfferCard from "@/components/OfferCard";
+import { EmptyState, LoadingState, OfferGrid, SectionTitle } from "@/components/PublicUi";
+import { DEFAULT_CATEGORIES, formatPrice, normalizeText, slugify } from "@/lib/catalog";
+import { listPublicOffers, trackOfferClick } from "@/lib/offersApi";
 import { TELEGRAM_CHANNEL_URL, WHATSAPP_GROUP_URL } from "@/lib/publicLinks";
 import { useDocumentMetadata } from "@/hooks/useDocumentMetadata";
 
@@ -45,250 +44,184 @@ export default function Home() {
 
   useEffect(() => {
     setError("");
-    listPublicOffers({ limit: 100 })
+    listPublicOffers({ limit: 24 })
       .then(setOffers)
-      .catch((err) => setError(err.message || "Não foi possível carregar as ofertas."))
+      .catch((requestError) => setError(requestError.message || "Não foi possível carregar as ofertas."))
       .finally(() => setLoading(false));
   }, []);
 
-  const q = normalizeText(searchQuery);
-  const filtered = q
-    ? offers.filter((offer) => normalizeText(offer.name).includes(q) || normalizeText(offer.category).includes(q))
+  const normalizedQuery = normalizeText(searchQuery);
+  const filteredOffers = normalizedQuery
+    ? offers.filter((offer) => normalizeText(offer.name).includes(normalizedQuery) || normalizeText(offer.category).includes(normalizedQuery))
     : offers;
-  const featured = filtered[0] || null;
+  const featured = filteredOffers[0] || null;
   const featuredCopy = featured?.benefit || featured?.description || "Oferta selecionada para comprar melhor sem perder tempo.";
-  const recent = filtered.filter((offer) => offer.id !== featured?.id);
-  const mostClicked = [...filtered].sort((a, b) => (b.clicks || 0) - (a.clicks || 0)).slice(0, 5);
+  const recent = filteredOffers.filter((offer) => offer.id !== featured?.id).slice(0, 8);
+  const mostClicked = [...filteredOffers].sort((a, b) => (b.clicks || 0) - (a.clicks || 0)).slice(0, 5);
   const hasTelegramLink = Boolean(TELEGRAM_CHANNEL_URL);
   const hasWhatsAppLink = Boolean(WHATSAPP_GROUP_URL);
 
   return (
-    <div className="bg-[#F5F2EB] min-h-screen">
-      <section className="border-b border-[#111111]/8 bg-[#111111] text-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16 lg:py-20">
-          <div className="grid lg:grid-cols-[1.05fr_0.95fr] gap-9 lg:gap-14 items-center">
+    <div className="bg-[#F3F3F3] min-h-screen">
+      <section className="bg-[#111111] text-white border-b-4 border-[#FF6B35]">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-9 sm:py-11">
+          <div className="grid lg:grid-cols-[minmax(0,1fr)_minmax(20rem,0.7fr)] gap-8 lg:gap-12 items-center">
             <div>
-              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 border border-white/10 text-white/70 text-xs font-bold uppercase tracking-widest mb-5">
+              <p className="inline-flex items-center gap-2 text-white/60 text-xs font-semibold uppercase mb-3">
                 <UsersRound className="w-4 h-4 text-[#FF6B35]" />
                 Comunidade Tá Barato
-              </div>
-              <h1 className="text-3xl sm:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.03] max-w-3xl">
+              </p>
+              <h1 className="text-3xl sm:text-4xl lg:text-5xl font-semibold leading-tight max-w-3xl">
                 Receba os melhores achados direto no Telegram e WhatsApp.
               </h1>
-              <p className="mt-5 text-white/65 text-base sm:text-lg leading-relaxed max-w-2xl">
+              <p className="mt-4 text-white/65 text-base leading-relaxed max-w-2xl">
                 Entre nos grupos oficiais do Tá Barato para acompanhar ofertas publicadas em tempo real, alertas rápidos e oportunidades antes que acabem.
               </p>
-              <div className="mt-8 flex flex-col sm:flex-row gap-3">
-                {hasTelegramLink && (
-                  <a
-                    href={TELEGRAM_CHANNEL_URL}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center justify-center gap-2 px-7 py-4 bg-[#FF6B35] hover:bg-[#D95426] text-white font-semibold rounded-full transition shadow-lg text-base"
-                  >
-                    Entrar no Telegram <Send className="w-5 h-5" />
-                  </a>
-                )}
-                {hasWhatsAppLink && (
-                  <a
-                    href={WHATSAPP_GROUP_URL}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center justify-center gap-2 px-7 py-4 bg-[#168A55] hover:bg-[#137247] text-white font-semibold rounded-full transition shadow-lg text-base"
-                  >
-                    Entrar no WhatsApp <MessageCircle className="w-5 h-5" />
-                  </a>
-                )}
-              </div>
-              {!hasTelegramLink && !hasWhatsAppLink && (
-                <p className="mt-6 text-white/45 text-sm">
-                  Configure os links dos grupos nas variáveis públicas para ativar os botões.
-                </p>
+            </div>
+
+            <div className="grid gap-3">
+              {hasTelegramLink && (
+                <a href={TELEGRAM_CHANNEL_URL} target="_blank" rel="noopener noreferrer" className="min-h-14 flex items-center justify-between gap-4 px-5 py-3.5 bg-[#FF6B35] hover:bg-[#D95426] rounded-lg transition">
+                  <span className="flex items-center gap-3">
+                    <Send className="w-5 h-5" />
+                    <span>
+                      <strong className="block text-sm">Entrar no Telegram</strong>
+                      <span className="block text-xs text-white/75 mt-0.5">Canal no Telegram</span>
+                    </span>
+                  </span>
+                  <ArrowUpRight className="w-5 h-5" />
+                </a>
+              )}
+              {hasWhatsAppLink && (
+                <a href={WHATSAPP_GROUP_URL} target="_blank" rel="noopener noreferrer" className="min-h-14 flex items-center justify-between gap-4 px-5 py-3.5 bg-[#168A55] hover:bg-[#137247] rounded-lg transition">
+                  <span className="flex items-center gap-3">
+                    <MessageCircle className="w-5 h-5" />
+                    <span>
+                      <strong className="block text-sm">Entrar no WhatsApp</strong>
+                      <span className="block text-xs text-white/75 mt-0.5">Grupo no WhatsApp</span>
+                    </span>
+                  </span>
+                  <ArrowUpRight className="w-5 h-5" />
+                </a>
               )}
             </div>
-
-            <div className="grid sm:grid-cols-2 gap-4">
-              <div className="bg-white/[0.06] border border-white/10 rounded-2xl p-5 sm:p-6">
-                <div className="w-11 h-11 rounded-full bg-[#FF6B35]/15 text-[#FF6B35] flex items-center justify-center mb-5">
-                  <Send className="w-5 h-5" />
-                </div>
-                <h2 className="text-xl font-bold mb-2">Canal no Telegram</h2>
-                <p className="text-white/55 text-sm leading-relaxed">
-                  Receba publicações organizadas, chamadas rápidas e links diretos para aproveitar cada oferta.
-                </p>
-              </div>
-              <div className="bg-white/[0.06] border border-white/10 rounded-2xl p-5 sm:p-6">
-                <div className="w-11 h-11 rounded-full bg-[#168A55]/15 text-[#4ade80] flex items-center justify-center mb-5">
-                  <MessageCircle className="w-5 h-5" />
-                </div>
-                <h2 className="text-xl font-bold mb-2">Grupo no WhatsApp</h2>
-                <p className="text-white/55 text-sm leading-relaxed">
-                  Acompanhe avisos no celular, compartilhe achados e veja oportunidades enquanto ainda estão disponíveis.
-                </p>
-              </div>
-            </div>
           </div>
         </div>
       </section>
 
-      {featured ? (
-        <section className="border-b border-[#111111]/8">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 lg:py-16">
-            <div className="grid lg:grid-cols-[1.02fr_0.98fr] gap-8 lg:gap-14 items-center">
-              <div className="relative order-2 lg:order-1">
-                <div className="relative aspect-[4/3] sm:aspect-[16/10] rounded-[1.75rem] overflow-hidden bg-white shadow-[0_24px_70px_rgba(17,17,17,0.08)] ring-1 ring-[#111111]/5">
-                  <img src={featured.image} alt={featured.name} className="w-full h-full object-contain bg-white p-2 sm:p-4" />
-                </div>
-                <div className="absolute top-4 left-4 px-4 py-2 bg-[#FF6B35] text-white text-xs font-bold uppercase tracking-widest rounded-full shadow-lg flex items-center gap-1.5">
-                  <Flame className="w-4 h-4" />
-                  Achado do dia
-                </div>
-              </div>
-
-              <div className="order-1 lg:order-2">
-                <div className="flex flex-wrap items-center gap-2 mb-4">
-                  <span className="px-3 py-1 rounded-full bg-white text-[#FF6B35] text-xs font-bold uppercase tracking-widest border border-[#FF6B35]/15">
-                    {featured.category}
-                  </span>
-                  {featured.platform && (
-                    <span className="px-3 py-1 rounded-full bg-white text-[#111111]/50 text-xs font-semibold border border-[#111111]/8">
-                      {featured.platform}
-                    </span>
-                  )}
-                </div>
-
-                <h1 className="text-3xl sm:text-5xl lg:text-6xl font-bold text-[#111111] tracking-tight leading-[1.03] mb-5 line-clamp-3">
-                  {featured.name}
-                </h1>
-                <p className="text-[#111111]/60 text-base sm:text-lg leading-relaxed mb-7 max-w-2xl line-clamp-4">
-                  {featuredCopy}
-                </p>
-
-                <div className="flex flex-col sm:flex-row sm:items-end gap-5 sm:gap-8 mb-8">
-                  <div>
-                    <p className="text-[#111111]/40 text-xs uppercase tracking-wide mb-1">Preço informado</p>
-                    <p className="text-4xl sm:text-5xl font-bold text-[#111111] tracking-tight" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
-                      {formatPrice(featured.price)}
-                    </p>
-                  </div>
-                  {featured.previousPrice && (
-                    <div className="pb-1">
-                      <p className="text-[#111111]/35 text-xs uppercase tracking-wide mb-1">Antes</p>
-                      <p className="text-xl text-[#111111]/45 line-through" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
-                        {formatPrice(Number(featured.previousPrice))}
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex flex-col sm:flex-row gap-3">
-                  <a href={featured.affiliate_link} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center gap-2 px-8 py-4 bg-[#FF6B35] hover:bg-[#D95426] text-white font-semibold rounded-full transition shadow-lg text-base">
-                    Ver oferta <ArrowUpRight className="w-5 h-5" />
-                  </a>
-                  <Link to={`/oferta/${featured.id}`} className="inline-flex items-center justify-center gap-2 px-8 py-4 bg-white text-[#111111] font-semibold rounded-full hover:bg-[#F5F2EB] transition border border-[#111111]/10 text-base">
-                    Ver detalhes
-                  </Link>
-                </div>
-
-                <p className="mt-6 text-[#111111]/40 text-xs leading-relaxed max-w-md">
-                  Publicidade: este site utiliza links de afiliado e pode receber comissão pelas compras, sem custo adicional para você.
-                </p>
-              </div>
-            </div>
+      <section className="bg-white border-b border-[#111111]/10">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5">
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
+            {DEFAULT_CATEGORIES.map((category) => {
+              const Icon = categoryIcons[category.icon] || BadgeDollarSign;
+              return (
+                <Link key={category.slug} to={`/categoria/${category.slug}`} className="group min-h-20 px-2 py-3 flex flex-col items-center justify-center gap-2 text-center rounded-lg hover:bg-[#F3F3F3] transition">
+                  <Icon className="w-6 h-6 text-[#FF6B35]" aria-hidden="true" />
+                  <span className="text-xs sm:text-sm leading-tight text-[#111111]/65 group-hover:text-[#111111]">{category.name}</span>
+                </Link>
+              );
+            })}
           </div>
-        </section>
-      ) : (
-        !loading && !error && (
-          <section className="border-b border-[#111111]/8">
-            <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-24 text-center">
-              <PackageSearch className="w-12 h-12 text-[#FF6B35] mx-auto mb-5" />
-              <p className="text-[#FF6B35] text-sm font-semibold uppercase tracking-widest mb-3">Tá Barato</p>
-              <h1 className="text-3xl sm:text-5xl font-bold text-[#111111] tracking-tight mb-4">Novos achados aparecem aqui.</h1>
-              <p className="text-[#111111]/55 text-lg max-w-xl mx-auto">Assim que uma oferta for publicada, ela entra nesta vitrine automaticamente.</p>
-            </div>
-          </section>
-        )
-      )}
+        </div>
+      </section>
 
-      {searchQuery && (
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8">
-          <p className="text-[#111111]/60 text-sm flex items-center gap-2">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-7 sm:py-9 space-y-10 sm:space-y-12">
+        {searchQuery && (
+          <div className="flex items-center gap-2 text-[#111111]/60 text-sm">
             <Search className="w-4 h-4" />
             Resultados para: <strong className="text-[#111111]">{searchQuery}</strong>
-          </p>
-        </div>
-      )}
-
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-14 sm:mt-20">
-        <div className="flex items-end justify-between mb-8">
-          <div>
-            <p className="text-[#FF6B35] text-sm font-semibold uppercase tracking-widest mb-2">Selecionados hoje</p>
-            <h2 className="text-3xl sm:text-4xl font-bold text-[#111111] tracking-tight">Ofertas recentes</h2>
-          </div>
-        </div>
-        {loading ? (
-          <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 text-[#111111]/30 animate-spin" /></div>
-        ) : error ? (
-          <div role="alert" className="text-center py-16 text-[#111111]/55">
-            <p className="text-lg font-medium">Não foi possível carregar as ofertas.</p>
-            <p className="text-sm mt-2">{error}</p>
-          </div>
-        ) : recent.length === 0 ? (
-          <div className="text-center py-16 text-[#111111]/40">
-            <p className="text-lg">{featured ? "Mais ofertas aparecem aqui em breve." : "Nenhum achado publicado ainda."}</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
-            {recent.map((offer) => <OfferCard key={offer.id} offer={offer} />)}
           </div>
         )}
-      </section>
 
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-20 sm:mt-24">
-        <div className="mb-8">
-          <p className="text-[#FF6B35] text-sm font-semibold uppercase tracking-widest mb-2">Explore por tema</p>
-          <h2 className="text-3xl sm:text-4xl font-bold text-[#111111] tracking-tight">Categorias</h2>
-        </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
-          {DEFAULT_CATEGORIES.map((cat) => {
-            const Icon = categoryIcons[cat.icon] || BadgeDollarSign;
-            return (
-              <Link key={cat.slug} to={`/categoria/${cat.slug}`} className="group bg-white rounded-2xl p-5 sm:p-6 shadow-[0_18px_45px_rgba(0,0,0,0.035)] hover:shadow-[0_24px_60px_rgba(0,0,0,0.07)] transition-all duration-300 border border-[#111111]/5">
-                <Icon className="w-7 h-7 text-[#FF6B35] mb-3" />
-                <h3 className="font-semibold text-[#111111] text-base group-hover:text-[#FF6B35] transition flex items-center gap-1">
-                  {cat.name}<ArrowUpRight className="w-4 h-4 opacity-0 group-hover:opacity-100 transition" />
-                </h3>
-              </Link>
-            );
-          })}
-        </div>
-      </section>
+        {loading ? (
+          <LoadingState />
+        ) : error ? (
+          <EmptyState title="Não foi possível carregar as ofertas." description={error} />
+        ) : featured ? (
+          <>
+            <section aria-labelledby="featured-title">
+              <SectionTitle eyebrow="Selecionado hoje" title="Achado do dia" />
+              <div className="bg-white border border-[#111111]/8 rounded-lg overflow-hidden grid md:grid-cols-[minmax(18rem,0.85fr)_minmax(0,1.15fr)]">
+                <div className="relative min-h-64 md:min-h-80 bg-white border-b md:border-b-0 md:border-r border-[#111111]/8">
+                  {featured.image ? (
+                    <img src={featured.image} alt={featured.name} fetchPriority="high" className="absolute inset-0 w-full h-full object-contain p-5 sm:p-7" />
+                  ) : (
+                    <div className="absolute inset-0 flex items-center justify-center bg-[#F3F3F3]">
+                      <PackageSearch className="w-12 h-12 text-[#111111]/15" />
+                    </div>
+                  )}
+                  <span className="absolute top-4 left-4 inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#FF6B35] text-white text-xs font-semibold rounded-md">
+                    <Flame className="w-4 h-4" /> Achado do dia
+                  </span>
+                </div>
 
-      {mostClicked.length > 0 && (
-        <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-20 sm:mt-24">
-          <div className="bg-white rounded-3xl p-6 sm:p-10 shadow-[0_20px_50px_rgba(0,0,0,0.04)] border border-[#111111]/5">
-            <div className="flex items-center gap-2 mb-6">
-              <TrendingUp className="w-5 h-5 text-[#FF6B35]" />
-              <h2 className="text-2xl sm:text-3xl font-bold text-[#111111] tracking-tight">Mais clicados</h2>
-            </div>
-            <div className="space-y-1">
-              {mostClicked.map((offer, idx) => (
-                <Link key={offer.id} to={`/oferta/${offer.id}`} className="flex items-center gap-4 sm:gap-6 py-4 border-b border-[#111111]/8 last:border-0 group">
-                  <span className="text-2xl font-bold text-[#111111]/20 w-8" style={{ fontFamily: "'JetBrains Mono', monospace" }}>{String(idx + 1).padStart(2, "0")}</span>
-                  <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl overflow-hidden bg-white shrink-0 border border-[#111111]/5">
-                    <img src={offer.image} alt={offer.name} className="w-full h-full object-contain" />
+                <div className="p-5 sm:p-7 lg:p-9 flex flex-col justify-center">
+                  <div className="flex flex-wrap items-center gap-2 mb-3 text-xs text-[#111111]/45">
+                    <Link to={`/categoria/${slugify(featured.category)}`} className="font-semibold text-[#FF6B35] hover:underline">
+                      {featured.category}
+                    </Link>
+                    {featured.platform && <span>· {featured.platform}</span>}
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-medium text-[#111111] text-sm sm:text-base line-clamp-1 group-hover:text-[#FF6B35] transition">{offer.name}</h3>
-                    <p className="text-[#111111]/40 text-xs sm:text-sm">{offer.clicks || 0} cliques</p>
+                  <h2 id="featured-title" className="text-2xl sm:text-3xl lg:text-4xl font-semibold text-[#111111] leading-tight line-clamp-3">
+                    {featured.name}
+                  </h2>
+                  <p className="text-[#111111]/55 text-sm sm:text-base leading-relaxed mt-3 line-clamp-3">{featuredCopy}</p>
+                  <div className="mt-6">
+                    <p className="text-[#111111]/40 text-xs mb-1">Preço informado</p>
+                    <p className="text-3xl sm:text-4xl font-semibold text-[#111111]" style={{ fontFamily: "'JetBrains Mono', monospace" }}>{formatPrice(featured.price)}</p>
+                    {featured.previous_price && <p className="text-sm text-[#111111]/35 line-through mt-1">{formatPrice(Number(featured.previous_price))}</p>}
                   </div>
-                  <span className="font-bold text-[#111111] text-base sm:text-lg shrink-0" style={{ fontFamily: "'JetBrains Mono', monospace" }}>{formatPrice(offer.price)}</span>
+                  <div className="flex flex-col sm:flex-row gap-2 mt-7">
+                    <a href={featured.affiliate_link} target="_blank" rel="noopener noreferrer" onClick={() => trackOfferClick(featured.id)} className="min-h-12 inline-flex items-center justify-center gap-2 px-6 py-3 bg-[#FF6B35] hover:bg-[#D95426] text-white font-semibold rounded-md transition">
+                      Ver oferta <ArrowUpRight className="w-5 h-5" />
+                    </a>
+                    <Link to={`/oferta/${featured.id}`} className="min-h-12 inline-flex items-center justify-center px-6 py-3 bg-white text-[#111111] font-semibold rounded-md border border-[#111111]/15 hover:bg-[#F3F3F3] transition">
+                      Ver detalhes
+                    </Link>
+                  </div>
+                  <p className="mt-5 text-[#111111]/40 text-xs leading-relaxed">
+                    Publicidade: este site utiliza links de afiliado e pode receber comissão pelas compras, sem custo adicional para você.
+                  </p>
+                </div>
+              </div>
+            </section>
+
+            <section aria-labelledby="recent-title">
+              <SectionTitle eyebrow="Ofertas recentes" title="Selecionados para você" />
+              {recent.length ? (
+                <OfferGrid>
+                  {recent.map((offer) => <OfferCard key={offer.id} offer={offer} />)}
+                </OfferGrid>
+              ) : (
+                <EmptyState title="Mais ofertas aparecem aqui em breve." />
+              )}
+            </section>
+          </>
+        ) : (
+          <EmptyState title="Novos achados aparecem aqui." description="Assim que uma oferta for publicada, ela entra nesta vitrine automaticamente." />
+        )}
+
+        {mostClicked.length > 0 && !loading && !error && (
+          <section aria-labelledby="popular-title">
+            <SectionTitle eyebrow="Mais clicados" title="Ofertas em destaque" />
+            <div className="bg-white rounded-lg border border-[#111111]/8 overflow-hidden">
+              {mostClicked.map((offer, index) => (
+                <Link key={offer.id} to={`/oferta/${offer.id}`} className="grid grid-cols-[2rem_3.5rem_minmax(0,1fr)_auto] sm:grid-cols-[2.5rem_4rem_minmax(0,1fr)_auto] items-center gap-3 sm:gap-5 px-4 sm:px-5 py-3.5 border-b border-[#111111]/8 last:border-0 hover:bg-[#F8F8F8] transition">
+                  <span className="text-lg font-semibold text-[#111111]/20">{String(index + 1).padStart(2, "0")}</span>
+                  <div className="w-14 h-14 sm:w-16 sm:h-16 bg-white border border-[#111111]/8 rounded-md overflow-hidden">
+                    {offer.image && <img src={offer.image} alt="" loading="lazy" className="w-full h-full object-contain p-1" />}
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="font-medium text-[#111111] text-sm sm:text-base truncate">{offer.name}</h3>
+                    <p className="text-[#111111]/40 text-xs mt-1">{offer.clicks || 0} cliques</p>
+                  </div>
+                  <span className="font-semibold text-[#111111] text-sm sm:text-lg whitespace-nowrap" style={{ fontFamily: "'JetBrains Mono', monospace" }}>{formatPrice(offer.price)}</span>
                 </Link>
               ))}
             </div>
-          </div>
-        </section>
-      )}
+          </section>
+        )}
+      </main>
 
       <Footer />
     </div>

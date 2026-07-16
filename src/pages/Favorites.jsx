@@ -27,7 +27,7 @@ export default function Favorites() {
   return (
     <PageShell>
       <SectionHeader eyebrow="Favoritos" title="Seus achados salvos" description={`${offers.length} ${offers.length === 1 ? "item salvo" : "itens salvos"}`} />
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-14">
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
         {loading ? (
           <LoadingState label="Carregando favoritos..." />
         ) : error ? (
@@ -37,7 +37,7 @@ export default function Favorites() {
             icon={Heart}
             title="Nenhum favorito ainda."
             description="Toque no coração nos achados para salvá-los aqui."
-            action={<Link to="/" className="inline-flex items-center justify-center px-5 py-3 text-sm font-semibold text-white bg-[#FF6B35] rounded-full hover:bg-[#D95426] transition">Ver ofertas</Link>}
+            action={<Link to="/" className="min-h-11 inline-flex items-center justify-center px-5 py-2.5 text-sm font-semibold text-white bg-[#FF6B35] rounded-md hover:bg-[#D95426] transition">Ver ofertas</Link>}
           />
         ) : (
           <OfferGrid>

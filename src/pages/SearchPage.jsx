@@ -22,11 +22,11 @@ export default function SearchPage() {
   useEffect(() => {
     setLoading(true);
     setError("");
-    listPublicOffers({ limit: 200 })
+    listPublicOffers({ search: query, limit: 200 })
       .then(setOffers)
       .catch((err) => setError(err.message || "Não foi possível carregar a busca."))
       .finally(() => setLoading(false));
-  }, []);
+  }, [query]);
 
   const platforms = [...new Set(offers.map((offer) => offer.platform).filter(Boolean))];
   const q = normalizeText(query);
@@ -53,7 +53,7 @@ export default function SearchPage() {
       <SectionHeader eyebrow="Busca" title={query ? `Resultados para "${query}"` : "Buscar achados"}>
         <SmartSearch placeholder="Buscar por nome ou categoria..." />
       </SectionHeader>
-      <section className="sticky top-16 sm:top-20 z-30 bg-[#F5F2EB]/85 backdrop-blur-md border-b border-[#111111]/8">
+      <section className="bg-white border-b border-[#111111]/10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex gap-2 overflow-x-auto no-scrollbar">
           {priceFilters.map((f) => (
             <FilterChip key={f.key} active={priceFilter === f.key} onClick={() => setPriceFilter(f.key)}>
@@ -61,14 +61,14 @@ export default function SearchPage() {
             </FilterChip>
           ))}
           {platforms.length > 0 && (
-            <select aria-label="Filtrar por plataforma" value={platformFilter} onChange={(e) => setPlatformFilter(e.target.value)} className="min-h-10 px-4 py-2 text-sm font-medium rounded-full bg-white text-[#111111]/65 border border-[#111111]/8 focus:outline-none focus:ring-2 focus:ring-[#FF6B35]/35 cursor-pointer">
+            <select aria-label="Filtrar por plataforma" value={platformFilter} onChange={(e) => setPlatformFilter(e.target.value)} className="min-h-10 px-4 py-2 text-sm font-medium rounded-md bg-white text-[#111111]/65 border border-[#111111]/10 focus:outline-none focus:ring-2 focus:ring-[#FF6B35]/35 cursor-pointer">
               <option value="all">Todas as plataformas</option>
               {platforms.map((p) => <option key={p} value={p}>{p}</option>)}
             </select>
           )}
         </div>
       </section>
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-14">
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
         {loading ? (
           <LoadingState />
         ) : error ? (

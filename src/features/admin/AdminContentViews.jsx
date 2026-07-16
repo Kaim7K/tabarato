@@ -17,7 +17,7 @@ export function MessagesView({ messages, form, setForm, editingId, setEditingId,
           {sorted.length ? (
             <div className="space-y-3">
               {sorted.map((item) => (
-                <div key={item.id} className="bg-white/[0.04] border border-white/10 rounded-2xl p-4">
+                <div key={item.id} className="bg-white/[0.04] border border-white/10 rounded-lg p-4">
                   <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
                     <button onClick={() => edit(item)} className="text-left min-w-0">
                       <div className="flex items-center gap-2 mb-1">
@@ -37,12 +37,12 @@ export function MessagesView({ messages, form, setForm, editingId, setEditingId,
                       <button
                         onClick={() => sendNow(item)}
                         disabled={saving || sendingMessageId === item.id}
-                        className="px-3 py-2 bg-[#168A55] hover:bg-[#137247] rounded-xl text-sm font-semibold disabled:opacity-50 flex items-center gap-2"
+                        className="px-3 py-2 bg-[#168A55] hover:bg-[#137247] rounded-lg text-sm font-semibold disabled:opacity-50 flex items-center gap-2"
                       >
                         {sendingMessageId === item.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                         Enviar agora
                       </button>
-                      <button onClick={() => edit(item)} className="px-3 py-2 bg-white/10 rounded-xl text-sm font-semibold">Editar</button>
+                      <button onClick={() => edit(item)} className="px-3 py-2 bg-white/10 rounded-lg text-sm font-semibold">Editar</button>
                       <button onClick={() => remove(item)} className="p-2 text-white/50 hover:text-red-300" title="Excluir"><Trash2 className="w-4 h-4" /></button>
                     </div>
                   </div>
@@ -88,8 +88,8 @@ export function MessagesView({ messages, form, setForm, editingId, setEditingId,
               Mensagem ativa
             </label>
             <div className="flex flex-wrap gap-2">
-              <button disabled={saving} onClick={save} className="px-4 py-2.5 bg-[#FF6B35] rounded-xl font-semibold disabled:opacity-50 flex items-center gap-2"><Save className="w-4 h-4" /> Salvar</button>
-              <button onClick={() => { setEditingId(""); reset(); }} className="px-4 py-2.5 bg-white/10 rounded-xl font-semibold">Limpar</button>
+              <button disabled={saving} onClick={save} className="px-4 py-2.5 bg-[#FF6B35] rounded-lg font-semibold disabled:opacity-50 flex items-center gap-2"><Save className="w-4 h-4" /> Salvar</button>
+              <button onClick={() => { setEditingId(""); reset(); }} className="px-4 py-2.5 bg-white/10 rounded-lg font-semibold">Limpar</button>
             </div>
           </div>
         </Panel>
@@ -113,7 +113,7 @@ export function CategoriesView({ baseCategories, customCategories, newCategory, 
       <Panel title="Nova categoria" icon={Plus}>
         <div className="grid sm:grid-cols-[1fr_auto] gap-2">
           <input value={newCategory} onChange={(e) => setNewCategory(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addCategory()} className={inputCls} placeholder="Ex.: Games, Bebes, Supermercado" />
-          <button onClick={addCategory} className="px-4 py-2.5 bg-[#FF6B35] rounded-xl font-semibold flex items-center justify-center gap-2"><Plus className="w-4 h-4" /> Adicionar</button>
+          <button onClick={addCategory} className="px-4 py-2.5 bg-[#FF6B35] rounded-lg font-semibold flex items-center justify-center gap-2"><Plus className="w-4 h-4" /> Adicionar</button>
         </div>
       </Panel>
 
@@ -137,7 +137,7 @@ function CategoryList({ items, offers, onRemove = (_name) => {} }) {
       {items.map((item) => {
         const count = offers.filter((offer) => offer.category === item.name).length;
         return (
-          <div key={item.name} className="flex items-center justify-between gap-3 bg-white/[0.04] border border-white/10 rounded-xl px-3 py-3">
+          <div key={item.name} className="flex items-center justify-between gap-3 bg-white/[0.04] border border-white/10 rounded-lg px-3 py-3">
             <div className="min-w-0">
               <p className="font-medium truncate">{item.name}</p>
               <p className="text-xs text-white/35">{count} ofertas vinculadas</p>

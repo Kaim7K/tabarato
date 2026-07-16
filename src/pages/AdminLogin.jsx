@@ -49,7 +49,7 @@ export default function AdminLogin() {
 
   return (
     <div className="min-h-screen bg-[#0D0D0D] text-white flex items-center justify-center px-4">
-      <form onSubmit={submit} className="w-full max-w-sm bg-white/5 border border-white/10 rounded-2xl p-6 shadow-2xl">
+      <form onSubmit={submit} className="w-full max-w-sm bg-white/5 border border-white/10 rounded-lg p-6 shadow-2xl">
         <div className="flex items-center gap-3 mb-7">
           <img src={BRAND_LOGO} alt={SITE_NAME} className="h-14 w-auto object-contain" />
           <div>
@@ -68,9 +68,9 @@ export default function AdminLogin() {
           <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" className={inputCls} autoComplete="current-password" />
         </label>
 
-        {error && <div role="alert" className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">{error}</div>}
+        {error && <div role="alert" className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">{error}</div>}
 
-        <button disabled={loading} className="w-full px-5 py-3 bg-[#FF6B35] hover:bg-[#D95426] rounded-xl font-semibold disabled:opacity-60 flex items-center justify-center gap-2">
+        <button disabled={loading} className="w-full px-5 py-3 bg-[#FF6B35] hover:bg-[#D95426] rounded-lg font-semibold disabled:opacity-60 flex items-center justify-center gap-2">
           {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <LockKeyhole className="w-4 h-4" />}
           Entrar
         </button>
@@ -79,4 +79,4 @@ export default function AdminLogin() {
   );
 }
 
-const inputCls = "w-full px-3.5 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm placeholder:text-white/30 focus:outline-none focus:border-[#FF6B35]/50";
+const inputCls = "w-full px-3.5 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white text-sm placeholder:text-white/30 focus:outline-none focus:border-[#FF6B35]/50";

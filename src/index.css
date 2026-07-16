@@ -117,6 +117,13 @@
 
   body {
     @apply bg-background text-foreground font-body;
+    min-width: 320px;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  button:disabled {
+    cursor: not-allowed;
   }
 
   :focus-visible {
@@ -124,8 +131,8 @@
     outline-offset: 3px;
   }
 
-  select option,
-  select optgroup {
+  .admin-theme select option,
+  .admin-theme select optgroup {
     background-color: #171717;
     color: #ffffff;
   }

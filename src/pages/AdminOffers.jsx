@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { ClipboardList, FolderKanban, LayoutDashboard, MessageSquareText, Plus } from "lucide-react";
 import { DEFAULT_CATEGORIES, slugify } from "@/lib/catalog";
 import { telegramOffersApi, telegramStatuses } from "@/lib/telegramOffersApi";
@@ -13,6 +13,15 @@ const MessagesView = lazy(() => import("@/features/admin/AdminContentViews").the
 const CategoriesView = lazy(() => import("@/features/admin/AdminContentViews").then((module) => ({ default: module.CategoriesView })));
 
 const CUSTOM_CATEGORIES_KEY = "tb_admin_custom_categories";
+const OFFER_FILTERS_KEY = "tb_admin_offer_filters";
+
+const loadOfferFilters = () => {
+  try {
+    return JSON.parse(sessionStorage.getItem(OFFER_FILTERS_KEY) || "{}");
+  } catch {
+    return {};
+  }
+};
 
 const emptyOffer = {
   productName: "",
@@ -181,9 +190,9 @@ export default function AdminOffers() {
   const [messageForm, setMessageForm] = useState(emptyAutoMessage);
   const [editingId, setEditingId] = useState("");
   const [editingMessageId, setEditingMessageId] = useState("");
-  const [search, setSearch] = useState("");
-  const [status, setStatus] = useState("");
-  const [category, setCategory] = useState("");
+  const [search, setSearch] = useState(() => loadOfferFilters().search || "");
+  const [status, setStatus] = useState(() => loadOfferFilters().status || "");
+  const [category, setCategory] = useState(() => loadOfferFilters().category || "");
   const [activeView, setActiveView] = useState("dashboard");
   const [customCategories, setCustomCategories] = useState(loadCustomCategories);
   const [newCategory, setNewCategory] = useState("");
@@ -194,7 +203,8 @@ export default function AdminOffers() {
   const [saving, setSaving] = useState(false);
   const [sendingMessageId, setSendingMessageId] = useState("");
   const [autoFilling, setAutoFilling] = useState(false);
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState(null);
+  const messageTimerRef = useRef(null);
 
   const baseCategories = DEFAULT_CATEGORIES.filter((item) => !item.virtual).map((item) => item.name);
   const categories = useMemo(() => [...new Set([...baseCategories, ...customCategories.map((item) => item.name)])], [customCategories]);
@@ -250,9 +260,11 @@ export default function AdminOffers() {
     };
   }, [offers, categories]);
 
-  const showMessage = (value) => {
-    setMessage(value);
-    setTimeout(() => setMessage(""), 3500);
+  const showMessage = (value, tone) => {
+    const resolvedTone = tone || (/erro|faltam|informe|selecione|escolha|nao |não |inval/i.test(value) ? "error" : "success");
+    setMessage({ text: value, tone: resolvedTone });
+    if (messageTimerRef.current) window.clearTimeout(messageTimerRef.current);
+    messageTimerRef.current = window.setTimeout(() => setMessage(null), 4000);
   };
 
   const load = async () => {
@@ -274,6 +286,18 @@ export default function AdminOffers() {
   };
 
   useEffect(() => { load(); }, []);
+
+  useEffect(() => () => {
+    if (messageTimerRef.current) window.clearTimeout(messageTimerRef.current);
+  }, []);
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(OFFER_FILTERS_KEY, JSON.stringify({ search, status, category }));
+    } catch {
+      // Session storage may be unavailable in restricted browsers.
+    }
+  }, [category, search, status]);
 
   const persistCustomCategories = (items) => {
     setCustomCategories(items);
@@ -649,13 +673,13 @@ export default function AdminOffers() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0D0D0D] text-white">
+    <div className="admin-theme min-h-screen bg-[#0D0D0D] text-white">
       <AdminHeader testTelegram={testTelegram} saving={saving} />
 
       <main className="max-w-[1500px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <div className="grid lg:grid-cols-[240px_minmax(0,1fr)] gap-6">
-          <aside className="lg:sticky lg:top-20 lg:self-start">
-            <div className="bg-white/5 border border-white/10 rounded-2xl p-2">
+          <aside className="lg:sticky lg:top-20 lg:self-start min-w-0">
+            <div className="bg-white/5 border border-white/10 rounded-lg p-2 flex lg:block gap-1 overflow-x-auto no-scrollbar">
               <AdminNavButton icon={LayoutDashboard} label="Dashboard" active={activeView === "dashboard"} onClick={() => setActiveView("dashboard")} />
               <AdminNavButton icon={ClipboardList} label="Ofertas" active={activeView === "offers"} onClick={() => setActiveView("offers")} />
               <AdminNavButton icon={Plus} label={selected ? "Editar oferta" : "Nova oferta"} active={activeView === "editor"} onClick={() => setActiveView("editor")} />
@@ -663,7 +687,7 @@ export default function AdminOffers() {
               <AdminNavButton icon={FolderKanban} label="Categorias" active={activeView === "categories"} onClick={() => setActiveView("categories")} />
             </div>
 
-            <div className="mt-4 bg-white/5 border border-white/10 rounded-2xl p-4">
+            <div className="hidden lg:block mt-4 bg-white/5 border border-white/10 rounded-lg p-4">
               <p className="text-xs text-white/40 mb-3">Resumo rapido</p>
               <div className="space-y-2 text-sm">
                 <AdminQuickLine label="Publicadas" value={analytics.published} />
@@ -763,7 +787,19 @@ export default function AdminOffers() {
         </div>
       </main>
 
-      {message && <div role="status" aria-live="polite" className="fixed bottom-6 right-6 max-w-[calc(100vw-3rem)] bg-white text-[#111111] rounded-xl px-4 py-2 text-sm font-medium shadow-lg z-50">{message}</div>}
+      {message && (
+        <div
+          role={message.tone === "error" ? "alert" : "status"}
+          aria-live="polite"
+          className={`fixed bottom-4 sm:bottom-6 right-4 sm:right-6 max-w-[calc(100vw-2rem)] rounded-lg px-4 py-3 text-sm font-medium shadow-xl z-50 border ${
+            message.tone === "error"
+              ? "bg-red-950 text-red-100 border-red-500/40"
+              : "bg-white text-[#111111] border-[#111111]/10"
+          }`}
+        >
+          {message.text}
+        </div>
+      )}
     </div>
   );
 }

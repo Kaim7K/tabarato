@@ -15,7 +15,7 @@ export default async function handler(req, res) {
 
     if (search) {
       params.push(`%${search}%`);
-      filters.push(`(product_name ILIKE $${params.length} OR category ILIKE $${params.length} OR platform ILIKE $${params.length})`);
+      filters.push(`(product_name ILIKE $${params.length} OR short_description ILIKE $${params.length} OR category ILIKE $${params.length} OR platform ILIKE $${params.length})`);
     }
     if (category) {
       params.push(category);

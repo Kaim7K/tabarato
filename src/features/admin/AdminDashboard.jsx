@@ -15,8 +15,8 @@ export function Dashboard({ analytics, offers, loading, onNew, onEdit, onRefresh
           <h1 className="text-3xl font-bold mt-1">Visao geral</h1>
         </div>
         <div className="flex gap-2">
-          <button onClick={onRefresh} className="px-4 py-2.5 bg-white/10 rounded-xl font-semibold flex items-center gap-2"><RefreshCw className="w-4 h-4" /> Atualizar</button>
-          <button onClick={onNew} className="px-4 py-2.5 bg-[#FF6B35] rounded-xl font-semibold flex items-center gap-2"><Plus className="w-4 h-4" /> Nova oferta</button>
+          <button onClick={onRefresh} className="px-4 py-2.5 bg-white/10 rounded-lg font-semibold flex items-center gap-2"><RefreshCw className="w-4 h-4" /> Atualizar</button>
+          <button onClick={onNew} className="px-4 py-2.5 bg-[#FF6B35] rounded-lg font-semibold flex items-center gap-2"><Plus className="w-4 h-4" /> Nova oferta</button>
         </div>
       </div>
 
@@ -103,7 +103,7 @@ function CategoryChart({ items }) {
 
 function CompactOffer({ offer, onEdit }) {
   return (
-    <button onClick={() => onEdit(offer)} className="w-full flex items-center justify-between gap-3 bg-white/[0.04] border border-white/10 rounded-xl px-3 py-3 text-left hover:bg-white/[0.07]">
+    <button onClick={() => onEdit(offer)} className="w-full flex items-center justify-between gap-3 bg-white/[0.04] border border-white/10 rounded-lg px-3 py-3 text-left hover:bg-white/[0.07]">
       <div className="min-w-0">
         <p className="font-medium truncate">{offer.productName}</p>
         <p className="text-xs text-white/35 truncate">{offer.category} / {formatPrice(number(offer.currentPrice))}</p>
@@ -115,14 +115,14 @@ function CompactOffer({ offer, onEdit }) {
 
 function Metric({ icon: Icon, label, value, hint }) {
   return (
-    <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
+    <div className="bg-white/5 border border-white/10 rounded-lg p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-white/45 text-sm">{label}</p>
           <p className="text-2xl font-bold mt-2">{value}</p>
           <p className="text-xs text-white/35 mt-2">{hint}</p>
         </div>
-        <div className="w-10 h-10 rounded-xl bg-[#FF6B35]/15 text-[#FF6B35] flex items-center justify-center">
+        <div className="w-10 h-10 rounded-lg bg-[#FF6B35]/15 text-[#FF6B35] flex items-center justify-center">
           <Icon className="w-5 h-5" />
         </div>
       </div>
