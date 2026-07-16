@@ -4,6 +4,7 @@ import { base44 } from "@/api/base44Client";
 import OfferCard from "@/components/OfferCard";
 import Footer from "@/components/Footer";
 import { Loader2 } from "lucide-react";
+import { categoryNameBySlug } from "@/lib/catalog";
 
 const FILTERS = [
   { key: "recent", label: "Mais recentes" },
@@ -30,19 +31,10 @@ export default function CategoryPage() {
         const now = Date.now();
         const due = sched.filter((o) => o.published_date && new Date(o.published_date).getTime() <= now);
         setOffers([...pub, ...due]);
-        setLoading(false);
       })
-      .catch(() => setLoading(false));
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, []);
-
-  const categoryMap = {
-    "casa-e-organizacao": "Casa e organização",
-    "tecnologia": "Tecnologia",
-    "escritorio": "Escritório",
-    "ferramentas": "Ferramentas",
-    "cozinha": "Cozinha",
-    "beleza-e-cuidados": "Beleza e cuidados",
-  };
 
   let filtered = offers;
   if (slug === "abaixo-de-50") {
@@ -50,14 +42,12 @@ export default function CategoryPage() {
   } else if (slug === "abaixo-de-100") {
     filtered = offers.filter((o) => o.price < 100);
   } else {
-    const catName = categoryMap[slug];
+    const catName = categoryNameBySlug(slug);
     if (catName) filtered = offers.filter((o) => o.category === catName);
   }
 
-  // Apply platform filter
   if (platformFilter !== "all") filtered = filtered.filter((o) => o.platform === platformFilter);
 
-  // Apply sort/filter
   if (activeFilter === "clicked") {
     filtered = [...filtered].sort((a, b) => (b.clicks || 0) - (a.clicks || 0));
   } else if (activeFilter === "price_low") {
@@ -67,25 +57,22 @@ export default function CategoryPage() {
   } else if (activeFilter === "under_100") {
     filtered = filtered.filter((o) => o.price < 100);
   } else {
-    filtered = [...filtered].sort((a, b) => new Date(b.published_date || 0) - new Date(a.published_date || 0));
+    filtered = [...filtered].sort((a, b) => new Date(b.published_date || 0).getTime() - new Date(a.published_date || 0).getTime());
   }
 
   const platforms = [...new Set(offers.map((o) => o.platform).filter(Boolean))];
-
-  const title = categoryMap[slug] || (slug === "abaixo-de-50" ? "Produtos abaixo de R$ 50" : slug === "abaixo-de-100" ? "Produtos abaixo de R$ 100" : slug);
+  const title = categoryNameBySlug(slug) || (slug === "abaixo-de-50" ? "Produtos abaixo de R$ 50" : slug === "abaixo-de-100" ? "Produtos abaixo de R$ 100" : slug);
 
   return (
     <div className="bg-[#F5F2EB] min-h-screen">
-      {/* Header */}
       <section className="border-b border-[#111111]/8">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16">
           <p className="text-[#FF6B35] text-sm font-semibold uppercase tracking-widest mb-2">Categoria</p>
           <h1 className="text-3xl sm:text-5xl font-bold text-[#111111] tracking-tight">{title}</h1>
-          <p className="text-[#111111]/50 text-base mt-3">{filtered.length} {filtered.length === 1 ? "achado" : "achados"} encontrado{filtered.length === 1 ? "" : "s"}</p>
+          <p className="text-[#111111]/50 text-base mt-3">{filtered.length} {filtered.length === 1 ? "achado encontrado" : "achados encontrados"}</p>
         </div>
       </section>
 
-      {/* Filter bar */}
       <section className="sticky top-16 sm:top-20 z-30 bg-[#F5F2EB]/85 backdrop-blur-md border-b border-[#111111]/8">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
@@ -116,7 +103,6 @@ export default function CategoryPage() {
         </div>
       </section>
 
-      {/* Grid */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-14">
         {loading ? (
           <div className="flex justify-center py-20">

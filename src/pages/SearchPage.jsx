@@ -5,6 +5,7 @@ import OfferCard from "@/components/OfferCard";
 import Footer from "@/components/Footer";
 import SmartSearch from "@/components/SmartSearch";
 import { Loader2, Package } from "lucide-react";
+import { normalizeText } from "@/lib/catalog";
 
 export default function SearchPage() {
   const [searchParams] = useSearchParams();
@@ -29,17 +30,17 @@ export default function SearchPage() {
   }, []);
 
   const platforms = [...new Set(offers.map((o) => o.platform).filter(Boolean))];
+  const q = normalizeText(query);
 
   let results = offers;
-  if (query.trim()) {
-    const q = query.toLowerCase();
+  if (q) {
     results = results.filter(
       (o) =>
-        o.name?.toLowerCase().includes(q) ||
-        o.category?.toLowerCase().includes(q) ||
-        o.barcode?.toLowerCase().includes(q) ||
-        o.internal_code?.toLowerCase().includes(q) ||
-        o.description?.toLowerCase().includes(q)
+        normalizeText(o.name).includes(q) ||
+        normalizeText(o.category).includes(q) ||
+        normalizeText(o.barcode).includes(q) ||
+        normalizeText(o.internal_code).includes(q) ||
+        normalizeText(o.description).includes(q)
     );
   }
   if (platformFilter !== "all") results = results.filter((o) => o.platform === platformFilter);

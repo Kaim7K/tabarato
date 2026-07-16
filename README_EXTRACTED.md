@@ -1,12 +1,3 @@
-# Projeto extraído do Base44
+# Tá Barato
 
-App ID: 6a58265aefab07df1692a845
-Arquivos extraídos: 107
-
-Como rodar:
-1. Extraia este ZIP.
-2. Abra a pasta no VS Code.
-3. Rode: npm install
-4. Rode: npm run dev
-
-Observação: .env, banco de dados e segredos não são incluídos.
+Aplicação de curadoria de ofertas com vitrine pública, favoritos locais e painel administrativo para cadastro, estoque, categorias e configurações.

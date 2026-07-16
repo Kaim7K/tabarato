@@ -5,6 +5,7 @@ import Footer from "@/components/Footer";
 import OfferCard from "@/components/OfferCard";
 import { ArrowUpRight, ArrowLeft, Check, Loader2, AlertCircle, Heart, Share2 } from "lucide-react";
 import { useFavorites } from "@/lib/FavoritesContext";
+import { formatPrice, slugify } from "@/lib/catalog";
 
 export default function OfferDetail() {
   const { id } = useParams();
@@ -14,17 +15,23 @@ export default function OfferDetail() {
   const { toggle, isFavorite } = useFavorites();
 
   useEffect(() => {
-    setLoading(true);
-    base44.entities.Offer.get(id)
-      .then((data) => {
+    let active = true;
+    const load = async () => {
+      setLoading(true);
+      try {
+        const data = await base44.entities.Offer.get(id);
+        const all = await base44.entities.Offer.filter({ status: "published" }, "-published_date", 50);
+        if (!active) return;
         setOffer(data);
-        return base44.entities.Offer.filter({ status: "published" }, "-published_date", 50);
-      })
-      .then((all) => {
-        setRelated(all.filter((o) => o.id !== id && o.category === offer?.category).slice(0, 3));
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
+        setRelated(all.filter((o) => o.id !== id && o.category === data.category).slice(0, 3));
+      } catch {
+        if (active) setOffer(null);
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    load();
+    return () => { active = false; };
   }, [id]);
 
   if (loading) {
@@ -49,10 +56,10 @@ export default function OfferDetail() {
 
   const reasons = (offer.reason || "").split("\n").filter(Boolean);
   const isFav = isFavorite(offer.id);
+  const shareText = `Oferta Tá Barato: ${offer.name}\n\n${formatPrice(offer.price)}\n${offer.benefit || ""}\n\n${offer.affiliate_link}`;
 
   return (
     <div className="bg-[#F5F2EB] min-h-screen">
-      {/* Breadcrumb */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8">
         <Link to="/" className="inline-flex items-center gap-1.5 text-[#111111]/50 text-sm hover:text-[#FF6B35] transition">
           <ArrowLeft className="w-4 h-4" />
@@ -60,17 +67,14 @@ export default function OfferDetail() {
         </Link>
       </div>
 
-      {/* Main content */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
         <div className="grid lg:grid-cols-12 gap-8 lg:gap-16">
-          {/* Left - Sticky */}
           <div className="lg:col-span-6">
             <div className="lg:sticky lg:top-28">
               <div className="aspect-square rounded-3xl overflow-hidden bg-white shadow-[0_20px_60px_rgba(0,0,0,0.06)] mb-6">
                 <img src={offer.image} alt={offer.name} className="w-full h-full object-cover" />
               </div>
 
-              {/* Score */}
               <div className="bg-white rounded-2xl p-6 shadow-[0_20px_50px_rgba(0,0,0,0.04)]">
                 <div className="flex items-center justify-between mb-3">
                   <div>
@@ -91,18 +95,16 @@ export default function OfferDetail() {
                 </div>
               </div>
 
-              {/* Price disclaimer */}
               <div className="mt-4 bg-[#111111]/5 border border-[#111111]/8 rounded-xl px-4 py-3">
                 <p className="text-[#111111]/50 text-xs leading-relaxed" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
-                  ⚠ Preço e disponibilidade podem mudar no site da loja.
+                  Preço e disponibilidade podem mudar no site da loja.
                 </p>
               </div>
             </div>
           </div>
 
-          {/* Right - Scrollable */}
           <div className="lg:col-span-6">
-            <Link to={`/categoria/${(offer.category || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "-")}`} className="text-[#FF6B35] text-sm font-semibold uppercase tracking-widest">
+            <Link to={`/categoria/${slugify(offer.category)}`} className="text-[#FF6B35] text-sm font-semibold uppercase tracking-widest">
               {offer.category}
             </Link>
             <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-[#111111] tracking-tight leading-[1.1] mt-3 mb-6">
@@ -112,7 +114,7 @@ export default function OfferDetail() {
             <div className="mb-8">
               <p className="text-[#111111]/40 text-xs uppercase tracking-wide mb-1">Preço no momento da publicação</p>
               <p className="text-4xl sm:text-5xl font-bold text-[#111111] tracking-tight" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
-                R$ {offer.price?.toFixed(2).replace(".", ",")}
+                {formatPrice(offer.price)}
               </p>
             </div>
 
@@ -123,7 +125,6 @@ export default function OfferDetail() {
               </div>
             )}
 
-            {/* Why we selected this */}
             {reasons.length > 0 && (
               <div className="mb-8">
                 <h2 className="text-sm font-bold text-[#111111] uppercase tracking-wide mb-4">Por que selecionamos?</h2>
@@ -140,7 +141,6 @@ export default function OfferDetail() {
               </div>
             )}
 
-            {/* Technical source */}
             <div className="mb-8 flex flex-wrap gap-3">
               {offer.platform && (
                 <span className="px-4 py-2 bg-white text-[#111111]/60 text-sm rounded-full border border-[#111111]/8">
@@ -154,7 +154,6 @@ export default function OfferDetail() {
               )}
             </div>
 
-            {/* CTA */}
             <a
               href={offer.affiliate_link}
               target="_blank"
@@ -176,7 +175,7 @@ export default function OfferDetail() {
                 {isFav ? "Salvo" : "Salvar"}
               </button>
               <a
-                href={`https://wa.me/?text=${encodeURIComponent(`🔥 ${offer.name}\n\nR$ ${offer.price?.toFixed(2).replace(".", ",")}\n${offer.benefit || ""}\n\n${offer.affiliate_link}`)}`}
+                href={`https://wa.me/?text=${encodeURIComponent(shareText)}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-[#168A55]/10 text-[#168A55] font-semibold rounded-full hover:bg-[#168A55] hover:text-white transition text-sm"
@@ -192,7 +191,6 @@ export default function OfferDetail() {
         </div>
       </section>
 
-      {/* Related */}
       {related.length > 0 && (
         <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-12">
           <h2 className="text-2xl sm:text-3xl font-bold text-[#111111] tracking-tight mb-8">Produtos relacionados</h2>

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { Search, ArrowRight, Package, Tag, Barcode, Hash } from "lucide-react";
+import { formatPrice, normalizeText } from "@/lib/catalog";
 
 export default function SmartSearch({ placeholder = "Buscar por nome, categoria, código..." }) {
   const [query, setQuery] = useState("");
@@ -18,15 +19,18 @@ export default function SmartSearch({ placeholder = "Buscar por nome, categoria,
   }, []);
 
   useEffect(() => {
-    if (!query.trim()) { setResults([]); return; }
-    const q = query.toLowerCase();
+    if (!query.trim()) {
+      setResults([]);
+      return;
+    }
+    const q = normalizeText(query);
     const filtered = allOffers
       .filter(
         (o) =>
-          o.name?.toLowerCase().includes(q) ||
-          o.category?.toLowerCase().includes(q) ||
-          o.barcode?.toLowerCase().includes(q) ||
-          o.internal_code?.toLowerCase().includes(q)
+          normalizeText(o.name).includes(q) ||
+          normalizeText(o.category).includes(q) ||
+          normalizeText(o.barcode).includes(q) ||
+          normalizeText(o.internal_code).includes(q)
       )
       .slice(0, 6);
     setResults(filtered);
@@ -46,10 +50,10 @@ export default function SmartSearch({ placeholder = "Buscar por nome, categoria,
     setOpen(false);
   };
 
-  const matchType = (o, q) => {
-    if (o.barcode?.toLowerCase().includes(q)) return { icon: Barcode, label: "Código de barras" };
-    if (o.internal_code?.toLowerCase().includes(q)) return { icon: Hash, label: "Código interno" };
-    if (o.category?.toLowerCase().includes(q)) return { icon: Tag, label: "Categoria" };
+  const matchType = (offer, q) => {
+    if (normalizeText(offer.barcode).includes(q)) return { icon: Barcode, label: "Código de barras" };
+    if (normalizeText(offer.internal_code).includes(q)) return { icon: Hash, label: "Código interno" };
+    if (normalizeText(offer.category).includes(q)) return { icon: Tag, label: "Categoria" };
     return { icon: Package, label: "Produto" };
   };
 
@@ -79,7 +83,7 @@ export default function SmartSearch({ placeholder = "Buscar por nome, categoria,
                 {results.length} resultado{results.length === 1 ? "" : "s"}
               </div>
               {results.map((offer) => {
-                const mt = matchType(offer, query.toLowerCase());
+                const mt = matchType(offer, normalizeText(query));
                 return (
                   <button
                     key={offer.id}
@@ -101,7 +105,7 @@ export default function SmartSearch({ placeholder = "Buscar por nome, categoria,
                       </p>
                     </div>
                     <span className="text-sm font-bold text-[#111111] shrink-0" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
-                      R$ {offer.price?.toFixed(2).replace(".", ",")}
+                      {formatPrice(offer.price)}
                     </span>
                     <ArrowRight className="w-4 h-4 text-[#111111]/30 shrink-0" />
                   </button>

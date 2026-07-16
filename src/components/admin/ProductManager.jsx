@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Plus, Search, Edit, Trash2, ExternalLink, Package, Loader2 } from "lucide-react";
+import { Plus, Search, Edit, Trash2, ExternalLink, Package } from "lucide-react";
 import ProductForm from "./ProductForm";
+import { formatPrice, normalizeText } from "@/lib/catalog";
 
 const statusColors = {
   published: "bg-[#168A55]/15 text-[#168A55]",
@@ -12,8 +13,12 @@ const statusColors = {
   removed: "bg-red-500/15 text-red-400",
 };
 const statusLabels = {
-  published: "Publicada", draft: "Rascunho", pending: "Pendente",
-  scheduled: "Agendada", hidden: "Oculta", removed: "Removida",
+  published: "Publicada",
+  draft: "Rascunho",
+  pending: "Pendente",
+  scheduled: "Agendada",
+  hidden: "Oculta",
+  removed: "Removida",
 };
 const filters = [
   { key: "all", label: "Todas" },
@@ -31,12 +36,12 @@ export default function ProductManager({ offers, reload }) {
   const [deleting, setDeleting] = useState(false);
 
   const filtered = offers.filter((o) => {
-    const q = search.toLowerCase();
+    const q = normalizeText(search);
     const matchesSearch = !q ||
-      o.name?.toLowerCase().includes(q) ||
-      o.barcode?.toLowerCase().includes(q) ||
-      o.internal_code?.toLowerCase().includes(q) ||
-      o.category?.toLowerCase().includes(q);
+      normalizeText(o.name).includes(q) ||
+      normalizeText(o.barcode).includes(q) ||
+      normalizeText(o.internal_code).includes(q) ||
+      normalizeText(o.category).includes(q);
     const matchesFilter = filter === "all" || o.status === filter;
     return matchesSearch && matchesFilter;
   });
@@ -48,8 +53,11 @@ export default function ProductManager({ offers, reload }) {
 
   const handleDelete = async (id) => {
     setDeleting(true);
-    try { await base44Delete(id); reload(); setConfirmDelete(null); }
-    catch (e) {}
+    try {
+      await base44Delete(id);
+      reload();
+      setConfirmDelete(null);
+    } catch {}
     setDeleting(false);
   };
 
@@ -65,7 +73,6 @@ export default function ProductManager({ offers, reload }) {
         </button>
       </div>
 
-      {/* Search + filters */}
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
@@ -92,7 +99,6 @@ export default function ProductManager({ offers, reload }) {
         </div>
       </div>
 
-      {/* List */}
       {filtered.length === 0 ? (
         <div className="text-center py-20 bg-white/5 rounded-2xl border border-white/10">
           <Package className="w-12 h-12 text-white/10 mx-auto mb-4" />
@@ -112,9 +118,9 @@ export default function ProductManager({ offers, reload }) {
                 <h4 className="text-sm font-medium text-white truncate">{o.name}</h4>
                 <div className="flex items-center gap-3 mt-1 flex-wrap">
                   <span className="text-white/40 text-xs">{o.category}</span>
-                  {o.barcode && <span className="text-white/30 text-xs font-mono"> barcode: {o.barcode}</span>}
+                  {o.barcode && <span className="text-white/30 text-xs font-mono">código de barras: {o.barcode}</span>}
                   {o.internal_code && <span className="text-white/30 text-xs font-mono">cód: {o.internal_code}</span>}
-                  <span className="text-white/60 text-xs font-bold" style={{ fontFamily: "'JetBrains Mono', monospace" }}>R$ {o.price?.toFixed(2).replace(".", ",")}</span>
+                  <span className="text-white/60 text-xs font-bold" style={{ fontFamily: "'JetBrains Mono', monospace" }}>{formatPrice(o.price)}</span>
                   <span className="text-white/30 text-xs">estoque: {o.stock || 0}</span>
                   <span className="text-white/30 text-xs">{o.clicks || 0} cliques</span>
                 </div>
@@ -138,10 +144,8 @@ export default function ProductManager({ offers, reload }) {
         </div>
       )}
 
-      {/* Product form drawer */}
       {formOpen && <ProductForm offer={editing} onClose={handleClose} onSaved={handleSaved} />}
 
-      {/* Delete confirmation */}
       {confirmDelete && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setConfirmDelete(null)} />

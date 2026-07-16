@@ -3,8 +3,19 @@ import { Link, useSearchParams } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import OfferCard from "@/components/OfferCard";
 import Footer from "@/components/Footer";
-import { ArrowUpRight, Flame, TrendingUp, Search, MessageCircle, Send, Loader2 } from "lucide-react";
+import { ArrowUpRight, Flame, TrendingUp, Search, MessageCircle, Send, Loader2, Home as HomeIcon, Laptop, Paperclip, Wrench, ChefHat, Sparkles, BadgeDollarSign } from "lucide-react";
 import { useSettings } from "@/lib/SettingsContext";
+import { DEFAULT_CATEGORIES, formatPrice, normalizeText } from "@/lib/catalog";
+
+const categoryIcons = {
+  Casa: HomeIcon,
+  Notebook: Laptop,
+  Paperclip,
+  Wrench,
+  ChefHat,
+  Sparkles,
+  BadgeDollarSign,
+};
 
 export default function Home() {
   const [offers, setOffers] = useState([]);
@@ -22,55 +33,35 @@ export default function Home() {
         const now = Date.now();
         const due = sched.filter((o) => o.published_date && new Date(o.published_date).getTime() <= now);
         setOffers([...pub, ...due]);
-        setLoading(false);
       })
-      .catch(() => setLoading(false));
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, []);
 
-  const filtered = searchQuery
-    ? offers.filter(
-        (o) =>
-          o.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          o.category?.toLowerCase().includes(searchQuery.toLowerCase())
-      )
+  const q = normalizeText(searchQuery);
+  const filtered = q
+    ? offers.filter((o) => normalizeText(o.name).includes(q) || normalizeText(o.category).includes(q))
     : offers;
 
   const featured = filtered.find((o) => o.is_featured) || filtered[0] || null;
   const recent = filtered.filter((o) => o.id !== featured?.id);
   const mostClicked = [...filtered].sort((a, b) => (b.clicks || 0) - (a.clicks || 0)).slice(0, 5);
 
-  const categories = [
-    { name: "Casa e organização", slug: "casa-e-organizacao", emoji: "🏠" },
-    { name: "Tecnologia", slug: "tecnologia", emoji: "💻" },
-    { name: "Escritório", slug: "escritorio", emoji: "📎" },
-    { name: "Ferramentas", slug: "ferramentas", emoji: "🔧" },
-    { name: "Cozinha", slug: "cozinha", emoji: "🍳" },
-    { name: "Beleza e cuidados", slug: "beleza-e-cuidados", emoji: "✨" },
-    { name: "Abaixo de R$ 50", slug: "abaixo-de-50", emoji: "💰" },
-    { name: "Abaixo de R$ 100", slug: "abaixo-de-100", emoji: "💵" },
-  ];
-
   return (
     <div className="bg-[#F5F2EB]">
-      {/* === HERO: Achado do Dia === */}
       {featured && (
         <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 sm:pt-12">
           <div className="grid lg:grid-cols-12 gap-8 lg:gap-12 items-center">
-            {/* Image - left 60% */}
             <div className="lg:col-span-7 relative">
               <div className="relative aspect-[4/3] sm:aspect-[16/10] rounded-3xl overflow-hidden bg-white shadow-[0_20px_60px_rgba(0,0,0,0.06)]">
-                <img
-                  src={featured.image}
-                  alt={featured.name}
-                  className="w-full h-full object-cover"
-                />
+                <img src={featured.image} alt={featured.name} className="w-full h-full object-cover" />
               </div>
-              <div className="absolute top-4 left-4 px-4 py-2 bg-[#FF6B35] text-white text-xs font-bold uppercase tracking-widest rounded-full shadow-lg">
-                🔥 Achado do dia
+              <div className="absolute top-4 left-4 px-4 py-2 bg-[#FF6B35] text-white text-xs font-bold uppercase tracking-widest rounded-full shadow-lg flex items-center gap-1.5">
+                <Flame className="w-4 h-4" />
+                Achado do dia
               </div>
             </div>
 
-            {/* Editorial verdict - right 40% */}
             <div className="lg:col-span-5">
               <p className="text-[#111111]/40 text-xs font-medium uppercase tracking-widest mb-3">
                 {featured.category}
@@ -84,7 +75,7 @@ export default function Home() {
               <div className="mb-8">
                 <p className="text-[#111111]/40 text-xs uppercase tracking-wide mb-1">Preço informado</p>
                 <p className="text-4xl sm:text-5xl font-bold text-[#111111] tracking-tight" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
-                  R$ {featured.price?.toFixed(2).replace(".", ",")}
+                  {formatPrice(featured.price)}
                 </p>
               </div>
               <div className="flex flex-col sm:flex-row gap-3">
@@ -112,7 +103,6 @@ export default function Home() {
         </section>
       )}
 
-      {/* === Search results indicator === */}
       {searchQuery && (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-10">
           <p className="text-[#111111]/60 text-sm flex items-center gap-2">
@@ -122,7 +112,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* === Recent Offers Grid === */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-20 sm:mt-28">
         <div className="flex items-end justify-between mb-10">
           <div>
@@ -151,30 +140,31 @@ export default function Home() {
         )}
       </section>
 
-      {/* === Categories === */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-24 sm:mt-32">
         <div className="mb-10">
           <p className="text-[#FF6B35] text-sm font-semibold uppercase tracking-widest mb-2">Explore por tema</p>
           <h2 className="text-3xl sm:text-4xl font-bold text-[#111111] tracking-tight">Categorias</h2>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
-          {categories.map((cat) => (
-            <Link
-              key={cat.slug}
-              to={`/categoria/${cat.slug}`}
-              className="group bg-white rounded-2xl p-6 sm:p-8 shadow-[0_20px_50px_rgba(0,0,0,0.03)] hover:shadow-[0_24px_60px_rgba(0,0,0,0.06)] transition-all duration-300"
-            >
-              <div className="text-3xl mb-3">{cat.emoji}</div>
-              <h3 className="font-semibold text-[#111111] text-base group-hover:text-[#FF6B35] transition flex items-center gap-1">
-                {cat.name}
-                <ArrowUpRight className="w-4 h-4 opacity-0 group-hover:opacity-100 transition" />
-              </h3>
-            </Link>
-          ))}
+          {DEFAULT_CATEGORIES.map((cat) => {
+            const Icon = categoryIcons[cat.icon] || BadgeDollarSign;
+            return (
+              <Link
+                key={cat.slug}
+                to={`/categoria/${cat.slug}`}
+                className="group bg-white rounded-2xl p-6 sm:p-8 shadow-[0_20px_50px_rgba(0,0,0,0.03)] hover:shadow-[0_24px_60px_rgba(0,0,0,0.06)] transition-all duration-300"
+              >
+                <Icon className="w-7 h-7 text-[#FF6B35] mb-3" />
+                <h3 className="font-semibold text-[#111111] text-base group-hover:text-[#FF6B35] transition flex items-center gap-1">
+                  {cat.name}
+                  <ArrowUpRight className="w-4 h-4 opacity-0 group-hover:opacity-100 transition" />
+                </h3>
+              </Link>
+            );
+          })}
         </div>
       </section>
 
-      {/* === Most Clicked === */}
       {mostClicked.length > 0 && (
         <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-24 sm:mt-32">
           <div className="bg-white rounded-3xl p-8 sm:p-12 shadow-[0_20px_50px_rgba(0,0,0,0.04)]">
@@ -202,7 +192,7 @@ export default function Home() {
                     <p className="text-[#111111]/40 text-xs sm:text-sm">{offer.clicks || 0} cliques</p>
                   </div>
                   <span className="font-bold text-[#111111] text-base sm:text-lg shrink-0" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
-                    R$ {offer.price?.toFixed(2).replace(".", ",")}
+                    {formatPrice(offer.price)}
                   </span>
                 </Link>
               ))}
@@ -211,7 +201,6 @@ export default function Home() {
         </section>
       )}
 
-      {/* === Group block === */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-24 sm:mt-32">
         <div className="bg-white rounded-3xl p-8 sm:p-16 shadow-[0_20px_50px_rgba(0,0,0,0.04)] text-center">
           <Flame className="w-10 h-10 text-[#FF6B35] mx-auto mb-6" />

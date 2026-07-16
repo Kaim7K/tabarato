@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { base44 } from "@/api/base44Client";
-import { X, Save, Loader2, Star } from "lucide-react";
+import { X, Save, Loader2, Star, Wand2 } from "lucide-react";
+import { visibleCategories } from "@/lib/catalog";
+import { importProductFromAffiliateLink } from "@/lib/productImport";
 
 export default function ProductForm({ offer, onClose, onSaved }) {
   const isEdit = !!offer?.id;
@@ -23,9 +25,9 @@ export default function ProductForm({ offer, onClose, onSaved }) {
     schedule_slot: offer?.time_label || "08:00",
   });
   const [saving, setSaving] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [toast, setToast] = useState("");
 
-  const categoryOptions = ["Casa e organização", "Tecnologia", "Escritório", "Ferramentas", "Cozinha", "Beleza e cuidados"];
   const TIME_SLOTS = [
     { value: "08:00", label: "08:00 — Manhã" },
     { value: "11:30", label: "11:30 — Pré-almoço" },
@@ -40,6 +42,11 @@ export default function ProductForm({ offer, onClose, onSaved }) {
     { value: "scheduled", label: "Agendada" },
     { value: "hidden", label: "Oculta" },
   ];
+
+  const showToast = (message) => {
+    setToast(message);
+    setTimeout(() => setToast(""), 3500);
+  };
 
   const calcScore = () => {
     let s = 0;
@@ -58,10 +65,34 @@ export default function ProductForm({ offer, onClose, onSaved }) {
   const score = calcScore();
   const set = (key, val) => setForm((f) => ({ ...f, [key]: val }));
 
+  const handleImport = async () => {
+    if (!form.affiliate_link) {
+      showToast("Cole o link de afiliado primeiro.");
+      return;
+    }
+    setImporting(true);
+    try {
+      const imported = await importProductFromAffiliateLink(form.affiliate_link);
+      setForm((current) => ({
+        ...current,
+        name: imported.name || current.name,
+        description: imported.description || current.description,
+        benefit: current.benefit || imported.description || "",
+        image: imported.image || current.image,
+        price: imported.price || current.price,
+        platform: imported.platform || current.platform,
+      }));
+      showToast(imported.price ? "Dados importados. Confira antes de publicar." : "Dados importados. Confira o preço manualmente.");
+    } catch (error) {
+      showToast(error.message || "Não foi possível importar dados desse link.");
+    } finally {
+      setImporting(false);
+    }
+  };
+
   const handleSave = async (overrideStatus) => {
     if (!form.name || !form.affiliate_link || !form.price) {
-      setToast("Preencha nome, link e preço");
-      setTimeout(() => setToast(""), 3000);
+      showToast("Preencha nome, link e preço.");
       return;
     }
     setSaving(true);
@@ -92,9 +123,8 @@ export default function ProductForm({ offer, onClose, onSaved }) {
         await base44.entities.Offer.create({ ...data, clicks: 0 });
       }
       onSaved();
-    } catch (e) {
-      setToast("Erro ao salvar");
-      setTimeout(() => setToast(""), 3000);
+    } catch {
+      showToast("Erro ao salvar.");
     }
     setSaving(false);
   };
@@ -103,7 +133,6 @@ export default function ProductForm({ offer, onClose, onSaved }) {
     <div className="fixed inset-0 z-[60] flex justify-end">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
       <div className="relative w-full max-w-lg bg-[#0D0D0D] border-l border-white/10 h-full overflow-y-auto">
-        {/* Header */}
         <div className="sticky top-0 bg-[#0D0D0D]/95 backdrop-blur-md border-b border-white/10 px-6 py-4 flex items-center justify-between z-10">
           <div>
             <h2 className="font-bold text-lg">{isEdit ? "Editar produto" : "Novo produto"}</h2>
@@ -114,9 +143,27 @@ export default function ProductForm({ offer, onClose, onSaved }) {
           </button>
         </div>
 
-        {/* Form */}
         <div className="p-6 space-y-5">
-          {/* Score badge */}
+          <div className="bg-[#FF6B35]/10 border border-[#FF6B35]/20 rounded-xl p-4">
+            <Field label="Link oficial de afiliado *">
+              <div className="flex gap-2">
+                <input type="url" value={form.affiliate_link} onChange={(e) => set("affiliate_link", e.target.value)} placeholder="https://..." className={inputCls} />
+                <button
+                  type="button"
+                  disabled={importing}
+                  onClick={handleImport}
+                  className="px-4 py-2.5 bg-[#FF6B35] hover:bg-[#D95426] text-white font-semibold rounded-xl transition disabled:opacity-50 flex items-center gap-2 whitespace-nowrap"
+                >
+                  {importing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
+                  Preencher
+                </button>
+              </div>
+              <p className="text-white/35 text-xs mt-2">
+                Tenta importar nome, foto, descrição, preço e loja a partir dos metadados originais da página.
+              </p>
+            </Field>
+          </div>
+
           <div className="flex items-center justify-between bg-white/5 rounded-xl p-4 border border-white/10">
             <div>
               <p className="text-white/40 text-xs uppercase tracking-wide">Pontuação</p>
@@ -128,7 +175,7 @@ export default function ProductForm({ offer, onClose, onSaved }) {
               background: score >= 80 ? "rgba(22,138,85,0.15)" : score >= 65 ? "rgba(255,107,53,0.15)" : "rgba(255,255,255,0.05)",
               color: score >= 80 ? "#168A55" : score >= 65 ? "#FF6B35" : "rgba(255,255,255,0.4)",
             }}>
-              {score >= 80 ? "Auto" : score >= 65 ? "Revisar" : "Rascunho"}
+              {score >= 80 ? "Alta" : score >= 65 ? "Revisar" : "Rascunho"}
             </span>
           </div>
 
@@ -143,7 +190,7 @@ export default function ProductForm({ offer, onClose, onSaved }) {
           <div className="grid grid-cols-2 gap-4">
             <Field label="Categoria *">
               <select value={form.category} onChange={(e) => set("category", e.target.value)} className={inputCls}>
-                {categoryOptions.map((c) => <option key={c} value={c} className="bg-[#0D0D0D]">{c}</option>)}
+                {visibleCategories.map((c) => <option key={c.slug} value={c.name} className="bg-[#0D0D0D]">{c.name}</option>)}
               </select>
             </Field>
             <Field label="Plataforma">
@@ -156,13 +203,9 @@ export default function ProductForm({ offer, onClose, onSaved }) {
               <input type="text" value={form.barcode} onChange={(e) => set("barcode", e.target.value)} placeholder="7891234567890" className={`${inputCls} font-mono`} />
             </Field>
             <Field label="Código interno">
-              <input type="text" value={form.internal_code} onChange={(e) => set("internal_code", e.target.value)} placeholder="AC-001" className={`${inputCls} font-mono`} />
+              <input type="text" value={form.internal_code} onChange={(e) => set("internal_code", e.target.value)} placeholder="TB-001" className={`${inputCls} font-mono`} />
             </Field>
           </div>
-
-          <Field label="Link oficial de afiliado *">
-            <input type="url" value={form.affiliate_link} onChange={(e) => set("affiliate_link", e.target.value)} placeholder="https://..." className={inputCls} />
-          </Field>
 
           <Field label="URL da imagem">
             <input type="url" value={form.image} onChange={(e) => set("image", e.target.value)} placeholder="https://..." className={inputCls} />
@@ -186,7 +229,7 @@ export default function ProductForm({ offer, onClose, onSaved }) {
           </Field>
 
           <Field label="Por que selecionamos? (um motivo por linha)">
-            <textarea value={form.reason} onChange={(e) => set("reason", e.target.value)} rows={4} placeholder={"Ajuda na organização\nPossui ajuste de altura\nServe para mesas pequenas"} className={`${inputCls} resize-none`} />
+            <textarea value={form.reason} onChange={(e) => set("reason", e.target.value)} rows={4} placeholder={"Ajuda na organização\nPossui bom custo-benefício\nServe para uso diário"} className={`${inputCls} resize-none`} />
           </Field>
 
           <Field label="Status">
@@ -219,7 +262,6 @@ export default function ProductForm({ offer, onClose, onSaved }) {
           </label>
         </div>
 
-        {/* Footer actions */}
         <div className="sticky bottom-0 bg-[#0D0D0D]/95 backdrop-blur-md border-t border-white/10 px-6 py-4 flex flex-wrap gap-3">
           <button disabled={saving} onClick={() => handleSave("published")} className="px-5 py-2.5 bg-[#FF6B35] hover:bg-[#D95426] text-white font-semibold rounded-xl transition disabled:opacity-50 flex items-center gap-2">
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}

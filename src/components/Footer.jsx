@@ -1,10 +1,11 @@
 import { Link } from "react-router-dom";
 import { Zap, MessageCircle, Send } from "lucide-react";
 import { useSettings } from "@/lib/SettingsContext";
+import { SITE_NAME } from "@/lib/catalog";
 
 export default function Footer() {
   const settings = useSettings();
-  const siteName = settings.site_name || "Achado Certo";
+  const siteName = settings.site_name || SITE_NAME;
   const [firstWord, ...rest] = siteName.split(" ");
   const restName = rest.join(" ");
   const whatsappLink = settings.whatsapp_link || "https://chat.whatsapp.com/";
@@ -12,7 +13,6 @@ export default function Footer() {
 
   return (
     <footer className="mt-24">
-      {/* Closing statement */}
       <div id="grupo" className="bg-[#FF6B35] py-20 sm:py-28">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 text-center">
           <p className="text-white/70 text-sm font-medium uppercase tracking-widest mb-4">Não perca nenhum achado</p>
@@ -33,7 +33,6 @@ export default function Footer() {
         </div>
       </div>
 
-      {/* Footer links */}
       <div className="bg-[#111111] py-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mb-10">

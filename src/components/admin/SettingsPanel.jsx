@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { base44 } from "@/api/base44Client";
-import { Save, Loader2, Check, Palette, MessageCircle, Send, Sliders, Eye, EyeOff } from "lucide-react";
+import { Save, Loader2, Check, Palette, MessageCircle, Send, Sliders, Eye } from "lucide-react";
+import { SITE_NAME } from "@/lib/catalog";
 
 export default function SettingsPanel() {
   const [settings, setSettings] = useState([]);
@@ -27,13 +28,14 @@ export default function SettingsPanel() {
     setSaving(true);
     try {
       await base44.entities.Settings.bulkUpdate(settings.map((s) => ({ id: s.id, value: s.value })));
-      // Apply colors immediately
       settings.forEach((s) => {
         if (s.key === "primary_color") document.documentElement.style.setProperty("--brand-primary", s.value);
         if (s.key === "primary_color_dark") document.documentElement.style.setProperty("--brand-primary-dark", s.value);
       });
       showToast("Configurações salvas!");
-    } catch (e) { showToast("Erro ao salvar"); }
+    } catch {
+      showToast("Erro ao salvar.");
+    }
     setSaving(false);
   };
 
@@ -95,7 +97,6 @@ export default function SettingsPanel() {
         </button>
       </div>
 
-      {/* Live preview banner */}
       <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
         <p className="text-white/40 text-xs uppercase tracking-wide mb-3">Pré-visualização</p>
         <div className="flex items-center gap-3">
@@ -103,7 +104,7 @@ export default function SettingsPanel() {
             <Send className="w-5 h-5 text-white" />
           </div>
           <div className="flex-1">
-            <p className="font-bold text-white">{getSetting(settings, "site_name", "Achado Certo")}</p>
+            <p className="font-bold text-white">{getSetting(settings, "site_name", SITE_NAME)}</p>
             <p className="text-white/40 text-xs">Identidade visual do site</p>
           </div>
           <span className="px-4 py-2 rounded-full text-white text-sm font-semibold" style={{ background: getSetting(settings, "primary_color", "#FF6B35") }}>
@@ -125,12 +126,7 @@ export default function SettingsPanel() {
                 <div key={s.id}>
                   <label className="block text-xs text-white/50 mb-1.5 font-medium">{s.label || s.key}</label>
                   {renderInput(s)}
-                  {s.key === "whatsapp_link" && s.value && (
-                    <a href={s.value} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[#168A55] text-xs mt-1.5 hover:underline">
-                      <Eye className="w-3 h-3" /> Testar link
-                    </a>
-                  )}
-                  {s.key === "telegram_link" && s.value && (
+                  {(s.key === "whatsapp_link" || s.key === "telegram_link") && s.value && (
                     <a href={s.value} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[#168A55] text-xs mt-1.5 hover:underline">
                       <Eye className="w-3 h-3" /> Testar link
                     </a>

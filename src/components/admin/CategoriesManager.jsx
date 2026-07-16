@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { base44 } from "@/api/base44Client";
-import { Plus, Edit, Trash2, Tag, Loader2, X, Check } from "lucide-react";
+import { Plus, Edit, Trash2, Tag, Loader2, Check, Package } from "lucide-react";
+import { slugify } from "@/lib/catalog";
 
-export default function CategoriesManager({ offers, reload: reloadOffers }) {
+export default function CategoriesManager({ offers }) {
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(null);
@@ -20,8 +21,6 @@ export default function CategoriesManager({ offers, reload: reloadOffers }) {
 
   useEffect(() => { load(); }, []);
 
-  const slugify = (s) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-
   const showToast = (m) => { setToast(m); setTimeout(() => setToast(""), 2500); };
 
   const handleSave = async () => {
@@ -38,7 +37,9 @@ export default function CategoriesManager({ offers, reload: reloadOffers }) {
       setEditing(null);
       load();
       showToast("Categoria salva!");
-    } catch (e) { showToast("Erro ao salvar"); }
+    } catch {
+      showToast("Erro ao salvar.");
+    }
     setSaving(false);
   };
 
@@ -52,8 +53,10 @@ export default function CategoriesManager({ offers, reload: reloadOffers }) {
       await base44.entities.Category.delete(id);
       load();
       setConfirmDelete(null);
-      showToast("Categoria removida");
-    } catch (e) { showToast("Erro ao remover"); }
+      showToast("Categoria removida.");
+    } catch {
+      showToast("Erro ao remover.");
+    }
   };
 
   const offerCount = (catName) => offers.filter((o) => o.category === catName).length;
@@ -65,7 +68,6 @@ export default function CategoriesManager({ offers, reload: reloadOffers }) {
         <p className="text-white/40 text-sm">{categories.length} categorias cadastradas</p>
       </div>
 
-      {/* New/Edit form */}
       <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
         <h3 className="font-semibold text-sm mb-4 flex items-center gap-2">
           <Tag className="w-4 h-4 text-[#FF6B35]" />
@@ -74,7 +76,7 @@ export default function CategoriesManager({ offers, reload: reloadOffers }) {
         <div className="grid sm:grid-cols-3 gap-3">
           <input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Nome (ex: Tecnologia)" className={inputCls} />
           <input type="text" value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} placeholder="Slug (auto se vazio)" className={inputCls} />
-          <input type="text" value={form.icon} onChange={(e) => setForm({ ...form, icon: e.target.value })} placeholder="Ícone (emoji)" className={inputCls} />
+          <input type="text" value={form.icon} onChange={(e) => setForm({ ...form, icon: e.target.value })} placeholder="Nome do ícone ou símbolo" className={inputCls} />
         </div>
         <div className="flex gap-3 mt-3">
           <button disabled={saving} onClick={handleSave} className="px-5 py-2.5 bg-[#FF6B35] hover:bg-[#D95426] text-white font-semibold rounded-xl transition disabled:opacity-50 flex items-center gap-2">
@@ -89,7 +91,6 @@ export default function CategoriesManager({ offers, reload: reloadOffers }) {
         </div>
       </div>
 
-      {/* List */}
       {loading ? (
         <div className="flex justify-center py-12"><Loader2 className="w-8 h-8 text-white/20 animate-spin" /></div>
       ) : (
@@ -98,7 +99,9 @@ export default function CategoriesManager({ offers, reload: reloadOffers }) {
             <div key={cat.id} className="bg-white/5 border border-white/10 rounded-2xl p-4 group">
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center text-xl">{cat.icon || "📦"}</div>
+                  <div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center text-xl">
+                    {cat.icon || <Package className="w-5 h-5 text-white/40" />}
+                  </div>
                   <div>
                     <h4 className="font-medium text-sm">{cat.name}</h4>
                     <p className="text-white/30 text-xs font-mono">/{cat.slug}</p>

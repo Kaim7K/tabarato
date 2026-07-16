@@ -1,8 +1,8 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { base44 } from "@/api/base44Client";
 
-const SettingsContext = createContext({ settings: {}, refresh: () => {} });
-export const useSettings = () => useContext(SettingsContext);
+const SettingsContext = createContext({ settings: {}, refresh: () => {}, loaded: false });
+export const useSettings = () => useContext(SettingsContext).settings;
 
 export function SettingsProvider({ children }) {
   const [settings, setSettings] = useState({});

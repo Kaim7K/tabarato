@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { ArrowUpRight, Clock, Heart, Share2 } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { useFavorites } from "@/lib/FavoritesContext";
+import { formatPrice } from "@/lib/catalog";
 
 export default function OfferCard({ offer }) {
   const { toggle, isFavorite } = useFavorites();
@@ -10,7 +11,7 @@ export default function OfferCard({ offer }) {
   const handleShare = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    const text = `🔥 ${offer.name}\n\nR$ ${offer.price?.toFixed(2).replace(".", ",")}\n${offer.benefit || ""}\n\n${offer.affiliate_link}`;
+    const text = `Oferta Tá Barato: ${offer.name}\n\n${formatPrice(offer.price)}\n${offer.benefit || ""}\n\n${offer.affiliate_link}`;
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
   };
 
@@ -20,7 +21,6 @@ export default function OfferCard({ offer }) {
 
   return (
     <div className="group bg-white rounded-3xl overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.04)] hover:shadow-[0_24px_60px_rgba(0,0,0,0.07)] transition-all duration-300 flex flex-col">
-      {/* Image */}
       <Link to={`/oferta/${offer.id}`} className="block relative overflow-hidden aspect-square bg-[#F5F2EB]">
         <img
           src={offer.image}
@@ -41,7 +41,6 @@ export default function OfferCard({ offer }) {
         </button>
       </Link>
 
-      {/* Content */}
       <div className="p-5 flex flex-col flex-1">
         <Link to={`/oferta/${offer.id}`}>
           <h3 className="font-semibold text-[#111111] text-base leading-snug mb-2 group-hover:text-[#FF6B35] transition">
@@ -56,7 +55,7 @@ export default function OfferCard({ offer }) {
           <div>
             <p className="text-[#111111]/40 text-xs uppercase tracking-wide mb-0.5">Preço</p>
             <p className="font-bold text-[#111111] text-xl tracking-tight" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
-              R$ {offer.price?.toFixed(2).replace(".", ",")}
+              {formatPrice(offer.price)}
             </p>
           </div>
           {offer.time_label && (

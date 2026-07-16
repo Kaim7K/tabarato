@@ -1,6 +1,10 @@
 import { createContext, useContext, useState, useEffect, useCallback } from "react";
 
-const FavoritesContext = createContext({ favorites: [], toggle: () => {}, isFavorite: () => false });
+const FavoritesContext = createContext({
+  favorites: [],
+  toggle: (_id) => {},
+  isFavorite: (_id) => Boolean(false),
+});
 export const useFavorites = () => useContext(FavoritesContext);
 
 const KEY = "ac_favorites";

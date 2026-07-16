@@ -5,9 +5,9 @@ import Dashboard from "@/components/admin/Dashboard";
 import ProductManager from "@/components/admin/ProductManager";
 import CategoriesManager from "@/components/admin/CategoriesManager";
 import StockManager from "@/components/admin/StockManager";
-import UsersManager from "@/components/admin/UsersManager";
 import SettingsPanel from "@/components/admin/SettingsPanel";
-import { BarChart3, Package, Tag, Boxes, Users, Settings as SettingsIcon, ArrowLeft, Zap } from "lucide-react";
+import { BarChart3, Package, Tag, Boxes, Settings as SettingsIcon, ArrowLeft, Zap } from "lucide-react";
+import { SITE_NAME } from "@/lib/catalog";
 
 export default function Admin() {
   const [section, setSection] = useState("dashboard");
@@ -36,20 +36,18 @@ export default function Admin() {
     { key: "products", label: "Produtos", icon: Package },
     { key: "categories", label: "Categorias", icon: Tag },
     { key: "stock", label: "Estoque", icon: Boxes },
-    { key: "users", label: "Usuários", icon: Users },
     { key: "settings", label: "Configurações", icon: SettingsIcon },
   ];
 
   return (
     <div className="bg-[#0D0D0D] min-h-screen text-white">
-      {/* Top bar */}
       <div className="border-b border-white/10 sticky top-0 z-50 bg-[#0D0D0D]/90 backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center">
               <Zap className="w-5 h-5 text-[#FF6B35]" fill="currentColor" />
             </div>
-            <span className="font-bold text-lg">Achado Certo <span className="text-white/40 font-normal hidden sm:inline">· Painel administrativo</span></span>
+            <span className="font-bold text-lg">{SITE_NAME} <span className="text-white/40 font-normal hidden sm:inline">· Painel administrativo</span></span>
           </div>
           <Link to="/" className="text-sm text-white/60 hover:text-[#FF6B35] transition flex items-center gap-1">
             <ArrowLeft className="w-4 h-4" /> <span className="hidden sm:inline">Ver site</span>
@@ -58,7 +56,6 @@ export default function Admin() {
       </div>
 
       <div className="max-w-7xl mx-auto flex">
-        {/* Sidebar - desktop */}
         <aside className="hidden lg:block w-56 shrink-0 border-r border-white/10 min-h-[calc(100vh-4rem)] sticky top-16">
           <nav className="p-3 space-y-1">
             {sections.map((s) => (
@@ -75,7 +72,6 @@ export default function Admin() {
           </nav>
         </aside>
 
-        {/* Mobile tabs */}
         <div className="lg:hidden border-b border-white/10 overflow-x-auto no-scrollbar sticky top-16 z-40 bg-[#0D0D0D] w-full">
           <div className="flex gap-1 px-3 py-3">
             {sections.map((s) => (
@@ -92,13 +88,11 @@ export default function Admin() {
           </div>
         </div>
 
-        {/* Content */}
         <main className="flex-1 p-4 sm:p-6 lg:p-8 min-w-0">
           {section === "dashboard" && <Dashboard offers={offers} loading={loading} onUpdateStatus={updateStatus} />}
           {section === "products" && <ProductManager offers={offers} reload={loadOffers} />}
-          {section === "categories" && <CategoriesManager offers={offers} reload={loadOffers} />}
+          {section === "categories" && <CategoriesManager offers={offers} />}
           {section === "stock" && <StockManager offers={offers} reload={loadOffers} />}
-          {section === "users" && <UsersManager />}
           {section === "settings" && <SettingsPanel />}
         </main>
       </div>
