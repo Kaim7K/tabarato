@@ -39,3 +39,5 @@ Ao clicar em **Enviar produto**, a extensao procura o link curto criado pelo pro
 Ofertas do Mercado Livre nao podem ser salvas pela extensao com a URL comum do produto. Caso a conta ou a pagina nao disponibilize o gerador, abra o modal manualmente e cole o `meli.la` no campo de afiliado.
 
 A descricao capturada usa somente o primeiro paragrafo encontrado na pagina ou nos metadados do produto.
+
+No Mercado Livre, a extensao tambem identifica cupons vinculados ao produto e promocoes de pagamento. Para produtos acima de R$ 500, consulta as opcoes exibidas de parcelamento sem juros e adiciona essas informacoes ao texto complementar da oferta.

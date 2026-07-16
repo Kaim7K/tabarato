@@ -211,7 +211,7 @@ function fillForm(product) {
     coupon: product.coupon || "",
     shortDescription: product.shortDescription || "",
     imageUrl: product.imageUrl || "",
-    extraText: "",
+    extraText: product.extraText || "",
   };
   Object.entries(values).forEach(([key, value]) => { elements.fields[key].value = value; });
   elements.captureSource.textContent = product.externalProductId

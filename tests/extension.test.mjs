@@ -56,6 +56,17 @@ test("Mercado Livre capture waits for and requires the generated meli.la link", 
   assert.match(sidePanel, /Use o link meli\.la gerado pelo botao Compartilhar/);
 });
 
+test("Mercado Livre captures product coupons, payment promotions and interest-free installments", () => {
+  const mercadoLivre = readFileSync(join(extensionRoot, "content", "stores", "mercado-livre.js"), "utf8");
+  const sidePanel = readFileSync(join(extensionRoot, "sidepanel", "app.js"), "utf8");
+  assert.match(mercadoLivre, /productCoupon/);
+  assert.match(mercadoLivre, /paymentPromotions/);
+  assert.match(mercadoLivre, /interestFreeOptions/);
+  assert.match(mercadoLivre, /price > 500/);
+  assert.match(mercadoLivre, /meios de pagamento/);
+  assert.match(sidePanel, /extraText: product\.extraText \|\| ""/);
+});
+
 test("extension publishes through the protected existing publisher", () => {
   const sidePanel = readFileSync(join(extensionRoot, "sidepanel", "app.js"), "utf8");
   const publishRoute = readFileSync(join(root, "api", "admin", "ofertas", "[id]", "publicar.js"), "utf8");
