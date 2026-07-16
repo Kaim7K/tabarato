@@ -1,27 +1,17 @@
 // @ts-nocheck
-const ADMIN_KEY = "tb_admin_api_key";
-
 export const telegramStatuses = ["RASCUNHO", "APROVADO", "AGENDADO", "PUBLICANDO", "PUBLICADO", "ERRO", "EXPIRADO"];
-
-export function getAdminKey() {
-  return localStorage.getItem(ADMIN_KEY) || "";
-}
-
-export function setAdminKey(value) {
-  if (value) localStorage.setItem(ADMIN_KEY, value);
-  else localStorage.removeItem(ADMIN_KEY);
-}
 
 async function request(path, { method = "GET", body } = {}) {
   const response = await fetch(path, {
     method,
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
-      "x-admin-api-key": getAdminKey(),
     },
     body: body ? JSON.stringify(body) : undefined,
   });
   const payload = await response.json().catch(() => ({}));
+  if (response.status === 401) localStorage.removeItem("tb_admin_logged_in");
   if (!response.ok) throw new Error(payload.error || "Erro na requisição.");
   return payload;
 }

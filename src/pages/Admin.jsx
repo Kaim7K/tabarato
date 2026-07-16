@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
-import { ArrowLeft, Send, Zap } from "lucide-react";
+import { ArrowLeft, LogOut, Send, Zap } from "lucide-react";
 import { SITE_NAME } from "@/lib/catalog";
+import { logoutAdmin } from "@/lib/adminAuth";
 
 export default function Admin() {
   return (
@@ -13,9 +14,14 @@ export default function Admin() {
             </div>
             <span className="font-bold text-lg">{SITE_NAME} <span className="text-white/40 font-normal hidden sm:inline">· Painel administrativo</span></span>
           </div>
-          <Link to="/" className="text-sm text-white/60 hover:text-[#FF6B35] transition flex items-center gap-1">
-            <ArrowLeft className="w-4 h-4" /> <span className="hidden sm:inline">Ver site</span>
-          </Link>
+          <div className="flex items-center gap-3">
+            <Link to="/" className="text-sm text-white/60 hover:text-[#FF6B35] transition flex items-center gap-1">
+              <ArrowLeft className="w-4 h-4" /> <span className="hidden sm:inline">Ver site</span>
+            </Link>
+            <button onClick={() => logoutAdmin().then(() => { window.location.href = "/admin/login"; })} className="text-sm text-white/60 hover:text-[#FF6B35] transition flex items-center gap-1">
+              <LogOut className="w-4 h-4" /> <span className="hidden sm:inline">Sair</span>
+            </button>
+          </div>
         </div>
       </div>
       <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
@@ -36,4 +42,3 @@ export default function Admin() {
     </div>
   );
 }
-

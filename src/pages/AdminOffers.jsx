@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, CalendarClock, CheckCircle2, Loader2, RefreshCw, Save, Search, Send, Trash2, Zap } from "lucide-react";
+import { ArrowLeft, CalendarClock, CheckCircle2, Loader2, LogOut, RefreshCw, Save, Search, Send, Trash2, Zap } from "lucide-react";
 import { DEFAULT_CATEGORIES, formatPrice, SITE_NAME } from "@/lib/catalog";
-import { formatTelegramPreview, getAdminKey, setAdminKey, telegramOffersApi, telegramStatuses } from "@/lib/telegramOffersApi";
+import { logoutAdmin } from "@/lib/adminAuth";
+import { formatTelegramPreview, telegramOffersApi, telegramStatuses } from "@/lib/telegramOffersApi";
 
 const emptyOffer = {
   productName: "",
@@ -39,7 +40,6 @@ const toDatetimeLocal = (value) => {
 const fromDatetimeLocal = (value) => value ? new Date(value).toISOString() : "";
 
 export default function AdminOffers() {
-  const [adminKey, setAdminKeyState] = useState(getAdminKey());
   const [offers, setOffers] = useState([]);
   const [form, setForm] = useState(emptyOffer);
   const [editingId, setEditingId] = useState("");
@@ -71,12 +71,6 @@ export default function AdminOffers() {
   };
 
   useEffect(() => { load(); }, []);
-
-  const persistKey = () => {
-    setAdminKey(adminKey);
-    showMessage("Chave administrativa salva neste navegador.");
-    load();
-  };
 
   const startNew = () => {
     setEditingId("");
@@ -221,20 +215,24 @@ export default function AdminOffers() {
             </div>
             <span className="font-bold text-lg">{SITE_NAME} <span className="text-white/40 font-normal hidden sm:inline">· Ofertas Telegram</span></span>
           </div>
-          <Link to="/admin" className="text-sm text-white/60 hover:text-[#FF6B35] transition flex items-center gap-1">
-            <ArrowLeft className="w-4 h-4" /> Voltar
-          </Link>
+          <div className="flex items-center gap-3">
+            <Link to="/admin" className="text-sm text-white/60 hover:text-[#FF6B35] transition flex items-center gap-1">
+              <ArrowLeft className="w-4 h-4" /> Voltar
+            </Link>
+            <button onClick={() => logoutAdmin().then(() => { window.location.href = "/admin/login"; })} className="text-sm text-white/60 hover:text-[#FF6B35] transition flex items-center gap-1">
+              <LogOut className="w-4 h-4" /> <span className="hidden sm:inline">Sair</span>
+            </button>
+          </div>
         </div>
       </div>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
         <section className="bg-white/5 border border-white/10 rounded-2xl p-4 sm:p-5">
-          <div className="flex flex-col lg:flex-row gap-3 lg:items-end">
-            <div className="flex-1">
-              <label className="block text-xs text-white/50 mb-1.5">Chave administrativa</label>
-              <input value={adminKey} onChange={(e) => setAdminKeyState(e.target.value)} type="password" className={inputCls} placeholder="ADMIN_API_KEY" />
+          <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+            <div>
+              <h1 className="font-bold text-xl">Ofertas Telegram</h1>
+              <p className="text-white/40 text-sm">Cadastre, publique e agende ofertas do Ta Barato.</p>
             </div>
-            <button onClick={persistKey} className="px-5 py-2.5 bg-white text-[#0D0D0D] rounded-xl font-semibold">Salvar chave</button>
             <button onClick={testTelegram} disabled={saving} className="px-5 py-2.5 bg-[#168A55] rounded-xl font-semibold disabled:opacity-50 flex items-center justify-center gap-2">
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
               Testar conexão com Telegram

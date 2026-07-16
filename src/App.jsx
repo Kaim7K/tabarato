@@ -5,11 +5,13 @@ import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
 import ScrollToTop from './components/ScrollToTop';
 import Layout from '@/components/Layout';
+import AdminRoute from '@/components/AdminRoute';
 import Home from '@/pages/Home';
 import CategoryPage from '@/pages/CategoryPage';
 import OfferDetail from '@/pages/OfferDetail';
 import Admin from '@/pages/Admin';
 import AdminOffers from '@/pages/AdminOffers';
+import AdminLogin from '@/pages/AdminLogin';
 import SearchPage from '@/pages/SearchPage';
 import Favorites from '@/pages/Favorites';
 
@@ -27,8 +29,9 @@ function App() {
             <Route path="/buscar" element={<SearchPage />} />
             <Route path="/favoritos" element={<Favorites />} />
           </Route>
-          <Route path="/admin" element={<Admin />} />
-          <Route path="/admin/ofertas" element={<AdminOffers />} />
+          <Route path="/admin/login" element={<AdminLogin />} />
+          <Route path="/admin" element={<AdminRoute><Admin /></AdminRoute>} />
+          <Route path="/admin/ofertas" element={<AdminRoute><AdminOffers /></AdminRoute>} />
           <Route path="*" element={<PageNotFound />} />
         </Routes>
       </Router>

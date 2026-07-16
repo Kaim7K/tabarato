@@ -16,13 +16,24 @@ export function getBearer(req) {
   return auth.startsWith("Bearer ") ? auth.slice(7) : "";
 }
 
+export function getCookie(req, name) {
+  const cookies = req.headers.cookie || "";
+  const match = cookies.split(";").map((item) => item.trim()).find((item) => item.startsWith(`${name}=`));
+  return match ? decodeURIComponent(match.slice(name.length + 1)) : "";
+}
+
+export function getAdminSessionCookie(value, maxAge = 60 * 60 * 24 * 7) {
+  const secure = process.env.NODE_ENV === "production" ? " Secure;" : "";
+  return `tb_admin_session=${encodeURIComponent(value)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge};${secure}`;
+}
+
 export function requireAdmin(req, res) {
   const expected = process.env.ADMIN_API_KEY;
   if (!expected) {
     sendJson(res, 500, { error: "ADMIN_API_KEY não configurada." });
     return false;
   }
-  const provided = req.headers["x-admin-api-key"] || getBearer(req);
+  const provided = req.headers["x-admin-api-key"] || getBearer(req) || getCookie(req, "tb_admin_session");
   if (provided !== expected) {
     sendJson(res, 401, { error: "Acesso administrativo não autorizado." });
     return false;
