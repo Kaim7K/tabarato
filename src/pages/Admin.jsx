@@ -6,7 +6,7 @@ import ProductManager from "@/components/admin/ProductManager";
 import CategoriesManager from "@/components/admin/CategoriesManager";
 import StockManager from "@/components/admin/StockManager";
 import SettingsPanel from "@/components/admin/SettingsPanel";
-import { BarChart3, Package, Tag, Boxes, Settings as SettingsIcon, ArrowLeft, Zap } from "lucide-react";
+import { BarChart3, Package, Tag, Boxes, Settings as SettingsIcon, ArrowLeft, Zap, Send } from "lucide-react";
 import { SITE_NAME } from "@/lib/catalog";
 
 export default function Admin() {
@@ -58,6 +58,12 @@ export default function Admin() {
       <div className="max-w-7xl mx-auto flex">
         <aside className="hidden lg:block w-56 shrink-0 border-r border-white/10 min-h-[calc(100vh-4rem)] sticky top-16">
           <nav className="p-3 space-y-1">
+            <Link
+              to="/admin/ofertas"
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition text-white/50 hover:bg-white/5 hover:text-white"
+            >
+              <Send className="w-4 h-4" /> Ofertas Telegram
+            </Link>
             {sections.map((s) => (
               <button
                 key={s.key}
@@ -74,6 +80,9 @@ export default function Admin() {
 
         <div className="lg:hidden border-b border-white/10 overflow-x-auto no-scrollbar sticky top-16 z-40 bg-[#0D0D0D] w-full">
           <div className="flex gap-1 px-3 py-3">
+            <Link to="/admin/ofertas" className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition bg-white/5 text-white/50">
+              <Send className="w-4 h-4" /> Telegram
+            </Link>
             {sections.map((s) => (
               <button
                 key={s.key}

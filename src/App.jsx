@@ -9,6 +9,7 @@ import Home from '@/pages/Home';
 import CategoryPage from '@/pages/CategoryPage';
 import OfferDetail from '@/pages/OfferDetail';
 import Admin from '@/pages/Admin';
+import AdminOffers from '@/pages/AdminOffers';
 import SearchPage from '@/pages/SearchPage';
 import Favorites from '@/pages/Favorites';
 
@@ -27,6 +28,7 @@ function App() {
             <Route path="/favoritos" element={<Favorites />} />
           </Route>
           <Route path="/admin" element={<Admin />} />
+          <Route path="/admin/ofertas" element={<AdminOffers />} />
           <Route path="*" element={<PageNotFound />} />
         </Routes>
       </Router>

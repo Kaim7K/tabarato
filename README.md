@@ -1,39 +1,145 @@
 # Tá Barato
 
-Aplicação de curadoria de ofertas com vitrine pública, busca, favoritos locais e painel administrativo para cadastro de produtos, categorias, estoque e configurações.
+Aplicação de curadoria de ofertas com vitrine pública, favoritos locais, painel administrativo e publicação de ofertas no Telegram.
+
+## Stack
+
+- React 18 + Vite
+- Tailwind CSS
+- Vercel Functions em `api/`
+- PostgreSQL para ofertas publicadas/agendadas no Telegram
+- Base44 SDK ainda usado pelas entidades legadas do site
 
 ## Rodar Localmente
 
-Instale as dependências:
-
 ```bash
 npm install
-```
-
-Rode o ambiente local completo:
-
-```bash
-base44 dev
-```
-
-Para trabalhar apenas no frontend contra o backend hospedado:
-
-```bash
 npm run dev
 ```
 
-## Variáveis Locais
-
-Para frontend-only, crie `.env.local` com:
+Para testar as funções serverless localmente, prefira:
 
 ```bash
-VITE_BASE44_APP_ID=seu_app_id
-VITE_BASE44_APP_BASE_URL=https://seu-app.base44.app
+npx vercel dev
 ```
+
+## Variáveis de Ambiente
+
+Copie `.env.example` para `.env.local` e configure:
+
+```bash
+VITE_BASE44_APP_ID=
+VITE_BASE44_APP_BASE_URL=
+POSTGRES_URL=
+DATABASE_URL=
+ADMIN_API_KEY=
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_CHANNEL_ID=
+CRON_SECRET=
+APP_URL=
+```
+
+Use `POSTGRES_URL` ou `DATABASE_URL`. Não coloque tokens reais no repositório.
+
+## Banco de Dados
+
+Execute a migration:
+
+```sql
+migrations/001_create_telegram_offers.sql
+```
+
+Ela cria a tabela `telegram_offers` e índices para `status`, `scheduled_at`, `created_at` e `category`.
+
+## Telegram
+
+1. Abra o Telegram e converse com `@BotFather`.
+2. Use `/newbot`, escolha nome e username.
+3. Copie o token gerado para `TELEGRAM_BOT_TOKEN`.
+4. Adicione o bot como administrador do canal.
+5. Dê permissão para publicar mensagens.
+6. Configure `TELEGRAM_CHANNEL_ID` com o ID do canal, por exemplo `@seucanal` ou o ID numérico.
+
+No painel `/admin/ofertas`, salve a `ADMIN_API_KEY` no navegador e use **Testar conexão com Telegram**. O teste envia:
+
+```text
+✅ Bot do Tá Barato conectado com sucesso!
+```
+
+## Publicação
+
+O servidor usa:
+
+- `sendPhoto` quando `imageUrl` é HTTPS.
+- `sendMessage` quando não houver imagem.
+- Botão inline `🛒 Ver oferta` apontando diretamente para o link de afiliado.
+
+O token do bot nunca é enviado ao navegador.
+
+## Agendamento
+
+A rota de cron é:
+
+```text
+/api/cron/publicar-agendadas
+```
+
+O `vercel.json` agenda execução a cada 5 minutos. A rota valida `CRON_SECRET` pelo header `Authorization: Bearer <CRON_SECRET>`, header `x-cron-secret` ou query `secret`. Em produção, configure `CRON_SECRET` na Vercel.
+
+Ela:
+
+- busca ofertas `AGENDADO` vencidas;
+- limita a quantidade por execução;
+- muda para `PUBLICANDO` antes do envio;
+- muda para `PUBLICADO` ou `ERRO`;
+- registra `telegram_message_id` ou `error_message`;
+- evita duplicidade se já houver `telegram_message_id`.
+
+## Painel de Ofertas
+
+Acesse:
+
+```text
+/admin/ofertas
+```
+
+Funcionalidades:
+
+- listar, pesquisar e filtrar;
+- criar, editar e excluir;
+- salvar rascunho;
+- publicar agora;
+- agendar;
+- reenviar ofertas com erro;
+- ver prévia do card e da mensagem Telegram;
+- ver status, agendamento, publicação, ID da mensagem e erro.
+
+## Vercel
+
+Configure manualmente no projeto:
+
+- `POSTGRES_URL` ou `DATABASE_URL`
+- `ADMIN_API_KEY`
+- `TELEGRAM_BOT_TOKEN`
+- `TELEGRAM_CHANNEL_ID`
+- `CRON_SECRET`
+- `APP_URL`
+- `VITE_BASE44_APP_ID`
+- `VITE_BASE44_APP_BASE_URL`
+
+Depois rode novo deploy. Não há deploy automático neste repositório.
+
+## Diagnóstico
+
+- 401 no painel: confira `ADMIN_API_KEY`.
+- 500 de banco: confira `POSTGRES_URL` ou `DATABASE_URL` e se a migration foi executada.
+- Erro no Telegram: confira token, canal e se o bot é administrador.
+- Oferta não publica: confira status, campos obrigatórios e se já existe `telegram_message_id`.
 
 ## Checks
 
 ```bash
 npm run lint
+npm run typecheck
 npm run build
 ```
