@@ -1,0 +1,15 @@
+{
+  "name": "Tá Barato",
+  "short_name": "Tá Barato",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F5F2EB",
+  "theme_color": "#FF6B35",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "64x64",
+      "type": "image/svg+xml"
+    }
+  ]
+}

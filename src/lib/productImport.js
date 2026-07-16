@@ -1,29 +1,3 @@
-const metadataService = (url) => `https://api.microlink.io/?url=${encodeURIComponent(url)}`;
-
-const pricePatterns = [
-  /"price"\s*:\s*"?([0-9]+(?:[.,][0-9]{1,2})?)"?/i,
-  /property=["']product:price:amount["'][^>]*content=["']([0-9]+(?:[.,][0-9]{1,2})?)["']/i,
-  /R\$\s*([0-9.]+,[0-9]{2})/i,
-];
-
-const pickImage = (data) =>
-  data?.image?.url ||
-  data?.logo?.url ||
-  data?.publisher?.logo?.url ||
-  "";
-
-const cleanTitle = (title = "") =>
-  title
-    .replace(/\s+[|-]\s+(Amazon|Mercado Livre|Shopee|Magalu|Magazine Luiza|AliExpress).*$/i, "")
-    .trim();
-
-const parsePrice = (value) => {
-  if (value == null || value === "") return "";
-  const normalized = String(value).replace(/\./g, "").replace(",", ".");
-  const parsed = Number.parseFloat(normalized);
-  return Number.isFinite(parsed) ? String(parsed.toFixed(2)) : "";
-};
-
 export async function importProductFromAffiliateLink(url) {
   const trimmed = url?.trim();
   if (!trimmed) throw new Error("Informe um link de afiliado.");
@@ -34,20 +8,18 @@ export async function importProductFromAffiliateLink(url) {
     throw new Error("Informe uma URL válida.");
   }
 
-  const microlinkUrl = metadataService(trimmed);
-  const response = await fetch(microlinkUrl);
-  if (!response.ok) throw new Error("Não foi possível ler os dados da loja.");
+  const response = await fetch(`/api/import-product?url=${encodeURIComponent(trimmed)}`);
+  const payload = await response.json().catch(() => ({}));
 
-  const payload = await response.json();
-  const data = payload?.data || {};
-  const sourceText = JSON.stringify(data);
-  const priceMatch = pricePatterns.map((pattern) => sourceText.match(pattern)?.[1]).find(Boolean);
+  if (!response.ok) {
+    throw new Error(payload.error || "Não foi possível ler os dados da loja.");
+  }
 
   return {
-    name: cleanTitle(data.title || ""),
-    description: data.description || "",
-    image: pickImage(data),
-    price: parsePrice(data.price || data.amount || priceMatch),
-    platform: data.publisher || new URL(trimmed).hostname.replace(/^www\./, ""),
+    name: payload.name || "",
+    description: payload.description || "",
+    image: payload.image || "",
+    price: payload.price || "",
+    platform: payload.platform || new URL(trimmed).hostname.replace(/^www\./, ""),
   };
 }
