@@ -46,6 +46,12 @@
       </section>
 
       <section id="editor-view" class="hidden">
+        <div class="whatsapp-target scheduled-message-panel">
+          <label><span>Grupo padrão do WhatsApp</span><input id="whatsapp-group" type="text" placeholder="Nome exato do grupo" autocomplete="off" /></label>
+          <button id="scheduled-message-button" class="button button-whatsapp" type="button"><img src="../assets/whatsapp.svg" alt="" aria-hidden="true" /> Enviar mensagem agendada</button>
+          <p>Busca a próxima mensagem de WhatsApp pronta no agendador e envia para o grupo.</p>
+        </div>
+
         <div class="capture-bar">
           <div>
             <p class="eyebrow">PRODUTO DETECTADO</p>
@@ -81,11 +87,6 @@
           <div id="capture-quality" class="notice notice-warning hidden" role="status"></div>
           <div id="affiliate-warning" class="notice">
             Confirme se o link abaixo &eacute; o seu link de afiliado antes de salvar.
-          </div>
-
-          <div class="whatsapp-target">
-            <label><span>Grupo do WhatsApp</span><input id="whatsapp-group" type="text" placeholder="Nome exato do grupo" autocomplete="off" /></label>
-            <p>A extens&atilde;o reutiliza a aba aberta do WhatsApp Web e procura este grupo.</p>
           </div>
 
           <section class="panel fields-panel">

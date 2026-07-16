@@ -4,7 +4,7 @@ import { BellPlus } from "lucide-react";
 import OfferCard from "@/components/OfferCard";
 import Footer from "@/components/Footer";
 import { categoryNameBySlug } from "@/lib/catalog";
-import { listPublicOffersPage } from "@/lib/offersApi";
+import { listPublicCategories, listPublicOffersPage } from "@/lib/offersApi";
 import { EmptyState, FilterChip, LoadingState, OfferGrid, PageShell, SectionHeader } from "@/components/PublicUi";
 import { useDocumentMetadata } from "@/hooks/useDocumentMetadata";
 import { useOfferTools } from "@/lib/OfferToolsContext";
@@ -19,7 +19,9 @@ const FILTERS = [
 
 export default function CategoryPage() {
   const { slug } = useParams();
-  const categoryName = categoryNameBySlug(slug);
+  const staticCategoryName = categoryNameBySlug(slug);
+  const [categoryName, setCategoryName] = useState(staticCategoryName || "");
+  const [categoryReady, setCategoryReady] = useState(Boolean(staticCategoryName));
   const [offers, setOffers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -31,10 +33,25 @@ export default function CategoryPage() {
   const { createSearchAlert } = useOfferTools();
 
   useEffect(() => {
+    const knownName = categoryNameBySlug(slug);
+    if (knownName) {
+      setCategoryName(knownName);
+      setCategoryReady(true);
+      return;
+    }
+    setCategoryReady(false);
+    listPublicCategories()
+      .then((items) => setCategoryName(items.find((item) => item.slug === slug)?.name || ""))
+      .catch(() => setCategoryName(""))
+      .finally(() => setCategoryReady(true));
+  }, [slug]);
+
+  useEffect(() => {
+    if (!categoryReady) return;
     setLoading(true);
     setError("");
     const params = {
-      category: categoryName && !categoryName.startsWith("Abaixo de") ? categoryName : "",
+      category: categoryName && !categoryName.startsWith("Abaixo de") ? categoryName : slug.startsWith("abaixo-de-") ? "" : "__categoria_inexistente__",
       platform: platformFilter === "all" ? "" : platformFilter,
       sort: activeFilter === "under_50" || activeFilter === "under_100" ? "recent" : activeFilter,
       maxPrice: slug === "abaixo-de-50" || activeFilter === "under_50" ? 50 : slug === "abaixo-de-100" || activeFilter === "under_100" ? 100 : "",
@@ -45,7 +62,7 @@ export default function CategoryPage() {
       .then((payload) => { setOffers(payload.offers || []); setPagination(payload.pagination || { page: 1, pages: 1, total: 0 }); })
       .catch((err) => setError(err.message || "Não foi possível carregar ofertas."))
       .finally(() => setLoading(false));
-  }, [activeFilter, categoryName, page, platformFilter, slug]);
+  }, [activeFilter, categoryName, categoryReady, page, platformFilter, slug]);
 
   let filtered = offers;
   if (categoryName && !categoryName.startsWith("Abaixo de")) filtered = offers.filter((offer) => offer.category === categoryName);

@@ -225,12 +225,25 @@
     await waitFor(() => sentMessageAppeared(messageCountBefore, caption) || !visible(captionBox), 5000);
   }
 
+  async function sendTextMessage(text) {
+    const composer = await waitFor(() => messageComposer(), 10000);
+    if (!composer) throw new Error("O campo de mensagem do WhatsApp não foi encontrado.");
+    const messageCountBefore = document.querySelectorAll('[data-testid="msg-container"], .message-out').length;
+    await setEditableText(composer, text);
+    const send = await waitFor(() => actionByLabel(["enviar", "send"])
+      || [...document.querySelectorAll('[data-icon="send"]')].map((element) => element.closest("button, [role='button']")).find(visible), 10000);
+    if (!send) throw new Error("O botão Enviar do WhatsApp não foi encontrado.");
+    send.click();
+    await waitFor(() => sentMessageAppeared(messageCountBefore, text), 5000);
+  }
+
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message?.type !== "TABARATO_WHATSAPP_SEND") return;
     Promise.resolve()
       .then(async () => {
         await selectGroup(message.groupName);
-        await pasteOffer(await dataUrlFile(message.imageDataUrl, message.fileName), message.text);
+        if (message.imageDataUrl) await pasteOffer(await dataUrlFile(message.imageDataUrl, message.fileName), message.text);
+        else await sendTextMessage(message.text);
         return { ok: true };
       })
       .then(sendResponse)

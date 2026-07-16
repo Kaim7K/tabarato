@@ -178,6 +178,18 @@ test("extension can open the admin panel without a captured product", () => {
   assert.match(app, /chrome\.tabs\.create\(\{ url: targetUrl \}\)/);
 });
 
+test("extension manually sends due WhatsApp scheduler messages", () => {
+  const html = readFileSync(join(extensionRoot, "sidepanel", "index.html"), "utf8");
+  const app = readFileSync(join(extensionRoot, "sidepanel", "app.js"), "utf8");
+  const whatsapp = readFileSync(join(extensionRoot, "content", "whatsapp.js"), "utf8");
+  assert.match(html, /id="scheduled-message-button"/);
+  assert.match(app, /action=pending-whatsapp/);
+  assert.match(app, /action=complete-whatsapp/);
+  assert.match(app, /scheduledMessage\.imageUrl/);
+  assert.match(app, /body: \{ success: true \}/);
+  assert.match(whatsapp, /async function sendTextMessage/);
+});
+
 test("extension synchronizes site categories and classifies captured products", () => {
   const app = readFileSync(join(extensionRoot, "sidepanel", "app.js"), "utf8");
   const stores = ["mercado-livre.js", "amazon.js", "shopee.js"]

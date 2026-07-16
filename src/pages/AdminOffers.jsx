@@ -43,6 +43,9 @@ const emptyOffer = {
 const emptyAutoMessage = {
   title: "",
   message: "",
+  channel: "TELEGRAM",
+  imageUrl: "",
+  whatsappGroup: "",
   isActive: true,
   intervalMinutes: 1440,
   sortOrder: 0,
@@ -682,6 +685,9 @@ export default function AdminOffers() {
     setMessageForm({
       title: message.title || "",
       message: message.message || "",
+      channel: message.channel || "TELEGRAM",
+      imageUrl: message.imageUrl || "",
+      whatsappGroup: message.whatsappGroup || "",
       isActive: message.isActive !== false,
       intervalMinutes: message.intervalMinutes || 1440,
       sortOrder: message.sortOrder || 0,
@@ -708,11 +714,12 @@ export default function AdminOffers() {
   };
 
   const sendAutoMessageNow = async (message) => {
-    if (!window.confirm(`Enviar "${message.title}" agora no Telegram?`)) return;
+    const channelLabel = message.channel === "WHATSAPP" ? "WhatsApp pela extensão" : "Telegram";
+    if (!window.confirm(`Enviar "${message.title}" agora no ${channelLabel}?`)) return;
     setSendingMessageId(message.id);
     try {
       await telegramOffersApi.sendMessageNow(message.id);
-      showMessage("Mensagem enviada no Telegram.");
+      showMessage(message.channel === "WHATSAPP" ? "Mensagem disponibilizada para envio na extensão." : "Mensagem enviada no Telegram.");
       await load();
     } catch (error) {
       showMessage(error.message);

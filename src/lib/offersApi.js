@@ -40,6 +40,16 @@ export async function listPublicOffersPage(params = {}) {
   return cachedJson(`/api/ofertas${search.toString() ? `?${search}` : ""}`, "Nao foi possivel carregar ofertas.");
 }
 
+export async function listPublicCategories() {
+  const payload = await cachedJson("/api/ofertas?resource=categories", "Nao foi possivel carregar categorias.");
+  return payload.categories || [];
+}
+
+export async function listPublicCategoryHighlights() {
+  const payload = await cachedJson("/api/ofertas?resource=category-highlights", "Nao foi possivel carregar categorias.");
+  return { categories: payload.categories || [], offers: payload.offers || [] };
+}
+
 export async function getPublicOffer(id) {
   const payload = await cachedJson(`/api/ofertas/${encodeURIComponent(id)}`, "Oferta nao encontrada.");
   return payload.offer;

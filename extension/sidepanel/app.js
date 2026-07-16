@@ -22,6 +22,7 @@ const elements = {
   saveOpenButton: document.getElementById("save-open-button"),
   publishButton: document.getElementById("publish-button"),
   whatsappButton: document.getElementById("whatsapp-button"),
+  scheduledMessageButton: document.getElementById("scheduled-message-button"),
   whatsappGroup: document.getElementById("whatsapp-group"),
   duplicateWarning: document.getElementById("duplicate-warning"),
   captureQuality: document.getElementById("capture-quality"),
@@ -90,7 +91,7 @@ function showToast(message, tone = "neutral") {
 function setBusy(button, busy, label) {
   button.disabled = busy;
   if (busy) {
-    button.dataset.label = button.textContent;
+    if (!button.dataset.label) button.dataset.label = button.textContent;
     button.textContent = label;
   } else if (button.dataset.label) {
     button.textContent = button.dataset.label;
@@ -509,6 +510,54 @@ async function sendOfferToWhatsApp(payload, groupName, onProgress = () => {}) {
   if (!result?.ok) throw new Error(result?.error || "Nao foi possivel enviar para o grupo.");
 }
 
+async function sendScheduledMessage() {
+  setBusy(elements.scheduledMessageButton, true, "Buscando mensagem...");
+  let scheduledMessage = null;
+  try {
+    const pending = await requestApi("/api/admin/mensagens?action=pending-whatsapp");
+    scheduledMessage = pending.message;
+    if (!scheduledMessage) {
+      showToast("Nenhuma mensagem de WhatsApp está pronta para envio.", "neutral");
+      return;
+    }
+    const groupName = scheduledMessage.whatsappGroup || elements.whatsappGroup.value.trim();
+    if (!groupName) throw new Error("Informe o grupo padrão do WhatsApp na extensão.");
+
+    let imageDataUrl = "";
+    let fileName = "mensagem.png";
+    if (scheduledMessage.imageUrl) {
+      setBusy(elements.scheduledMessageButton, true, "Preparando imagem...");
+      const file = await prepareWhatsAppImage({ imageUrl: scheduledMessage.imageUrl, productName: scheduledMessage.title || "mensagem" });
+      imageDataUrl = await fileToDataUrl(file);
+      fileName = file.name;
+    }
+    setBusy(elements.scheduledMessageButton, true, "Abrindo WhatsApp...");
+    const result = await chrome.runtime.sendMessage({
+      type: "TABARATO_SHARE_WHATSAPP",
+      groupName,
+      text: scheduledMessage.message,
+      imageDataUrl,
+      fileName,
+    });
+    if (!result?.ok) throw new Error(result?.error || "Não foi possível enviar a mensagem agendada.");
+    await requestApi(`/api/admin/mensagens?action=complete-whatsapp&id=${encodeURIComponent(scheduledMessage.id)}`, {
+      method: "POST",
+      body: { success: true },
+    });
+    showToast(`Mensagem enviada para ${groupName}.`, "success");
+  } catch (error) {
+    if (scheduledMessage?.id) {
+      await requestApi(`/api/admin/mensagens?action=complete-whatsapp&id=${encodeURIComponent(scheduledMessage.id)}`, {
+        method: "POST",
+        body: { success: false, errorMessage: error.message },
+      }).catch(() => {});
+    }
+    showToast(error.message, "error");
+  } finally {
+    setBusy(elements.scheduledMessageButton, false);
+  }
+}
+
 async function publishOffer() {
   if (!elements.offerForm.reportValidity()) return;
   const payload = formPayload();
@@ -609,6 +658,7 @@ elements.offerForm.addEventListener("submit", (event) => {
 elements.saveOpenButton.addEventListener("click", () => saveOffer(true));
 elements.publishButton.addEventListener("click", publishOffer);
 elements.whatsappButton.addEventListener("click", shareOnWhatsApp);
+elements.scheduledMessageButton.addEventListener("click", sendScheduledMessage);
 elements.adminPanelButton.addEventListener("click", openAdminPanel);
 elements.whatsappGroup.addEventListener("input", () => {
   chrome.storage.local.set({ [WHATSAPP_GROUP_KEY]: elements.whatsappGroup.value.trim() });

@@ -29,8 +29,15 @@ Sem essa variavel, o servidor aceita origens com o formato oficial de extensoes 
 - A acao **Publicar agora** exige confirmacao, cria a oferta como `APROVADO` e envia pelo publicador existente do Telegram.
 - **Enviar ao WhatsApp** reutiliza a aba aberta, entra no grupo configurado, preenche a legenda e cola pelo clipboard a imagem original do produto.
 - O botao **Painel** no cabecalho abre ou reutiliza a aba administrativa mesmo quando nenhum produto foi capturado.
+- O botao **Enviar mensagem agendada** busca a proxima mensagem de WhatsApp vencida, envia texto e imagem e confirma o resultado no painel.
 - A extensao pede acesso apenas ao dominio configurado pelo administrador.
 - O link capturado deve ser revisado, pois algumas lojas nao disponibilizam automaticamente o link pessoal de afiliado no HTML.
+
+## Mensagens agendadas
+
+- Mensagens de Telegram sao enviadas automaticamente pelo cron do site.
+- Mensagens de WhatsApp ficam prontas no horario configurado e precisam do botao manual da extensao, pois usam o WhatsApp Web aberto no navegador.
+- O grupo definido na mensagem tem prioridade; quando estiver vazio, a extensao usa o grupo padrao salvo no painel lateral.
 
 ## Mercado Livre
 

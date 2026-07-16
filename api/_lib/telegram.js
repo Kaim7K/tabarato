@@ -49,8 +49,8 @@ async function telegramRequest(method, body) {
   try {
     const response = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      headers: body instanceof FormData ? undefined : { "Content-Type": "application/json" },
+      body: body instanceof FormData ? body : JSON.stringify(body),
       signal: controller.signal,
     });
     const payload = await response.json().catch(() => null);
@@ -84,18 +84,46 @@ export async function sendTelegramOffer(offer) {
   return { messageId: String(messageId), response: payload };
 }
 
-export async function sendTelegramText(message) {
+function imageDataUrl(value) {
+  const match = String(value || "").match(/^data:(image\/(?:png|jpe?g|webp));base64,([A-Za-z0-9+/=]+)$/i);
+  if (!match) return null;
+  return { mimeType: match[1], bytes: Buffer.from(match[2], "base64") };
+}
+
+export async function sendTelegramText(message, imageUrl = "") {
   const chatId = process.env.TELEGRAM_CHANNEL_ID;
   if (!chatId) throw new Error("Telegram não configurado.");
 
   const text = String(message || "").trim();
   if (!text) throw new Error("Mensagem vazia.");
 
-  const payload = await telegramRequest("sendMessage", {
-    chat_id: chatId,
-    text,
-    parse_mode: "HTML",
-  });
+  const image = String(imageUrl || "").trim();
+  if (image) {
+    const caption = text.length <= 1024 ? text : "";
+    const embedded = imageDataUrl(image);
+    let photoPayload;
+    if (embedded) {
+      photoPayload = new FormData();
+      photoPayload.set("chat_id", chatId);
+      photoPayload.set("photo", new Blob([embedded.bytes], { type: embedded.mimeType }), `mensagem.${embedded.mimeType.split("/")[1].replace("jpeg", "jpg")}`);
+      if (caption) {
+        photoPayload.set("caption", caption);
+        photoPayload.set("parse_mode", "HTML");
+      }
+    } else if (/^https:\/\//i.test(image)) {
+      photoPayload = { chat_id: chatId, photo: image, ...(caption ? { caption, parse_mode: "HTML" } : {}) };
+    } else {
+      throw new Error("Imagem invalida. Use HTTPS ou selecione um arquivo de imagem.");
+    }
+    const photoResponse = await telegramRequest("sendPhoto", photoPayload);
+    if (caption) {
+      const photoMessageId = photoResponse.result?.message_id;
+      if (!photoMessageId) throw new Error("Resposta inválida do Telegram.");
+      return { messageId: String(photoMessageId), response: photoResponse };
+    }
+  }
+
+  const payload = await telegramRequest("sendMessage", { chat_id: chatId, text, parse_mode: "HTML" });
   const messageId = payload.result?.message_id;
   if (!messageId) throw new Error("Resposta inválida do Telegram.");
   return { messageId: String(messageId), response: payload };

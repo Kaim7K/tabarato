@@ -7,6 +7,9 @@ export function mapAutoMessage(row) {
     id: row.id,
     title: row.title,
     message: row.message,
+    channel: row.channel || "TELEGRAM",
+    imageUrl: row.image_url || "",
+    whatsappGroup: row.whatsapp_group || "",
     isActive: row.is_active,
     intervalMinutes: row.interval_minutes,
     sortOrder: row.sort_order,
@@ -26,6 +29,11 @@ export function validateAutoMessage(input) {
   if (!String(input.message || "").trim()) errors.push("Mensagem e obrigatoria.");
   if (String(input.title || "").length > 200) errors.push("Titulo deve ter no maximo 200 caracteres.");
   if (String(input.message || "").length > 4000) errors.push("Mensagem deve ter no maximo 4000 caracteres.");
+  const channel = String(input.channel || "TELEGRAM").toUpperCase();
+  if (!["TELEGRAM", "WHATSAPP"].includes(channel)) errors.push("Canal de envio invalido.");
+  const imageUrl = String(input.imageUrl || "").trim();
+  if (imageUrl && !/^https:\/\//i.test(imageUrl) && !/^data:image\/(?:png|jpe?g|webp);base64,/i.test(imageUrl)) errors.push("Imagem invalida. Use HTTPS ou um arquivo PNG, JPG ou WebP.");
+  if (imageUrl.startsWith("data:") && imageUrl.length > 950000) errors.push("A imagem deve ter no maximo 700 KB.");
   const interval = Number(input.intervalMinutes);
   if (!Number.isFinite(interval) || interval < 5) errors.push("Periodo deve ser de pelo menos 5 minutos.");
   if (input.nextSendAt && Number.isNaN(new Date(input.nextSendAt).getTime())) errors.push("Proximo envio invalido.");
@@ -36,6 +44,9 @@ function params(input) {
   return {
     title: String(input.title || "").trim(),
     message: String(input.message || "").trim(),
+    channel: String(input.channel || "TELEGRAM").toUpperCase(),
+    image_url: String(input.imageUrl || "").trim(),
+    whatsapp_group: String(input.whatsappGroup || "").trim().slice(0, 200),
     is_active: input.isActive !== false,
     interval_minutes: Number(input.intervalMinutes || 1440),
     sort_order: Number(input.sortOrder || 0),
@@ -51,10 +62,10 @@ export async function listAutoMessages() {
 export async function createAutoMessage(input) {
   const data = params(input);
   const result = await query(
-    `INSERT INTO telegram_auto_messages (title, message, is_active, interval_minutes, sort_order, next_send_at)
-     VALUES ($1,$2,$3,$4,$5,$6)
+    `INSERT INTO telegram_auto_messages (title, message, channel, image_url, whatsapp_group, is_active, interval_minutes, sort_order, next_send_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
      RETURNING *`,
-    [data.title, data.message, data.is_active, data.interval_minutes, data.sort_order, data.next_send_at]
+    [data.title, data.message, data.channel, data.image_url || null, data.whatsapp_group || null, data.is_active, data.interval_minutes, data.sort_order, data.next_send_at]
   );
   return mapAutoMessage(result.rows[0]);
 }
@@ -63,10 +74,10 @@ export async function updateAutoMessage(id, input) {
   const data = params(input);
   const result = await query(
     `UPDATE telegram_auto_messages
-     SET title=$1, message=$2, is_active=$3, interval_minutes=$4, sort_order=$5, next_send_at=$6, error_message=NULL
-     WHERE id=$7
+     SET title=$1, message=$2, channel=$3, image_url=$4, whatsapp_group=$5, is_active=$6, interval_minutes=$7, sort_order=$8, next_send_at=$9, error_message=NULL
+     WHERE id=$10
      RETURNING *`,
-    [data.title, data.message, data.is_active, data.interval_minutes, data.sort_order, data.next_send_at, id]
+    [data.title, data.message, data.channel, data.image_url || null, data.whatsapp_group || null, data.is_active, data.interval_minutes, data.sort_order, data.next_send_at, id]
   );
   return mapAutoMessage(result.rows[0]);
 }
@@ -81,8 +92,13 @@ export async function sendAutoMessageNow(id) {
   const item = mapAutoMessage(found.rows[0]);
   if (!item) return null;
 
+  if (item.channel === "WHATSAPP") {
+    const updated = await query("UPDATE telegram_auto_messages SET is_active=TRUE, next_send_at=NOW(), error_message=NULL WHERE id=$1 RETURNING *", [item.id]);
+    return { ok: true, pending: true, message: mapAutoMessage(updated.rows[0]) };
+  }
+
   try {
-    const sent = await sendTelegramText(item.message);
+    const sent = await sendTelegramText(item.message, item.imageUrl);
     const updated = await query(
       `UPDATE telegram_auto_messages
        SET last_sent_at=NOW(),
@@ -106,7 +122,7 @@ export async function sendAutoMessageNow(id) {
 export async function publishDueAutoMessages(limit = 5) {
   const due = await query(
     `SELECT * FROM telegram_auto_messages
-     WHERE is_active=TRUE AND next_send_at <= NOW()
+     WHERE is_active=TRUE AND channel='TELEGRAM' AND next_send_at <= NOW()
      ORDER BY sort_order ASC, next_send_at ASC
      LIMIT $1`,
     [limit]
@@ -117,14 +133,14 @@ export async function publishDueAutoMessages(limit = 5) {
     const claimed = await query(
       `UPDATE telegram_auto_messages
        SET next_send_at=NOW() + INTERVAL '5 minutes'
-       WHERE id=$1 AND is_active=TRUE AND next_send_at <= NOW()
+       WHERE id=$1 AND is_active=TRUE AND channel='TELEGRAM' AND next_send_at <= NOW()
        RETURNING *`,
       [row.id]
     );
     const item = mapAutoMessage(claimed.rows[0]);
     if (!item) continue;
     try {
-      const sent = await sendTelegramText(item.message);
+      const sent = await sendTelegramText(item.message, item.imageUrl);
       const updated = await query(
         `UPDATE telegram_auto_messages
          SET last_sent_at=NOW(),
@@ -145,4 +161,38 @@ export async function publishDueAutoMessages(limit = 5) {
     }
   }
   return results;
+}
+
+export async function claimDueWhatsAppMessage() {
+  const result = await query(
+    `UPDATE telegram_auto_messages
+     SET next_send_at=NOW() + INTERVAL '5 minutes'
+     WHERE id=(
+       SELECT id FROM telegram_auto_messages
+       WHERE channel='WHATSAPP' AND is_active=TRUE AND next_send_at <= NOW()
+       ORDER BY sort_order ASC, next_send_at ASC
+       FOR UPDATE SKIP LOCKED
+       LIMIT 1
+     )
+     RETURNING *`
+  );
+  return mapAutoMessage(result.rows[0]);
+}
+
+export async function completeWhatsAppMessage(id, success, errorMessage = "") {
+  const result = success
+    ? await query(
+      `UPDATE telegram_auto_messages
+       SET last_sent_at=NOW(), next_send_at=NOW() + (interval_minutes || ' minutes')::interval,
+           error_message=NULL, send_count=send_count+1
+       WHERE id=$1 AND channel='WHATSAPP' RETURNING *`,
+      [id]
+    )
+    : await query(
+      `UPDATE telegram_auto_messages
+       SET next_send_at=NOW(), error_message=$2
+       WHERE id=$1 AND channel='WHATSAPP' RETURNING *`,
+      [id, String(errorMessage || "Falha no envio pelo WhatsApp.").slice(0, 500)]
+    );
+  return mapAutoMessage(result.rows[0]);
 }

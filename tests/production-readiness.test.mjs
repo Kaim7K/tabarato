@@ -42,11 +42,27 @@ test("site does not expose an installable app version", () => {
   assert.equal(existsSync(join(root, "public", "sw.js")), false);
 });
 
-test("public routes include radar, comparison and alerts", () => {
+test("public routes include categories, radar, comparison and alerts", () => {
   const app = readFileSync(join(root, "src", "App.jsx"), "utf8");
+  assert.match(app, /path="\/categorias"/);
   assert.match(app, /path="\/radar"/);
   assert.match(app, /path="\/comparar"/);
   assert.match(app, /path="\/alertas"/);
+});
+
+test("public category menu uses the shared category API", () => {
+  const layout = readFileSync(join(root, "src", "components", "Layout.jsx"), "utf8");
+  const api = readFileSync(join(root, "api", "ofertas", "index.js"), "utf8");
+  assert.match(layout, /listPublicCategories/);
+  assert.match(api, /resource === "categories"/);
+  assert.match(api, /resource === "category-highlights"/);
+  assert.match(api, /ROW_NUMBER\(\) OVER/);
+});
+
+test("comparison recommendation prioritizes effective price", () => {
+  const compare = readFileSync(join(root, "src", "pages", "Compare.jsx"), "utf8");
+  assert.match(compare, /effectivePrice\(first\) - effectivePrice\(second\)/);
+  assert.match(compare, /Melhor opção/);
 });
 
 test("comparison removal uses a dedicated action", () => {

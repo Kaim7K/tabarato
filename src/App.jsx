@@ -6,6 +6,7 @@ import AdminRoute from '@/components/AdminRoute';
 import Home from '@/pages/Home';
 
 const CategoryPage = lazy(() => import('@/pages/CategoryPage'));
+const Categories = lazy(() => import('@/pages/Categories'));
 const OfferDetail = lazy(() => import('@/pages/OfferDetail'));
 const SearchPage = lazy(() => import('@/pages/SearchPage'));
 const Favorites = lazy(() => import('@/pages/Favorites'));
@@ -25,6 +26,7 @@ function App() {
         <Routes>
           <Route element={<Layout />}>
             <Route path="/" element={<Home />} />
+            <Route path="/categorias" element={<Categories />} />
             <Route path="/categoria/:slug" element={<CategoryPage />} />
             <Route path="/oferta/:id" element={<OfferDetail />} />
             <Route path="/buscar" element={<SearchPage />} />

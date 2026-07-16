@@ -2,11 +2,40 @@ import { query } from "../_lib/db.js";
 import { sendJson, methodNotAllowed, publicError } from "../_lib/http.js";
 import { mapPublicOffer, PUBLIC_OFFER_COLUMNS, setPublicCache } from "../_lib/publicOffers.js";
 import { searchGroups } from "../_lib/search.js";
+import { listCategories } from "../_lib/categories.js";
 
 export default async function handler(req, res) {
   if (req.method !== "GET") return methodNotAllowed(res, ["GET"]);
 
   try {
+    if (req.query.resource === "categories") {
+      const categories = await listCategories();
+      setPublicCache(res);
+      return sendJson(res, 200, { categories });
+    }
+
+    if (req.query.resource === "category-highlights") {
+      const [categories, highlights] = await Promise.all([
+        listCategories(),
+        query(
+          `SELECT ${PUBLIC_OFFER_COLUMNS}
+           FROM (
+             SELECT ${PUBLIC_OFFER_COLUMNS},
+                    ROW_NUMBER() OVER (
+                      PARTITION BY category
+                      ORDER BY COALESCE(published_at, updated_at, created_at) DESC
+                    ) AS category_position
+             FROM telegram_offers
+             WHERE status = 'PUBLICADO'
+           ) ranked_offers
+           WHERE category_position <= 4
+           ORDER BY category ASC, COALESCE(published_at, updated_at, created_at) DESC`
+        ),
+      ]);
+      setPublicCache(res);
+      return sendJson(res, 200, { categories, offers: highlights.rows.map(mapPublicOffer) });
+    }
+
     const search = String(req.query.search || "").trim().slice(0, 120);
     const category = String(req.query.category || "").trim().slice(0, 120);
     const platform = String(req.query.platform || "").trim().slice(0, 100);

@@ -117,6 +117,22 @@ test("automatic messages are claimed before Telegram delivery", () => {
 test("database migration includes recurring messages", () => {
   const migration = readFileSync(join(root, "migrations", "001_create_telegram_offers.sql"), "utf8");
   assert.match(migration, /CREATE TABLE IF NOT EXISTS telegram_auto_messages/);
+  assert.match(migration, /ADD COLUMN IF NOT EXISTS channel/);
+  assert.match(migration, /ADD COLUMN IF NOT EXISTS image_url/);
+  assert.match(migration, /ADD COLUMN IF NOT EXISTS whatsapp_group/);
+});
+
+test("scheduled messages separate automatic Telegram from manual WhatsApp delivery", () => {
+  const messages = readFileSync(join(root, "api", "_lib", "autoMessages.js"), "utf8");
+  const route = readFileSync(join(root, "api", "admin", "mensagens", "index.js"), "utf8");
+  const telegram = readFileSync(join(root, "api", "_lib", "telegram.js"), "utf8");
+  assert.match(messages, /channel='TELEGRAM'/);
+  assert.match(messages, /claimDueWhatsAppMessage/);
+  assert.match(messages, /completeWhatsAppMessage/);
+  assert.match(route, /pending-whatsapp/);
+  assert.match(route, /complete-whatsapp/);
+  assert.match(telegram, /sendPhoto/);
+  assert.match(telegram, /body instanceof FormData/);
 });
 
 test("database migration records real price changes", () => {

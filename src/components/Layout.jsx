@@ -1,17 +1,28 @@
 import { Link, NavLink, Outlet } from "react-router-dom";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowLeftRight, Bell, ChevronDown, Flame, Heart, Home, Menu, Search, X } from "lucide-react";
 import SmartSearch from "@/components/SmartSearch";
 import { TelegramIcon, WhatsAppIcon } from "@/components/BrandIcons";
 import { FavoritesProvider } from "@/lib/FavoritesContext";
 import { OfferToolsProvider, useOfferTools } from "@/lib/OfferToolsContext";
 import { DEFAULT_CATEGORIES } from "@/lib/catalog";
+import { listPublicCategories } from "@/lib/offersApi";
 import { TELEGRAM_CHANNEL_URL, WHATSAPP_GROUP_URL } from "@/lib/publicLinks";
 import { BRAND_LOGO } from "@/lib/brand";
 
 function Header() {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
   const { compareIds } = useOfferTools();
+
+  useEffect(() => {
+    listPublicCategories()
+      .then((items) => {
+        const virtualCategories = DEFAULT_CATEGORIES.filter((category) => category.virtual);
+        setCategories([...items, ...virtualCategories]);
+      })
+      .catch(() => {});
+  }, []);
 
   return (
     <header className="sticky top-0 z-50 bg-white border-b border-[#111111]/10 shadow-[0_1px_0_rgba(0,0,0,0.04)]">
@@ -55,11 +66,15 @@ function Header() {
         <div className="hidden lg:flex min-h-10 items-center justify-between border-t border-[#111111]/8">
           <nav className="flex items-center gap-7" aria-label="Navegação principal">
             <div className="relative group">
-              <button type="button" className="min-h-10 inline-flex items-center gap-1 text-sm text-[#111111]/65 hover:text-[#111111] transition" aria-haspopup="true">
+              <Link to="/categorias" className="min-h-10 inline-flex items-center gap-1 text-sm text-[#111111]/65 hover:text-[#111111] transition" aria-haspopup="true">
                 Categorias <ChevronDown className="w-4 h-4" />
-              </button>
-              <div className="absolute top-full left-0 w-64 bg-white border border-[#111111]/10 rounded-lg shadow-[0_12px_32px_rgba(0,0,0,0.12)] p-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible group-focus-within:opacity-100 group-focus-within:visible transition z-50">
-                {DEFAULT_CATEGORIES.map((category) => (
+              </Link>
+              <div className="absolute top-full left-0 w-72 max-h-[70vh] overflow-y-auto bg-white border border-[#111111]/10 rounded-lg shadow-[0_12px_32px_rgba(0,0,0,0.12)] p-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible group-focus-within:opacity-100 group-focus-within:visible transition z-50">
+                <Link to="/categorias" className="block px-3 py-2.5 text-sm font-semibold text-[#FF6B35] hover:bg-[#FFF3EE] rounded-md transition">
+                  Ver todas as categorias
+                </Link>
+                <div className="h-px bg-[#111111]/8 my-1" />
+                {categories.map((category) => (
                   <Link key={category.slug} to={`/categoria/${category.slug}`} className="block px-3 py-2.5 text-sm text-[#111111]/70 hover:text-[#111111] hover:bg-[#F3F3F3] rounded-md transition">
                     {category.name}
                   </Link>
@@ -89,8 +104,11 @@ function Header() {
       {mobileOpen && (
         <nav id="mobile-navigation" aria-label="Navegação mobile" className="lg:hidden border-t border-[#111111]/10 bg-white px-4 py-4">
           <p className="text-xs font-semibold uppercase text-[#111111]/40 mb-2">Categorias</p>
+          <Link to="/categorias" onClick={() => setMobileOpen(false)} className="min-h-11 mb-2 px-3 py-2.5 flex items-center justify-between text-sm font-semibold text-[#FF6B35] border border-[#FF6B35]/20 rounded-md">
+            Ver todas <ChevronDown className="w-4 h-4 -rotate-90" />
+          </Link>
           <div className="grid grid-cols-2 gap-2">
-            {DEFAULT_CATEGORIES.map((category) => (
+            {categories.map((category) => (
               <Link key={category.slug} to={`/categoria/${category.slug}`} onClick={() => setMobileOpen(false)} className="min-h-11 px-3 py-2.5 flex items-center text-sm text-[#111111]/75 bg-[#F3F3F3] rounded-md">
                 {category.name}
               </Link>
