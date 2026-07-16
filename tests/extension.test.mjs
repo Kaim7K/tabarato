@@ -21,8 +21,8 @@ test("extension manifest is valid Manifest V3 with restricted product matches", 
   assert.equal(manifest.background.service_worker, "background/service-worker.js");
   assert.equal(manifest.side_panel.default_path, "sidepanel/index.html");
   assert.ok(manifest.content_scripts[0].matches.some((match) => match.includes("mercadolivre")));
-  assert.ok(manifest.content_scripts[0].matches.some((match) => match.includes("amazon")));
   assert.ok(manifest.content_scripts[0].matches.some((match) => match.includes("shopee")));
+  assert.doesNotMatch(JSON.stringify(manifest), /amazon/i);
   assert.doesNotMatch(JSON.stringify(manifest.content_scripts), /<all_urls>/);
   const referencedFiles = [
     manifest.background.service_worker,
@@ -31,6 +31,18 @@ test("extension manifest is valid Manifest V3 with restricted product matches", 
     ...manifest.content_scripts.flatMap((entry) => entry.js),
   ];
   assert.ok(referencedFiles.every((path) => existsSync(join(extensionRoot, path))));
+});
+
+test("extension action is enabled only on supported stores, WhatsApp and the configured site", () => {
+  const background = readFileSync(join(extensionRoot, "background", "service-worker.js"), "utf8");
+  assert.match(background, /allowedStoreHost/);
+  assert.match(background, /web\.whatsapp\.com/);
+  assert.match(background, /mercadolivre\.com\.br/);
+  assert.match(background, /shopee\.com\.br/);
+  assert.match(background, /configuredSiteOrigin/);
+  assert.match(background, /tabaratoofertas\.vercel\.app/);
+  assert.match(background, /chrome\.action\.disable/);
+  assert.match(background, /chrome\.sidePanel\.setOptions/);
 });
 
 test("all extension JavaScript files have valid syntax", () => {
@@ -116,7 +128,7 @@ test("extension publishes through the protected existing publisher", () => {
 test("extension keeps only the first captured description paragraph", () => {
   const shared = readFileSync(join(extensionRoot, "content", "shared.js"), "utf8");
   const sidePanel = readFileSync(join(extensionRoot, "sidepanel", "app.js"), "utf8");
-  const stores = ["mercado-livre.js", "amazon.js", "shopee.js"]
+  const stores = ["mercado-livre.js", "shopee.js"]
     .map((file) => readFileSync(join(extensionRoot, "content", "stores", file), "utf8"));
   assert.match(shared, /const firstParagraph/);
   assert.match(shared, /container\.querySelector\("p, li"\)/);
@@ -199,7 +211,7 @@ test("extension manually sends due WhatsApp scheduler messages", () => {
 
 test("extension synchronizes site categories and classifies captured products", () => {
   const app = readFileSync(join(extensionRoot, "sidepanel", "app.js"), "utf8");
-  const stores = ["mercado-livre.js", "amazon.js", "shopee.js"]
+  const stores = ["mercado-livre.js", "shopee.js"]
     .map((file) => readFileSync(join(extensionRoot, "content", "stores", file), "utf8"));
   assert.match(app, /async function synchronizeCatalog/);
   assert.match(app, /data\.categories/);

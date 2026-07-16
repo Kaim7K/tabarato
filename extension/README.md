@@ -1,6 +1,6 @@
 # Extensao Ta Barato
 
-Extensao Manifest V3 para capturar produtos no Mercado Livre, Amazon e Shopee e criar rascunhos no painel administrativo.
+Extensao Manifest V3 para capturar produtos no Mercado Livre e Shopee e criar rascunhos no painel administrativo.
 
 ## Instalar localmente
 

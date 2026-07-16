@@ -1,5 +1,60 @@
-chrome.runtime.onInstalled.addListener(() => {
-  chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
+const SITE_URL_KEYS = ["tabarato_extension_session", "tabarato_last_base_url"];
+const OFFICIAL_SITE_ORIGINS = new Set(["https://tabaratoofertas.vercel.app"]);
+
+function allowedStoreHost(hostname) {
+  return hostname === "web.whatsapp.com"
+    || hostname === "mercadolivre.com.br"
+    || hostname.endsWith(".mercadolivre.com.br")
+    || hostname === "mercadolibre.com"
+    || hostname.endsWith(".mercadolibre.com")
+    || hostname === "shopee.com.br"
+    || hostname.endsWith(".shopee.com.br");
+}
+
+async function configuredSiteOrigin() {
+  const stored = await chrome.storage.local.get(SITE_URL_KEYS);
+  const candidate = stored.tabarato_extension_session?.baseUrl || stored.tabarato_last_base_url || "";
+  try {
+    return new URL(candidate).origin;
+  } catch {
+    return "";
+  }
+}
+
+async function updateTabAvailability(tabId, url = "") {
+  if (!tabId) return;
+  let allowed = false;
+  try {
+    const target = new URL(url);
+    allowed = ["http:", "https:"].includes(target.protocol)
+      && (allowedStoreHost(target.hostname)
+        || OFFICIAL_SITE_ORIGINS.has(target.origin)
+        || target.origin === await configuredSiteOrigin());
+  } catch { /* Browser internal pages stay disabled. */ }
+
+  await Promise.all([
+    allowed ? chrome.action.enable(tabId) : chrome.action.disable(tabId),
+    chrome.sidePanel.setOptions({ tabId, path: "sidepanel/index.html", enabled: allowed }),
+  ]).catch(() => {});
+}
+
+async function refreshAllTabs() {
+  const tabs = await chrome.tabs.query({});
+  await Promise.all(tabs.map((tab) => updateTabAvailability(tab.id, tab.url)));
+}
+
+chrome.action.disable().catch(() => {});
+chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
+chrome.runtime.onInstalled.addListener(refreshAllTabs);
+chrome.runtime.onStartup.addListener(refreshAllTabs);
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.url || changeInfo.status === "complete") updateTabAvailability(tabId, changeInfo.url || tab.url);
+});
+chrome.tabs.onActivated.addListener(({ tabId }) => {
+  chrome.tabs.get(tabId).then((tab) => updateTabAvailability(tabId, tab.url)).catch(() => {});
+});
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === "local" && SITE_URL_KEYS.some((key) => changes[key])) refreshAllTabs();
 });
 
 function waitForTab(tabId, timeout = 60000) {
