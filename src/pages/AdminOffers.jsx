@@ -153,9 +153,40 @@ const browserCaptureScript = `(() => {
     affiliateLink: location.href,
     platform,
   };
-  navigator.clipboard.writeText(JSON.stringify(product, null, 2)).then(() => {
-    console.log("Dados copiados para a area de transferencia:", product);
-  });
+  const output = JSON.stringify(product, null, 2);
+  window.__TABARATO_PRODUCT__ = output;
+  try {
+    if (typeof copy === "function") {
+      copy(output);
+      console.log("Dados copiados para a area de transferencia:", product);
+      return;
+    }
+  } catch (error) {
+    console.log("A copia automatica foi bloqueada pelo navegador da loja.");
+  }
+  console.log("Copie o JSON abaixo e cole no botao Importar captura do painel:");
+  console.log(output);
+  try {
+    const box = document.createElement("textarea");
+    box.value = output;
+    box.setAttribute("readonly", "readonly");
+    box.style.position = "fixed";
+    box.style.left = "16px";
+    box.style.bottom = "16px";
+    box.style.zIndex = "2147483647";
+    box.style.width = "420px";
+    box.style.height = "180px";
+    box.style.padding = "12px";
+    box.style.background = "#111";
+    box.style.color = "#fff";
+    box.style.border = "2px solid #ff6b35";
+    document.body.appendChild(box);
+    box.focus();
+    box.select();
+    console.log("Tambem deixei uma caixa na pagina com o JSON selecionado para copiar.");
+  } catch (error) {
+    console.log("Nao consegui criar a caixa visual. Use o JSON impresso acima.");
+  }
 })();`;
 
 export default function AdminOffers() {
@@ -358,7 +389,18 @@ export default function AdminOffers() {
       applyCapturedProduct(product);
       showMessage("Dados importados da captura.");
     } catch {
-      showMessage("Nao encontrei uma captura valida na area de transferencia.");
+      const raw = window.prompt("Cole aqui o JSON gerado no console da loja:");
+      if (!raw) {
+        showMessage("Nao encontrei uma captura valida na area de transferencia.");
+        return;
+      }
+      try {
+        const product = JSON.parse(raw);
+        applyCapturedProduct(product);
+        showMessage("Dados importados da captura.");
+      } catch {
+        showMessage("O texto colado nao parece ser uma captura valida.");
+      }
     }
   };
 
