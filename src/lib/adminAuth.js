@@ -25,7 +25,7 @@ export async function loginAdmin(username, password) {
 
 export async function validateAdminSession() {
   if (!isAdminLoggedIn()) return false;
-  const response = await fetch("/api/admin/session", { credentials: "include" }).catch(() => null);
+  const response = await fetch("/api/admin/login", { credentials: "include" }).catch(() => null);
   if (!response?.ok) {
     setAdminLoggedIn(false);
     return false;

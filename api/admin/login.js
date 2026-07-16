@@ -1,4 +1,4 @@
-import { getAdminSessionCookie, methodNotAllowed, readJson, sendJson } from "../_lib/http.js";
+import { getAdminSessionCookie, methodNotAllowed, readJson, requireAdmin, sendJson } from "../_lib/http.js";
 import { createHash, timingSafeEqual } from "node:crypto";
 
 const ADMIN_USER = process.env.ADMIN_USERNAME || "admin";
@@ -23,7 +23,12 @@ function passwordMatches(password) {
 }
 
 export default async function handler(req, res) {
-  if (req.method !== "POST") return methodNotAllowed(res, ["POST"]);
+  if (req.method === "GET") {
+    if (!requireAdmin(req, res)) return;
+    return sendJson(res, 200, { ok: true });
+  }
+
+  if (req.method !== "POST") return methodNotAllowed(res, ["GET", "POST"]);
 
   const expectedKey = process.env.ADMIN_API_KEY;
   if (!expectedKey) {
