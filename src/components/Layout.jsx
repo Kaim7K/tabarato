@@ -1,6 +1,6 @@
 import { Link, NavLink, Outlet } from "react-router-dom";
-import { useEffect, useState } from "react";
-import { Bell, ChevronDown, Download, Flame, Heart, Home, Menu, Scale, Search, X } from "lucide-react";
+import { useState } from "react";
+import { ArrowLeftRight, Bell, ChevronDown, Flame, Heart, Home, Menu, Search, X } from "lucide-react";
 import SmartSearch from "@/components/SmartSearch";
 import { TelegramIcon, WhatsAppIcon } from "@/components/BrandIcons";
 import { FavoritesProvider } from "@/lib/FavoritesContext";
@@ -11,14 +11,7 @@ import { BRAND_LOGO } from "@/lib/brand";
 
 function Header() {
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [installPrompt, setInstallPrompt] = useState(null);
   const { compareIds } = useOfferTools();
-
-  useEffect(() => {
-    const handlePrompt = (event) => { event.preventDefault(); setInstallPrompt(event); };
-    window.addEventListener("beforeinstallprompt", handlePrompt);
-    return () => window.removeEventListener("beforeinstallprompt", handlePrompt);
-  }, []);
 
   return (
     <header className="sticky top-0 z-50 bg-white border-b border-[#111111]/10 shadow-[0_1px_0_rgba(0,0,0,0.04)]">
@@ -33,9 +26,8 @@ function Header() {
           </div>
 
           <div className="flex items-center justify-end gap-1 sm:gap-2">
-            {installPrompt && <button type="button" onClick={async () => { await installPrompt.prompt(); setInstallPrompt(null); }} className="min-h-11 min-w-11 inline-flex items-center justify-center text-[#111111]/70 hover:text-[#FF6B35]" title="Instalar Tá Barato" aria-label="Instalar Tá Barato"><Download className="w-5 h-5" /></button>}
             <Link to="/comparar" className="relative min-h-11 min-w-11 px-2 sm:px-3 inline-flex items-center justify-center gap-2 text-[#111111]/70 hover:text-[#FF6B35] transition" aria-label={`Comparar ofertas: ${compareIds.length} selecionadas`}>
-              <Scale className="w-5 h-5" />
+              <ArrowLeftRight className="w-5 h-5" />
               {compareIds.length > 0 && <span className="absolute top-1 right-0 min-w-5 h-5 px-1 rounded-full bg-[#FF6B35] text-white text-[10px] font-bold flex items-center justify-center">{compareIds.length}</span>}
               <span className="hidden xl:inline text-sm font-medium">Comparar</span>
             </Link>

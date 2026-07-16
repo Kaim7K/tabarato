@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -33,13 +33,13 @@ test("admin password is not hardcoded in the login function", () => {
   assert.match(login, /process\.env\.ADMIN_PASSWORD/);
 });
 
-test("PWA manifest and service worker are production-ready", () => {
-  const manifest = JSON.parse(readFileSync(join(root, "public", "manifest.json"), "utf8"));
-  const serviceWorker = readFileSync(join(root, "public", "sw.js"), "utf8");
-  assert.equal(manifest.display, "standalone");
-  assert.ok(manifest.shortcuts.length >= 3);
-  assert.match(serviceWorker, /url\.pathname\.startsWith\("\/api\/"\)/);
-  assert.match(serviceWorker, /request\.mode === "navigate"/);
+test("site does not expose an installable app version", () => {
+  const html = readFileSync(join(root, "index.html"), "utf8");
+  const main = readFileSync(join(root, "src", "main.jsx"), "utf8");
+  assert.doesNotMatch(html, /rel="manifest"/);
+  assert.doesNotMatch(main, /serviceWorker\.register/);
+  assert.equal(existsSync(join(root, "public", "manifest.json")), false);
+  assert.equal(existsSync(join(root, "public", "sw.js")), false);
 });
 
 test("public routes include radar, comparison and alerts", () => {
@@ -47,4 +47,12 @@ test("public routes include radar, comparison and alerts", () => {
   assert.match(app, /path="\/radar"/);
   assert.match(app, /path="\/comparar"/);
   assert.match(app, /path="\/alertas"/);
+});
+
+test("comparison removal uses a dedicated action", () => {
+  const context = readFileSync(join(root, "src", "lib", "OfferToolsContext.jsx"), "utf8");
+  const compare = readFileSync(join(root, "src", "pages", "Compare.jsx"), "utf8");
+  assert.match(context, /const removeCompare = useCallback/);
+  assert.match(compare, /removeCompare\(id\)/);
+  assert.match(compare, /setOffers\(\(current\) => current\.filter/);
 });

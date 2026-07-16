@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { AlertCircle, ArrowLeft, ArrowUpRight, Bell, Check, Heart, ImageDown, ImageOff, Scale, TrendingDown } from "lucide-react";
+import { AlertCircle, ArrowLeft, ArrowLeftRight, ArrowUpRight, Bell, Check, Heart, ImageDown, ImageOff, TrendingDown } from "lucide-react";
 import Footer from "@/components/Footer";
 import { StoreBadge, WhatsAppIcon } from "@/components/BrandIcons";
 import OfferCard from "@/components/OfferCard";
@@ -145,7 +145,7 @@ export default function OfferDetail() {
               <a href={`https://wa.me/?text=${encodeURIComponent(shareText)}`} onClick={() => trackOfferMetric(offer.id, "share")} target="_blank" rel="noopener noreferrer" className="min-h-11 flex items-center justify-center gap-2 px-4 py-2.5 bg-[#25D366]/15 text-[#128C7E] font-semibold rounded-md hover:bg-[#25D366] hover:text-[#073B2B] transition-colors text-sm">
                 <WhatsAppIcon className="w-5 h-5" /> Compartilhar
               </a>
-              <button type="button" disabled={!comparing && compareIds.length >= 3} onClick={() => toggleCompare(offer.id)} className={`min-h-11 flex items-center justify-center gap-2 px-4 py-2.5 rounded-md font-semibold text-sm border transition-colors ${comparing ? "bg-[#111111] text-white border-[#111111]" : "bg-white text-[#111111] border-[#111111]/12"}`}><Scale className="w-4 h-4" /> {comparing ? "Comparando" : compareIds.length >= 3 ? "Limite atingido" : "Comparar"}</button>
+              <button type="button" disabled={!comparing && compareIds.length >= 3} onClick={() => toggleCompare(offer.id)} className={`min-h-11 flex items-center justify-center gap-2 px-4 py-2.5 rounded-md font-semibold text-sm border transition-colors ${comparing ? "bg-[#111111] text-white border-[#111111]" : "bg-white text-[#111111] border-[#111111]/12"}`}><ArrowLeftRight className="w-4 h-4" /> {comparing ? "Comparando" : compareIds.length >= 3 ? "Limite atingido" : "Comparar"}</button>
             </div>
             <button type="button" onClick={() => { trackOfferMetric(offer.id, "share"); shareOfferCard(offer).catch(() => {}); }} className="mt-2 min-h-11 w-full flex items-center justify-center gap-2 px-4 rounded-md border border-[#111111]/12 bg-white text-[#111111] font-semibold text-sm hover:bg-[#F4F5F6]"><ImageDown className="w-4 h-4" /> Compartilhar card da oferta</button>
             <div className="mt-3 p-4 bg-[#F4F5F6] rounded-lg border border-[#111111]/8">

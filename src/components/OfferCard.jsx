@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { ArrowUpRight, Clock, Heart, ImageOff, Scale } from "lucide-react";
+import { ArrowLeftRight, ArrowUpRight, Clock, Heart, ImageOff } from "lucide-react";
 import { StoreBadge, WhatsAppIcon } from "@/components/BrandIcons";
 import { useFavorites } from "@/lib/FavoritesContext";
 import { formatPrice, formatRelativeDate } from "@/lib/catalog";
@@ -117,7 +117,7 @@ export default function OfferCard({ offer, rank = 0 }) {
             title={comparing ? "Remover da comparação" : compareIds.length >= 3 ? "Limite de três ofertas atingido" : "Adicionar à comparação"}
             aria-label={comparing ? "Remover da comparação" : compareIds.length >= 3 ? "Limite de três ofertas atingido" : "Adicionar à comparação"}
           >
-            <Scale className="w-5 h-5" />
+            <ArrowLeftRight className="w-5 h-5" />
           </button>
         </div>
       </div>

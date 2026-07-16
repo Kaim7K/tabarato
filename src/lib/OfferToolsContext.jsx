@@ -32,6 +32,10 @@ export function OfferToolsProvider({ children }) {
     });
   }, []);
 
+  const removeCompare = useCallback((id) => {
+    setCompareIds((current) => current.filter((item) => item !== id));
+  }, []);
+
   const createAlert = useCallback((offer, targetPrice) => {
     const price = Number(targetPrice);
     if (!Number.isFinite(price) || price <= 0) return false;
@@ -74,6 +78,7 @@ export function OfferToolsProvider({ children }) {
   const value = useMemo(() => ({
     compareIds,
     toggleCompare,
+    removeCompare,
     isComparing: (id) => compareIds.includes(id),
     alerts,
     createAlert,
@@ -81,7 +86,7 @@ export function OfferToolsProvider({ children }) {
     removeAlert,
     recordInterest,
     preferredCategories,
-  }), [alerts, compareIds, createAlert, createSearchAlert, preferredCategories, recordInterest, removeAlert, toggleCompare]);
+  }), [alerts, compareIds, createAlert, createSearchAlert, preferredCategories, recordInterest, removeAlert, removeCompare, toggleCompare]);
 
   return <OfferToolsContext.Provider value={value}>{children}</OfferToolsContext.Provider>;
 }

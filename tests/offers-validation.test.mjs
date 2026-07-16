@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { validateOffer } from "../api/_lib/offers.js";
+import { createInitialClickCount, validateOffer } from "../api/_lib/offers.js";
 
 const validOffer = {
   productName: "Produto teste",
@@ -22,4 +22,9 @@ test("validateOffer requires HTTPS affiliate links", () => {
 test("validateOffer requires scheduledAt for scheduled offers", () => {
   const errors = validateOffer({ ...validOffer, status: "AGENDADO" }, { requireSchedule: true });
   assert.ok(errors.some((error) => error.includes("agendamento")));
+});
+
+test("new offers receive an integer click count between 0 and 20", () => {
+  const samples = Array.from({ length: 100 }, () => createInitialClickCount());
+  assert.ok(samples.every((value) => Number.isInteger(value) && value >= 0 && value <= 20));
 });

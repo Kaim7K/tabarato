@@ -1,3 +1,4 @@
+import { randomInt } from "node:crypto";
 import { query } from "./db.js";
 
 export const STATUSES = ["RASCUNHO", "APROVADO", "AGENDADO", "PUBLICANDO", "PUBLICADO", "ERRO", "EXPIRADO"];
@@ -124,6 +125,10 @@ export function toDbParams(input) {
   };
 }
 
+export function createInitialClickCount() {
+  return randomInt(0, 21);
+}
+
 export async function listOffers({ search = "", status = "", category = "" } = {}) {
   const filters = [];
   const params = [];
@@ -151,15 +156,16 @@ export async function getOffer(id) {
 
 export async function createOffer(input) {
   const data = toDbParams(input);
+  const initialClicks = createInitialClickCount();
   const result = await query(
     `INSERT INTO telegram_offers (
       product_name, short_description, current_price, previous_price, coupon, category, image_url,
-      affiliate_link, platform, extra_text, status, scheduled_at
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+      affiliate_link, platform, extra_text, status, scheduled_at, clicks
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
     RETURNING *`,
     [
       data.product_name, data.short_description, data.current_price, data.previous_price, data.coupon, data.category,
-      data.image_url, data.affiliate_link, data.platform, data.extra_text, data.status, data.scheduled_at,
+      data.image_url, data.affiliate_link, data.platform, data.extra_text, data.status, data.scheduled_at, initialClicks,
     ]
   );
   return mapOffer(result.rows[0]);
