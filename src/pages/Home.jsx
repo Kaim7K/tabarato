@@ -2,9 +2,10 @@ import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import OfferCard from "@/components/OfferCard";
 import Footer from "@/components/Footer";
-import { ArrowUpRight, Flame, TrendingUp, Search, Send, Loader2, Home as HomeIcon, Laptop, Paperclip, Wrench, ChefHat, Sparkles, BadgeDollarSign } from "lucide-react";
+import { ArrowUpRight, BadgeDollarSign, ChefHat, Flame, Home as HomeIcon, Laptop, Loader2, MessageCircle, Paperclip, Search, Send, Sparkles, TrendingUp, Wrench } from "lucide-react";
 import { DEFAULT_CATEGORIES, formatPrice, normalizeText } from "@/lib/catalog";
 import { listPublicOffers } from "@/lib/offersApi";
+import { TELEGRAM_CHANNEL_URL, WHATSAPP_GROUP_URL } from "@/lib/publicLinks";
 
 const categoryIcons = {
   Casa: HomeIcon,
@@ -149,14 +150,20 @@ export default function Home() {
         <div className="bg-white rounded-3xl p-8 sm:p-16 shadow-[0_20px_50px_rgba(0,0,0,0.04)] text-center">
           <Flame className="w-10 h-10 text-[#FF6B35] mx-auto mb-6" />
           <h2 className="text-3xl sm:text-4xl font-bold text-[#111111] tracking-tight mb-4">Receba os melhores achados no celular</h2>
-          <p className="text-[#111111]/60 text-lg max-w-xl mx-auto mb-8">A gente filtra. Você encontra. Acompanhe o canal para receber ofertas selecionadas em primeira mão.</p>
-          <a href="https://t.me/" target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center gap-2 px-8 py-4 bg-[#111111] text-white font-semibold rounded-full hover:bg-[#111111]/90 transition shadow-lg">
-            <Send className="w-5 h-5" /> Seguir no Telegram
-          </a>
+          <p className="text-[#111111]/60 text-lg max-w-xl mx-auto mb-8">A gente filtra. Você encontra. Acompanhe nossos canais para receber ofertas selecionadas em primeira mão.</p>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            {WHATSAPP_GROUP_URL && (
+              <a href={WHATSAPP_GROUP_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center gap-2 px-8 py-4 bg-[#168A55] text-white font-semibold rounded-full hover:bg-[#168A55]/90 transition shadow-lg">
+                <MessageCircle className="w-5 h-5" /> Entrar no WhatsApp
+              </a>
+            )}
+            <a href={TELEGRAM_CHANNEL_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center gap-2 px-8 py-4 bg-[#111111] text-white font-semibold rounded-full hover:bg-[#111111]/90 transition shadow-lg">
+              <Send className="w-5 h-5" /> Seguir no Telegram
+            </a>
+          </div>
         </div>
       </section>
       <Footer />
     </div>
   );
 }
-

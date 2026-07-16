@@ -1,9 +1,10 @@
 import { Link, Outlet } from "react-router-dom";
 import { useState } from "react";
-import { Menu, X, Zap, Heart } from "lucide-react";
+import { Menu, X, Zap, Heart, MessageCircle } from "lucide-react";
 import SmartSearch from "@/components/SmartSearch";
 import { FavoritesProvider } from "@/lib/FavoritesContext";
 import { DEFAULT_CATEGORIES, SITE_NAME } from "@/lib/catalog";
+import { WHATSAPP_GROUP_URL } from "@/lib/publicLinks";
 
 function Header() {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -45,6 +46,12 @@ function Header() {
               <Heart className="w-4 h-4" />
               Favoritos
             </Link>
+            {WHATSAPP_GROUP_URL && (
+              <a href={WHATSAPP_GROUP_URL} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-[#111111] hover:text-[#168A55] transition flex items-center gap-1.5">
+                <MessageCircle className="w-4 h-4" />
+                WhatsApp
+              </a>
+            )}
             <Link to="/admin/ofertas" className="px-5 py-2.5 bg-[#FF6B35] hover:bg-[#D95426] text-white text-sm font-semibold rounded-full transition shadow-sm">
               Painel
             </Link>
@@ -69,6 +76,11 @@ function Header() {
           <Link to="/favoritos" onClick={() => setMobileOpen(false)} className="text-center px-5 py-3 bg-white text-[#111111] text-sm font-semibold rounded-full flex items-center justify-center gap-2">
             <Heart className="w-4 h-4" /> Meus favoritos
           </Link>
+          {WHATSAPP_GROUP_URL && (
+            <a href={WHATSAPP_GROUP_URL} target="_blank" rel="noopener noreferrer" onClick={() => setMobileOpen(false)} className="text-center px-5 py-3 bg-[#168A55] text-white text-sm font-semibold rounded-full flex items-center justify-center gap-2">
+              <MessageCircle className="w-4 h-4" /> Grupo no WhatsApp
+            </a>
+          )}
           <Link to="/admin/ofertas" onClick={() => setMobileOpen(false)} className="block text-center px-5 py-3 bg-[#FF6B35] text-white text-sm font-semibold rounded-full">
             Painel
           </Link>

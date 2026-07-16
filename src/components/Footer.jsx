@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
-import { Zap, Send } from "lucide-react";
+import { MessageCircle, Send, Zap } from "lucide-react";
 import { SITE_NAME } from "@/lib/catalog";
+import { TELEGRAM_CHANNEL_URL, WHATSAPP_GROUP_URL } from "@/lib/publicLinks";
 
 export default function Footer() {
   const [firstWord, ...rest] = SITE_NAME.split(" ");
@@ -12,14 +13,21 @@ export default function Footer() {
         <div className="max-w-4xl mx-auto px-4 sm:px-6 text-center">
           <p className="text-white/70 text-sm font-medium uppercase tracking-widest mb-4">Não perca nenhum achado</p>
           <h2 className="text-white text-3xl sm:text-5xl font-bold tracking-tight mb-4 leading-tight">
-            Receba os melhores achados diretamente no Telegram.
+            Receba os melhores achados diretamente no celular.
           </h2>
           <p className="text-white/80 text-lg mb-10 max-w-xl mx-auto">
-            A gente filtra. Você encontra. Acompanhe o canal para receber ofertas selecionadas em primeira mão.
+            A gente filtra. Você encontra. Acompanhe nossos canais para receber ofertas selecionadas em primeira mão.
           </p>
-          <a href="https://t.me/" target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center gap-2 px-8 py-4 bg-white text-[#111111] font-semibold rounded-full hover:bg-white/90 transition shadow-lg">
-            <Send className="w-5 h-5" /> Seguir no Telegram
-          </a>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            {WHATSAPP_GROUP_URL && (
+              <a href={WHATSAPP_GROUP_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center gap-2 px-8 py-4 bg-[#168A55] text-white font-semibold rounded-full hover:bg-[#168A55]/90 transition shadow-lg">
+                <MessageCircle className="w-5 h-5" /> Entrar no WhatsApp
+              </a>
+            )}
+            <a href={TELEGRAM_CHANNEL_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center gap-2 px-8 py-4 bg-white text-[#111111] font-semibold rounded-full hover:bg-white/90 transition shadow-lg">
+              <Send className="w-5 h-5" /> Seguir no Telegram
+            </a>
+          </div>
         </div>
       </div>
       <div className="bg-[#111111] py-12">
@@ -68,4 +76,3 @@ export default function Footer() {
     </footer>
   );
 }
-

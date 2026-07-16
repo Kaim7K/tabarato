@@ -35,6 +35,8 @@ TELEGRAM_BOT_TOKEN=
 TELEGRAM_CHANNEL_ID=
 CRON_SECRET=
 APP_URL=
+VITE_WHATSAPP_GROUP_URL=
+VITE_TELEGRAM_CHANNEL_URL=
 ```
 
 Use `POSTGRES_URL` ou `DATABASE_URL`. Não coloque tokens reais no repositório.
@@ -113,6 +115,8 @@ Configure manualmente no projeto:
 - `TELEGRAM_CHANNEL_ID`
 - `CRON_SECRET`
 - `APP_URL`
+- `VITE_WHATSAPP_GROUP_URL`
+- `VITE_TELEGRAM_CHANNEL_URL`
 
 Depois rode novo deploy. Não há deploy automático neste repositório.
 
