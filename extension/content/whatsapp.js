@@ -37,15 +37,24 @@
 
   const editableByLabel = (patterns) => [...document.querySelectorAll('[contenteditable="true"]')]
     .find((element) => {
-      const label = normalized(`${element.getAttribute("aria-label") || ""} ${element.getAttribute("data-placeholder") || ""}`);
+      const label = normalized([
+        element.getAttribute("aria-label"),
+        element.getAttribute("aria-placeholder"),
+        element.getAttribute("data-placeholder"),
+        element.getAttribute("placeholder"),
+      ].filter(Boolean).join(" "));
       return visible(element) && patterns.some((pattern) => label.includes(pattern));
     });
 
   const setEditableText = (element, value) => {
     element.focus();
     document.execCommand("selectAll", false, null);
-    document.execCommand("insertText", false, value);
-    element.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: value }));
+    document.execCommand("delete", false, null);
+    String(value).split("\n").forEach((line, index, lines) => {
+      if (line) document.execCommand("insertText", false, line);
+      if (index < lines.length - 1) document.execCommand("insertLineBreak", false, null);
+    });
+    element.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: null }));
   };
 
   const searchBox = () => editableByLabel(["pesquisar", "search"])
@@ -117,6 +126,29 @@
   const messageComposer = () => [...document.querySelectorAll('#main footer [contenteditable="true"], footer [data-testid="conversation-compose-box-input"], footer [role="textbox"]')]
     .find(visible);
 
+  const outgoingMessages = () => [...document.querySelectorAll("#main [data-testid='msg-container'], #main .message-out, #main [class*='message-out']")];
+
+  const captionEditor = (composer) => {
+    const labeled = editableByLabel(["legenda", "caption", "adicione uma legenda", "add a caption"]);
+    if (labeled && labeled !== composer) return labeled;
+
+    return [...document.querySelectorAll('[contenteditable="true"]')].find((element) => {
+      if (element === composer || !visible(element) || element.closest("#pane-side")) return false;
+      if (element.closest("[role='dialog'], [data-animate-modal-popup], [data-testid*='media']")) return true;
+      const rectangle = element.getBoundingClientRect();
+      const composerRectangle = composer.getBoundingClientRect();
+      return rectangle.left >= composerRectangle.left && rectangle.top > window.innerHeight / 2;
+    });
+  };
+
+  const sentMessageAppeared = (countBefore, caption) => {
+    const messages = outgoingMessages();
+    if (messages.length <= countBefore) return false;
+    const comparable = (value) => normalized(value).replace(/[*~_]/g, "");
+    const signature = clean(caption.split("\n").find((line) => clean(line).length > 14) || caption).slice(0, 48);
+    return messages.slice(countBefore).some((message) => comparable(message.textContent).includes(comparable(signature)));
+  };
+
   async function copyImageToClipboard(file) {
     if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined") {
       throw new Error("O navegador nao permitiu copiar a imagem para o clipboard.");
@@ -140,20 +172,27 @@
   async function pasteOffer(file, caption) {
     const composer = await waitFor(messageComposer, 10000);
     if (!composer) throw new Error("O campo de mensagem do WhatsApp nao foi encontrado.");
+    const messageCountBefore = outgoingMessages().length;
 
     setEditableText(composer, caption);
     await copyImageToClipboard(file);
     pasteImageFromClipboard(composer, file);
 
-    const captionBox = await waitFor(() => editableByLabel(["legenda", "caption"])
-      || [...document.querySelectorAll('[role="dialog"] [contenteditable="true"], [data-animate-modal-popup] [contenteditable="true"]')].find(visible), 15000);
-    if (!captionBox) throw new Error("A imagem foi copiada, mas o WhatsApp nao abriu a previa de envio.");
-    if (!clean(captionBox.textContent)) setEditableText(captionBox, caption);
+    const captionBox = await waitFor(() => captionEditor(composer), 15000);
+    if (!captionBox) {
+      const sent = await waitFor(() => sentMessageAppeared(messageCountBefore, caption), 3000);
+      if (sent) return;
+      throw new Error("A imagem foi copiada, mas o WhatsApp nao abriu a previa de envio.");
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 700));
+    setEditableText(captionBox, caption);
+    await new Promise((resolve) => window.setTimeout(resolve, 250));
 
     const send = await waitFor(() => actionByLabel(["enviar", "send"])
       || [...document.querySelectorAll('[data-icon="send"]')].map((element) => element.closest("button, [role='button']")).find(visible), 10000);
     if (!send) throw new Error("O botao Enviar do WhatsApp nao foi encontrado.");
     send.click();
+    await waitFor(() => sentMessageAppeared(messageCountBefore, caption) || !visible(captionBox), 5000);
   }
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {

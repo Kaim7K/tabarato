@@ -121,10 +121,16 @@ test("extension shares the original product image and Telegram-style text on Wha
   assert.match(whatsapp, /new ClipboardItem/);
   assert.match(whatsapp, /new ClipboardEvent\("paste"/);
   assert.match(whatsapp, /setEditableText\(composer, caption\)/);
+  assert.match(whatsapp, /insertLineBreak/);
+  assert.match(whatsapp, /setEditableText\(captionBox, caption\)/);
+  assert.match(whatsapp, /aria-placeholder/);
+  assert.match(whatsapp, /sentMessageAppeared/);
   assert.match(whatsapp, /TABARATO_WHATSAPP_SEND/);
   assert.ok(manifest.host_permissions.some((permission) => permission.includes("mlstatic.com")));
   assert.ok(manifest.host_permissions.includes("https://web.whatsapp.com/*"));
   assert.ok(manifest.permissions.includes("clipboardWrite"));
+  assert.match(app, /OFERTA T\\u00c1 BARATO/);
+  assert.match(app, /Publicidade\. Pre\\u00e7o e disponibilidade podem mudar/);
 });
 
 test("extension can open the admin panel without a captured product", () => {
