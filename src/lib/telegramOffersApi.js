@@ -30,6 +30,7 @@ export const telegramOffersApi = {
   publish: (id) => request(`/api/admin/ofertas/${id}/publicar`, { method: "POST" }),
   schedule: (id, scheduledAt) => request(`/api/admin/ofertas/${id}/agendar`, { method: "POST", body: { scheduledAt } }),
   testTelegram: () => request("/api/admin/telegram/test", { method: "POST" }),
+  previewProduct: (link) => request("/api/admin/product-preview", { method: "POST", body: { link } }),
 };
 
 export function formatTelegramPreview(offer) {

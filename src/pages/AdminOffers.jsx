@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, CalendarClock, CheckCircle2, Loader2, LogOut, RefreshCw, Save, Search, Send, Trash2, Zap } from "lucide-react";
+import { ArrowLeft, CalendarClock, CheckCircle2, Loader2, LogOut, RefreshCw, Save, Search, Send, Sparkles, Trash2, Zap } from "lucide-react";
 import { DEFAULT_CATEGORIES, formatPrice, SITE_NAME } from "@/lib/catalog";
 import { logoutAdmin } from "@/lib/adminAuth";
 import { formatTelegramPreview, telegramOffersApi, telegramStatuses } from "@/lib/telegramOffersApi";
@@ -48,6 +48,7 @@ export default function AdminOffers() {
   const [category, setCategory] = useState("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [autoFilling, setAutoFilling] = useState(false);
   const [message, setMessage] = useState("");
 
   const selected = useMemo(() => offers.find((offer) => offer.id === editingId), [offers, editingId]);
@@ -96,6 +97,32 @@ export default function AdminOffers() {
   };
 
   const set = (key, value) => setForm((current) => ({ ...current, [key]: value }));
+
+  const autoFillFromLink = async () => {
+    if (!form.affiliateLink) {
+      showMessage("Cole o link do produto antes de preencher.");
+      return;
+    }
+    setAutoFilling(true);
+    try {
+      const data = await telegramOffersApi.previewProduct(form.affiliateLink);
+      const product = data.product || {};
+      setForm((current) => ({
+        ...current,
+        productName: product.productName || current.productName,
+        shortDescription: product.shortDescription || current.shortDescription,
+        currentPrice: product.currentPrice || current.currentPrice,
+        imageUrl: product.imageUrl || current.imageUrl,
+        affiliateLink: product.affiliateLink || current.affiliateLink,
+        platform: product.platform || current.platform,
+      }));
+      showMessage("Produto preenchido automaticamente.");
+    } catch (error) {
+      showMessage(error.message);
+    } finally {
+      setAutoFilling(false);
+    }
+  };
 
   const validateClient = () => {
     const missing = [];
@@ -323,8 +350,16 @@ export default function AdminOffers() {
                   {categories.map((item) => <option key={item}>{item}</option>)}
                 </select>
               </Field>
+              <Field label="Link oficial de afiliado *">
+                <div className="flex gap-2">
+                  <input value={form.affiliateLink} onChange={(e) => set("affiliateLink", e.target.value)} className={inputCls} placeholder="https://..." />
+                  <button type="button" onClick={autoFillFromLink} disabled={autoFilling || !form.affiliateLink} className="px-4 py-2.5 bg-white text-[#0D0D0D] rounded-xl text-sm font-semibold disabled:opacity-50 flex items-center gap-2 whitespace-nowrap">
+                    {autoFilling ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                    Preencher
+                  </button>
+                </div>
+              </Field>
               <Field label="URL da imagem"><input value={form.imageUrl} onChange={(e) => set("imageUrl", e.target.value)} className={inputCls} placeholder="https://..." /></Field>
-              <Field label="Link oficial de afiliado *"><input value={form.affiliateLink} onChange={(e) => set("affiliateLink", e.target.value)} className={inputCls} placeholder="https://..." /></Field>
               <Field label="Texto complementar"><textarea value={form.extraText} onChange={(e) => set("extraText", e.target.value)} rows={2} className={`${inputCls} resize-none`} /></Field>
               <Field label="Data e horário do agendamento"><input type="datetime-local" value={form.scheduledAt} onChange={(e) => set("scheduledAt", e.target.value)} className={inputCls} /></Field>
 
