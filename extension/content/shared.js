@@ -9,6 +9,24 @@
     return "";
   };
 
+  const firstParagraph = (value = "") => {
+    const source = String(value).trim();
+    if (!source) return "";
+    const paragraph = source.split(/\r?\n/)[0];
+    return clean(paragraph);
+  };
+
+  const description = (...selectors) => {
+    for (const selector of selectors) {
+      const container = document.querySelector(selector);
+      if (!container) continue;
+      const block = container.matches("p, li") ? container : container.querySelector("p, li");
+      const value = firstParagraph(block?.textContent || container.textContent);
+      if (value) return value;
+    }
+    return "";
+  };
+
   const attribute = (name, ...selectors) => {
     for (const selector of selectors) {
       const value = clean(document.querySelector(selector)?.getAttribute(name));
@@ -129,7 +147,9 @@
     canonicalUrl,
     clean,
     coupon,
+    description,
     findAffiliateLink,
+    firstParagraph,
     jsonProduct,
     meta,
     normalizePrice,

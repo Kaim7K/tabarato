@@ -12,7 +12,7 @@
       const ids = location.pathname.match(/-i\.(\d+)\.(\d+)/i);
       return {
         productName: tools.text("[data-testid='pdp-product-title']", "main h1", "h1") || tools.clean(structured.name) || tools.meta("og:title"),
-        shortDescription: tools.text("[data-testid='pdp-product-description']", "[class*='product-detail']") || tools.clean(structured.description) || tools.meta("og:description"),
+        shortDescription: tools.description("[data-testid='pdp-product-description']", "[class*='product-detail']") || tools.firstParagraph(structured.description) || tools.firstParagraph(tools.meta("og:description")),
         currentPrice: tools.price("[data-testid='pdp-product-price']", "[class*='pqTWkA']", "main [class*='price']") || tools.productPrice(structured),
         previousPrice: tools.price("[data-testid='pdp-product-original-price']", "main [class*='original-price']"),
         coupon: tools.coupon("[data-testid*='voucher']", "[class*='voucher']", "[class*='coupon']"),

@@ -9,6 +9,7 @@
   },
   "permissions": [
     "activeTab",
+    "scripting",
     "storage",
     "sidePanel",
     "tabs"
@@ -17,6 +18,12 @@
     "https://*/*",
     "http://localhost/*",
     "http://127.0.0.1/*"
+  ],
+  "host_permissions": [
+    "https://*.mlstatic.com/*",
+    "https://m.media-amazon.com/*",
+    "https://*.img.susercontent.com/*",
+    "https://web.whatsapp.com/*"
   ],
   "background": {
     "service_worker": "background/service-worker.js"
@@ -45,6 +52,11 @@
         "content/stores/shopee.js",
         "content/index.js"
       ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://web.whatsapp.com/*"],
+      "js": ["content/whatsapp.js"],
       "run_at": "document_idle"
     }
   ],

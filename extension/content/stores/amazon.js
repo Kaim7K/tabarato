@@ -12,7 +12,7 @@
       const productId = location.pathname.match(/\/(?:dp|gp\/product)\/([A-Z0-9]{10})/i)?.[1]?.toUpperCase() || "";
       return {
         productName: tools.text("#productTitle", "h1") || tools.clean(structured.name) || tools.meta("og:title"),
-        shortDescription: tools.text("#feature-bullets", "#productDescription") || tools.clean(structured.description) || tools.meta("og:description"),
+        shortDescription: tools.description("#feature-bullets", "#productDescription") || tools.firstParagraph(structured.description) || tools.firstParagraph(tools.meta("og:description")),
         currentPrice: tools.price("#corePrice_feature_div .a-price .a-offscreen", ".priceToPay .a-offscreen", ".a-price .a-offscreen") || tools.productPrice(structured),
         previousPrice: tools.price(".basisPrice .a-offscreen", ".a-text-price .a-offscreen"),
         coupon: tools.coupon("#couponText", "[id*='coupon']", "[class*='coupon']"),

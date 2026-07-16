@@ -27,6 +27,7 @@ Sem essa variavel, o servidor aceita origens com o formato oficial de extensoes 
 - O login retorna um token assinado valido por 24 horas.
 - Produtos sao criados como `RASCUNHO`.
 - A acao **Publicar agora** exige confirmacao, cria a oferta como `APROVADO` e envia pelo publicador existente do Telegram.
+- **Enviar ao WhatsApp** gera uma imagem quadrada, reutiliza a aba aberta do WhatsApp Web, procura o grupo configurado e envia a imagem com o texto como legenda.
 - A extensao pede acesso apenas ao dominio configurado pelo administrador.
 - O link capturado deve ser revisado, pois algumas lojas nao disponibilizam automaticamente o link pessoal de afiliado no HTML.
 
@@ -35,3 +36,5 @@ Sem essa variavel, o servidor aceita origens com o formato oficial de extensoes 
 Ao clicar em **Enviar produto**, a extensao procura o link curto criado pelo programa de afiliados. Se necessario, ela aciona **Compartilhar**, aguarda o modal **Gerar link / ID de produto** e captura o campo no formato `https://meli.la/...`.
 
 Ofertas do Mercado Livre nao podem ser salvas pela extensao com a URL comum do produto. Caso a conta ou a pagina nao disponibilize o gerador, abra o modal manualmente e cole o `meli.la` no campo de afiliado.
+
+A descricao capturada usa somente o primeiro paragrafo encontrado na pagina ou nos metadados do produto.

@@ -65,3 +65,35 @@ test("extension publishes through the protected existing publisher", () => {
   assert.match(publishRoute, /handleExtensionCors/);
   assert.match(publishRoute, /allowExtension: true/);
 });
+
+test("extension keeps only the first captured description paragraph", () => {
+  const shared = readFileSync(join(extensionRoot, "content", "shared.js"), "utf8");
+  const sidePanel = readFileSync(join(extensionRoot, "sidepanel", "app.js"), "utf8");
+  const stores = ["mercado-livre.js", "amazon.js", "shopee.js"]
+    .map((file) => readFileSync(join(extensionRoot, "content", "stores", file), "utf8"));
+  assert.match(shared, /const firstParagraph/);
+  assert.match(shared, /container\.querySelector\("p, li"\)/);
+  assert.match(sidePanel, /product\.shortDescription = firstParagraph/);
+  stores.forEach((source) => assert.match(source, /tools\.description/));
+});
+
+test("extension creates an image and formatted text for WhatsApp sharing", () => {
+  const html = readFileSync(join(extensionRoot, "sidepanel", "index.html"), "utf8");
+  const app = readFileSync(join(extensionRoot, "sidepanel", "app.js"), "utf8");
+  const background = readFileSync(join(extensionRoot, "background", "service-worker.js"), "utf8");
+  const whatsapp = readFileSync(join(extensionRoot, "content", "whatsapp.js"), "utf8");
+  const manifest = JSON.parse(readFileSync(join(extensionRoot, "manifest.json"), "utf8"));
+  assert.match(html, /id="whatsapp-button"/);
+  assert.match(html, /id="whatsapp-group"/);
+  assert.match(html, /assets\/whatsapp\.svg/);
+  assert.match(app, /createWhatsAppImage/);
+  assert.match(app, /TABARATO_SHARE_WHATSAPP/);
+  assert.match(app, /Publicidade \| Link de afiliado/);
+  assert.match(background, /chrome\.tabs\.query\(\{ url: "https:\/\/web\.whatsapp\.com\/\*" \}\)/);
+  assert.match(background, /chrome\.tabs\.update\(tab\.id, \{ active: true \}\)/);
+  assert.match(whatsapp, /exactGroup/);
+  assert.match(whatsapp, /DataTransfer/);
+  assert.match(whatsapp, /TABARATO_WHATSAPP_SEND/);
+  assert.ok(manifest.host_permissions.some((permission) => permission.includes("mlstatic.com")));
+  assert.ok(manifest.host_permissions.includes("https://web.whatsapp.com/*"));
+});

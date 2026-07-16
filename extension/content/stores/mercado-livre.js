@@ -53,7 +53,7 @@
       const productId = location.href.match(/\b(MLB-?\d{6,})\b/i)?.[1]?.replace("-", "").toUpperCase() || "";
       return {
         productName: tools.text(".ui-pdp-title", "h1") || tools.clean(structured.name) || tools.meta("og:title"),
-        shortDescription: tools.text(".ui-pdp-description__content", ".ui-pdp-description") || tools.clean(structured.description) || tools.meta("og:description"),
+        shortDescription: tools.description(".ui-pdp-description__content", ".ui-pdp-description") || tools.firstParagraph(structured.description) || tools.firstParagraph(tools.meta("og:description")),
         currentPrice: tools.price(".ui-pdp-price__second-line .andes-money-amount", ".ui-pdp-price__main-container .andes-money-amount") || tools.productPrice(structured),
         previousPrice: tools.price(".ui-pdp-price__original-value .andes-money-amount", ".andes-money-amount--previous"),
         coupon: tools.coupon("[class*='coupon']", "[data-testid*='coupon']", "[class*='voucher']"),
