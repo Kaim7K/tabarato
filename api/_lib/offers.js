@@ -30,6 +30,7 @@ export function mapOffer(row) {
     category: row.category,
     imageUrl: row.image_url || "",
     affiliateLink: row.affiliate_link,
+    sourceProductId: row.source_product_id || "",
     platform: row.platform,
     extraText: row.extra_text || "",
     status: row.status,
@@ -118,11 +119,62 @@ export function toDbParams(input) {
     category: String(input.category || "").trim(),
     image_url: input.imageUrl ? String(input.imageUrl).trim() : null,
     affiliate_link: String(input.affiliateLink || "").trim(),
+    source_product_id: input.sourceProductId ? String(input.sourceProductId).trim().slice(0, 120) : null,
     platform: String(input.platform || "").trim(),
     extra_text: input.extraText ? String(input.extraText).trim() : null,
     status: input.status || "RASCUNHO",
     scheduled_at: input.scheduledAt || null,
   };
+}
+
+export function normalizeProductIdentity(value = "") {
+  return String(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function productKey(data) {
+  const platform = normalizeProductIdentity(data.platform);
+  const sourceId = normalizeProductIdentity(data.source_product_id);
+  const name = normalizeProductIdentity(data.product_name);
+  return sourceId ? `${platform}:id:${sourceId}` : `${platform}:name:${name}`;
+}
+
+export async function findDuplicateOffer(input, excludeId = "", statuses = []) {
+  const data = toDbParams(input);
+  const result = await query(
+    `SELECT id, product_name, source_product_id, status
+     FROM telegram_offers
+     WHERE LOWER(platform)=LOWER($1)
+       AND current_price=$2
+       AND ($3::text='' OR id::text<>$3)`,
+    [data.platform, data.current_price, String(excludeId || "")]
+  );
+  const sourceId = normalizeProductIdentity(data.source_product_id);
+  const name = normalizeProductIdentity(data.product_name);
+  return result.rows.find((row) => {
+    if (statuses.length && !statuses.includes(row.status)) return false;
+    const existingSourceId = normalizeProductIdentity(row.source_product_id);
+    if (sourceId && existingSourceId) return sourceId === existingSourceId;
+    return name && name === normalizeProductIdentity(row.product_name);
+  }) || null;
+}
+
+function duplicateError(duplicate) {
+  return Object.assign(
+    new Error(`Este produto já está cadastrado com o mesmo preço em "${duplicate.product_name}".`),
+    { statusCode: 409 }
+  );
+}
+
+function rethrowDuplicateConstraint(error, productName) {
+  if (error?.code === "23505" && error?.constraint === "idx_telegram_offers_unique_product_price") {
+    throw duplicateError({ product_name: productName });
+  }
+  throw error;
 }
 
 export function createInitialClickCount(recentClickCounts = []) {
@@ -162,35 +214,41 @@ export async function getOffer(id) {
 
 export async function createOffer(input) {
   const data = toDbParams(input);
+  const duplicate = await findDuplicateOffer(input);
+  if (duplicate) throw duplicateError(duplicate);
   const recentClicks = await query("SELECT clicks FROM telegram_offers ORDER BY created_at DESC LIMIT 20");
   const initialClicks = createInitialClickCount(recentClicks.rows.map((row) => row.clicks));
   const result = await query(
     `INSERT INTO telegram_offers (
       product_name, short_description, current_price, previous_price, coupon, category, image_url,
-      affiliate_link, platform, extra_text, status, scheduled_at, clicks
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+      affiliate_link, platform, extra_text, status, scheduled_at, clicks, source_product_id, product_key
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
     RETURNING *`,
     [
       data.product_name, data.short_description, data.current_price, data.previous_price, data.coupon, data.category,
       data.image_url, data.affiliate_link, data.platform, data.extra_text, data.status, data.scheduled_at, initialClicks,
+      data.source_product_id, productKey(data),
     ]
-  );
+  ).catch((error) => rethrowDuplicateConstraint(error, data.product_name));
   return mapOffer(result.rows[0]);
 }
 
 export async function updateOffer(id, input) {
   const data = toDbParams(input);
+  const duplicate = await findDuplicateOffer(input, id);
+  if (duplicate) throw duplicateError(duplicate);
   const result = await query(
     `UPDATE telegram_offers SET
       product_name=$1, short_description=$2, current_price=$3, previous_price=$4, coupon=$5,
       category=$6, image_url=$7, affiliate_link=$8, platform=$9, extra_text=$10, status=$11,
-      scheduled_at=$12, error_message=NULL
-    WHERE id=$13
+      scheduled_at=$12, source_product_id=$13, product_key=$14, error_message=NULL
+    WHERE id=$15
     RETURNING *`,
     [
       data.product_name, data.short_description, data.current_price, data.previous_price, data.coupon, data.category,
-      data.image_url, data.affiliate_link, data.platform, data.extra_text, data.status, data.scheduled_at, id,
+      data.image_url, data.affiliate_link, data.platform, data.extra_text, data.status, data.scheduled_at,
+      data.source_product_id, productKey(data), id,
     ]
-  );
+  ).catch((error) => rethrowDuplicateConstraint(error, data.product_name));
   return mapOffer(result.rows[0]);
 }

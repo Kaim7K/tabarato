@@ -41,6 +41,8 @@ export async function ensureSchema() {
         image_url TEXT,
         affiliate_link TEXT NOT NULL,
         platform TEXT NOT NULL,
+        source_product_id TEXT,
+        product_key TEXT,
         extra_text TEXT,
         status TEXT NOT NULL DEFAULT 'RASCUNHO',
         scheduled_at TIMESTAMPTZ,
@@ -59,6 +61,8 @@ export async function ensureSchema() {
       ALTER TABLE telegram_offers ADD COLUMN IF NOT EXISTS clicks INTEGER NOT NULL DEFAULT 0;
       ALTER TABLE telegram_offers ADD COLUMN IF NOT EXISTS shares INTEGER NOT NULL DEFAULT 0;
       ALTER TABLE telegram_offers ADD COLUMN IF NOT EXISTS favorites INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE telegram_offers ADD COLUMN IF NOT EXISTS source_product_id TEXT;
+      ALTER TABLE telegram_offers ADD COLUMN IF NOT EXISTS product_key TEXT;
       ALTER TABLE telegram_offers ALTER COLUMN short_description DROP NOT NULL;
 
       CREATE TABLE IF NOT EXISTS site_categories (
@@ -116,6 +120,9 @@ export async function ensureSchema() {
       CREATE INDEX IF NOT EXISTS idx_telegram_offers_scheduled_at ON telegram_offers (scheduled_at);
       CREATE INDEX IF NOT EXISTS idx_telegram_offers_created_at ON telegram_offers (created_at);
       CREATE INDEX IF NOT EXISTS idx_telegram_offers_category ON telegram_offers (category);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_telegram_offers_unique_product_price
+      ON telegram_offers (product_key, current_price)
+      WHERE product_key IS NOT NULL;
 
       CREATE OR REPLACE FUNCTION set_telegram_offers_updated_at()
       RETURNS TRIGGER AS $$

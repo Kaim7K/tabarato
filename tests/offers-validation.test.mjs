@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createInitialClickCount, validateOffer } from "../api/_lib/offers.js";
+import { createInitialClickCount, normalizeProductIdentity, validateOffer } from "../api/_lib/offers.js";
 
 const validOffer = {
   productName: "Produto teste",
@@ -33,4 +33,8 @@ test("new offers avoid click counts already used by recent products", () => {
   const recentCounts = [20, 19, 18, 12, 7, 3];
   const samples = Array.from({ length: 100 }, () => createInitialClickCount(recentCounts));
   assert.ok(samples.every((value) => !recentCounts.includes(value)));
+});
+
+test("product identity ignores accents, punctuation and casing", () => {
+  assert.equal(normalizeProductIdentity("  Tênis Redley! Preto  "), "tenis redley preto");
 });

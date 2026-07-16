@@ -1,8 +1,15 @@
 import { query } from "./db.js";
-import { mapOffer, validateOffer } from "./offers.js";
+import { findDuplicateOffer, getOffer, mapOffer, validateOffer } from "./offers.js";
 import { sendTelegramOffer } from "./telegram.js";
 
 export async function publishOfferById(id) {
+  const candidate = await getOffer(id);
+  if (!candidate) return { ok: false, status: 404, error: "Oferta não encontrada." };
+  const duplicate = await findDuplicateOffer(candidate, id, ["PUBLICADO", "PUBLICANDO"]);
+  if (duplicate) {
+    return { ok: false, status: 409, error: "Este produto já foi publicado com o mesmo preço." };
+  }
+
   const locked = await query(
     `UPDATE telegram_offers
      SET status='PUBLICANDO', error_message=NULL

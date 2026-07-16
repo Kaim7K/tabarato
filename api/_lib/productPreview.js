@@ -233,8 +233,19 @@ function extractProduct(html, finalUrl, originalLink) {
     currentPrice: normalizePrice(priceFromProduct(product)) || priceFromHtml(html),
     imageUrl: productImage ? new URL(productImage, finalUrl).toString() : image(html, finalUrl),
     affiliateLink: originalLink,
+    sourceProductId: sourceProductIdFromLink(finalUrl || originalLink),
     platform: platformFromUrl(finalUrl || originalLink),
   };
+}
+
+function sourceProductIdFromLink(link) {
+  const value = String(link || "");
+  const mercadoLivre = value.match(/\b(MLB-?\d{6,})\b/i)?.[1]?.replace("-", "").toUpperCase();
+  if (mercadoLivre) return mercadoLivre;
+  const amazon = value.match(/\/(?:dp|gp\/product)\/([A-Z0-9]{10})/i)?.[1]?.toUpperCase();
+  if (amazon) return amazon;
+  const shopee = value.match(/-i\.(\d+)\.(\d+)/i);
+  return shopee ? `${shopee[1]}.${shopee[2]}` : "";
 }
 
 function mercadoLivreQueryFromLink(link) {
@@ -288,6 +299,7 @@ async function mercadoLivreItemPreview(itemId, originalLink) {
     previousPrice: normalizePrice(item.original_price || ""),
     imageUrl: picture ? String(picture).replace(/^http:/, "https:") : "",
     affiliateLink: originalLink,
+    sourceProductId: item.id,
     platform: "Mercado Livre",
   };
 }

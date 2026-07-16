@@ -125,3 +125,17 @@ test("database migration records real price changes", () => {
   assert.match(migration, /OLD\.current_price IS DISTINCT FROM NEW\.current_price/);
   assert.match(migration, /AFTER INSERT OR UPDATE OF current_price/);
 });
+
+test("database prevents duplicate product and price pairs", () => {
+  const migration = readFileSync(join(root, "migrations", "001_create_telegram_offers.sql"), "utf8");
+  assert.match(migration, /source_product_id TEXT/);
+  assert.match(migration, /product_key TEXT/);
+  assert.match(migration, /idx_telegram_offers_unique_product_price/);
+  assert.match(migration, /UNIQUE INDEX/);
+  const offers = readFileSync(join(root, "api", "_lib", "offers.js"), "utf8");
+  const publisher = readFileSync(join(root, "api", "_lib", "publisher.js"), "utf8");
+  assert.match(offers, /findDuplicateOffer/);
+  assert.match(offers, /statusCode: 409/);
+  assert.match(offers, /23505/);
+  assert.match(publisher, /\["PUBLICADO", "PUBLICANDO"\]/);
+});

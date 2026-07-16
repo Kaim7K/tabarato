@@ -298,6 +298,7 @@ function formPayload() {
     category: elements.fields.category.value,
     imageUrl: elements.fields.imageUrl.value.trim(),
     affiliateLink: elements.fields.affiliateLink.value.trim(),
+    sourceProductId: activeProduct?.externalProductId || activeProduct?.sourceProductId || "",
     platform: elements.fields.platform.value,
     extraText: elements.fields.extraText.value.trim(),
     status: "RASCUNHO",

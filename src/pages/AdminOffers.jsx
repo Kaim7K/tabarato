@@ -32,6 +32,7 @@ const emptyOffer = {
   category: "Tecnologia",
   imageUrl: "",
   affiliateLink: "",
+  sourceProductId: "",
   platform: "Mercado Livre",
   extraText: "",
   status: "RASCUNHO",
@@ -157,6 +158,10 @@ const browserCaptureScript = `(() => {
     previousPrice: money(".ui-pdp-price__original-value .andes-money-amount", ".andes-money-amount--previous", ".price-tag__old-price"),
     imageUrl: bestImage(),
     affiliateLink: location.href,
+    sourceProductId: location.href.match(/\b(MLB-?\d{6,})\b/i)?.[1]?.replace("-", "").toUpperCase()
+      || location.pathname.match(/\/(?:dp|gp\/product)\/([A-Z0-9]{10})/i)?.[1]?.toUpperCase()
+      || (location.pathname.match(/-i\.(\d+)\.(\d+)/i)?.slice(1).join("."))
+      || "",
     platform,
   };
   const output = JSON.stringify(product, null, 2);
@@ -372,6 +377,7 @@ export default function AdminOffers() {
       category: offer.category || "Tecnologia",
       imageUrl: offer.imageUrl || "",
       affiliateLink: offer.affiliateLink || "",
+      sourceProductId: offer.sourceProductId || "",
       platform: offer.platform || "Mercado Livre",
       extraText: offer.extraText || "",
       status: offer.status || "RASCUNHO",
@@ -399,6 +405,7 @@ export default function AdminOffers() {
         previousPrice: product.previousPrice ? normalizeFormPrice(product.previousPrice) : current.previousPrice,
         imageUrl: product.imageUrl || current.imageUrl,
         affiliateLink: product.affiliateLink || current.affiliateLink,
+        sourceProductId: product.sourceProductId || product.externalProductId || current.sourceProductId,
         platform: product.platform || current.platform,
         category: suggestCategory(product, categories) || current.category,
       }));
@@ -419,6 +426,7 @@ export default function AdminOffers() {
       previousPrice: product.previousPrice ? normalizeFormPrice(product.previousPrice) : current.previousPrice,
       imageUrl: product.imageUrl || current.imageUrl,
       affiliateLink: product.affiliateLink || current.affiliateLink,
+      sourceProductId: product.sourceProductId || product.externalProductId || current.sourceProductId,
       platform: product.platform || current.platform,
     }));
   };
@@ -480,9 +488,15 @@ export default function AdminOffers() {
       showMessage(`Faltam informacoes: ${missing.join(", ")}.`);
       return null;
     }
-    const normalizedLink = form.affiliateLink.trim().replace(/\/$/, "");
-    const duplicate = offers.find((offer) => offer.id !== editingId && offer.affiliateLink?.trim().replace(/\/$/, "") === normalizedLink);
-    if (normalizedLink && duplicate && !window.confirm(`Este link já está cadastrado em "${duplicate.productName}". Deseja salvar mesmo assim?`)) return null;
+    const duplicate = offers.find((offer) => offer.id !== editingId
+      && normalizeText(offer.platform) === normalizeText(form.platform)
+      && Number(offer.currentPrice) === Number(normalizeFormPrice(form.currentPrice))
+      && ((form.sourceProductId && offer.sourceProductId && form.sourceProductId === offer.sourceProductId)
+        || normalizeText(offer.productName) === normalizeText(form.productName)));
+    if (duplicate) {
+      showMessage(`Este produto já está cadastrado com o mesmo preço em "${duplicate.productName}".`);
+      return null;
+    }
     setSaving(true);
     try {
       const data = editingId
