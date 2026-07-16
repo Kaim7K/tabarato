@@ -325,14 +325,17 @@ function formatPrice(value) {
 }
 
 async function productImageBlob(url) {
-  if (!/^https:\/\//i.test(url)) throw new Error("A imagem original do produto nao possui uma URL valida.");
+  const source = String(url || "").trim();
+  const isHttpsImage = /^https:\/\//i.test(source);
+  const isEmbeddedImage = /^data:image\/(?:png|jpe?g|webp);base64,/i.test(source);
+  if (!isHttpsImage && !isEmbeddedImage) throw new Error("A imagem deve ser uma URL HTTPS ou um arquivo PNG, JPG ou WebP.");
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), 15000);
   try {
-    const response = await fetch(url, { signal: controller.signal });
+    const response = await fetch(source, { signal: controller.signal });
     if (!response.ok) throw new Error(`A loja respondeu com status ${response.status} ao carregar a imagem.`);
     const blob = await response.blob();
-    if (!blob.type.startsWith("image/")) throw new Error("A URL capturada nao retornou uma imagem.");
+    if (!/^image\/(?:png|jpe?g|webp)$/i.test(blob.type)) throw new Error("A imagem precisa estar em PNG, JPG ou WebP.");
     return blob;
   } catch (error) {
     if (error?.name === "AbortError") throw new Error("A imagem original do produto demorou para carregar.");

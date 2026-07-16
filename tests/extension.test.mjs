@@ -130,6 +130,7 @@ test("extension shares the original product image and Telegram-style text on Wha
   assert.match(html, /id="whatsapp-group"/);
   assert.match(html, /assets\/whatsapp\.svg/);
   assert.match(app, /productImageBlob\(payload\.imageUrl\)/);
+  assert.match(app, /data:image\\\/\(\?:png\|jpe\?g\|webp\);base64/);
   assert.match(app, /new File\(\[imageBlob\]/);
   assert.doesNotMatch(app, /context\.fillText/);
   assert.match(app, /controller\.abort\(\)/);
