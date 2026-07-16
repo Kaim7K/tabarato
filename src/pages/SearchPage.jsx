@@ -7,10 +7,12 @@ import { Package } from "lucide-react";
 import { normalizeText } from "@/lib/catalog";
 import { listPublicOffers } from "@/lib/offersApi";
 import { EmptyState, FilterChip, LoadingState, OfferGrid, PageShell, SectionHeader } from "@/components/PublicUi";
+import { useDocumentMetadata } from "@/hooks/useDocumentMetadata";
 
 export default function SearchPage() {
   const [searchParams] = useSearchParams();
   const query = searchParams.get("q") || "";
+  useDocumentMetadata(query ? `Busca por ${query} | Tá Barato` : "Buscar ofertas | Tá Barato", undefined, "noindex, follow");
   const [offers, setOffers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");

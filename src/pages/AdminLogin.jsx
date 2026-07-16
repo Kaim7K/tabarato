@@ -4,8 +4,10 @@ import { Loader2, LockKeyhole } from "lucide-react";
 import { SITE_NAME } from "@/lib/catalog";
 import { isAdminLoggedIn, loginAdmin, validateAdminSession } from "@/lib/adminAuth";
 import { BRAND_LOGO } from "@/lib/brand";
+import { useDocumentMetadata } from "@/hooks/useDocumentMetadata";
 
 export default function AdminLogin() {
+  useDocumentMetadata("Acesso administrativo | Tá Barato", undefined, "noindex, nofollow");
   const location = useLocation();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -24,7 +26,7 @@ export default function AdminLogin() {
   }, [checking, location.state?.from?.pathname]);
 
   if (checking) {
-    return <div className="min-h-screen bg-[#0D0D0D] text-white flex items-center justify-center">Validando acesso...</div>;
+    return <div className="min-h-screen bg-[#0D0D0D] text-white flex items-center justify-center" role="status">Validando acesso...</div>;
   }
 
   if (isAdminLoggedIn()) {
@@ -66,7 +68,7 @@ export default function AdminLogin() {
           <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" className={inputCls} autoComplete="current-password" />
         </label>
 
-        {error && <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">{error}</div>}
+        {error && <div role="alert" className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">{error}</div>}
 
         <button disabled={loading} className="w-full px-5 py-3 bg-[#FF6B35] hover:bg-[#D95426] rounded-xl font-semibold disabled:opacity-60 flex items-center justify-center gap-2">
           {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <LockKeyhole className="w-4 h-4" />}

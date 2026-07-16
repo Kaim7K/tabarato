@@ -24,6 +24,8 @@ export function validateAutoMessage(input) {
   const errors = [];
   if (!String(input.title || "").trim()) errors.push("Titulo e obrigatorio.");
   if (!String(input.message || "").trim()) errors.push("Mensagem e obrigatoria.");
+  if (String(input.title || "").length > 200) errors.push("Titulo deve ter no maximo 200 caracteres.");
+  if (String(input.message || "").length > 4000) errors.push("Mensagem deve ter no maximo 4000 caracteres.");
   const interval = Number(input.intervalMinutes);
   if (!Number.isFinite(interval) || interval < 5) errors.push("Periodo deve ser de pelo menos 5 minutos.");
   if (input.nextSendAt && Number.isNaN(new Date(input.nextSendAt).getTime())) errors.push("Proximo envio invalido.");
@@ -112,7 +114,15 @@ export async function publishDueAutoMessages(limit = 5) {
 
   const results = [];
   for (const row of due.rows) {
-    const item = mapAutoMessage(row);
+    const claimed = await query(
+      `UPDATE telegram_auto_messages
+       SET next_send_at=NOW() + INTERVAL '5 minutes'
+       WHERE id=$1 AND is_active=TRUE AND next_send_at <= NOW()
+       RETURNING *`,
+      [row.id]
+    );
+    const item = mapAutoMessage(claimed.rows[0]);
+    if (!item) continue;
     try {
       const sent = await sendTelegramText(item.message);
       const updated = await query(

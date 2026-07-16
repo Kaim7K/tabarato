@@ -23,6 +23,7 @@ import {
 import { DEFAULT_CATEGORIES, formatPrice, normalizeText } from "@/lib/catalog";
 import { listPublicOffers } from "@/lib/offersApi";
 import { TELEGRAM_CHANNEL_URL, WHATSAPP_GROUP_URL } from "@/lib/publicLinks";
+import { useDocumentMetadata } from "@/hooks/useDocumentMetadata";
 
 const categoryIcons = {
   Casa: HomeIcon,
@@ -35,15 +36,18 @@ const categoryIcons = {
 };
 
 export default function Home() {
+  useDocumentMetadata("Tá Barato — Ofertas selecionadas");
   const [offers, setOffers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [searchParams] = useSearchParams();
   const searchQuery = searchParams.get("q") || "";
 
   useEffect(() => {
+    setError("");
     listPublicOffers({ limit: 100 })
       .then(setOffers)
-      .catch(() => {})
+      .catch((err) => setError(err.message || "Não foi possível carregar as ofertas."))
       .finally(() => setLoading(false));
   }, []);
 
@@ -194,7 +198,7 @@ export default function Home() {
           </div>
         </section>
       ) : (
-        !loading && (
+        !loading && !error && (
           <section className="border-b border-[#111111]/8">
             <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-24 text-center">
               <PackageSearch className="w-12 h-12 text-[#FF6B35] mx-auto mb-5" />
@@ -224,6 +228,11 @@ export default function Home() {
         </div>
         {loading ? (
           <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 text-[#111111]/30 animate-spin" /></div>
+        ) : error ? (
+          <div role="alert" className="text-center py-16 text-[#111111]/55">
+            <p className="text-lg font-medium">Não foi possível carregar as ofertas.</p>
+            <p className="text-sm mt-2">{error}</p>
+          </div>
         ) : recent.length === 0 ? (
           <div className="text-center py-16 text-[#111111]/40">
             <p className="text-lg">{featured ? "Mais ofertas aparecem aqui em breve." : "Nenhum achado publicado ainda."}</p>

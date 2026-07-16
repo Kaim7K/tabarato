@@ -6,8 +6,10 @@ import { useFavorites } from "@/lib/FavoritesContext";
 import { Heart } from "lucide-react";
 import { listPublicOffers } from "@/lib/offersApi";
 import { EmptyState, LoadingState, OfferGrid, PageShell, SectionHeader } from "@/components/PublicUi";
+import { useDocumentMetadata } from "@/hooks/useDocumentMetadata";
 
 export default function Favorites() {
+  useDocumentMetadata("Favoritos | Tá Barato", "Seus achados salvos no Tá Barato.", "noindex, nofollow");
   const { favorites } = useFavorites();
   const [offers, setOffers] = useState([]);
   const [loading, setLoading] = useState(true);

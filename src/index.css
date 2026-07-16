@@ -119,10 +119,26 @@
     @apply bg-background text-foreground font-body;
   }
 
+  :focus-visible {
+    outline: 3px solid color-mix(in srgb, var(--brand-primary) 55%, transparent);
+    outline-offset: 3px;
+  }
+
   select option,
   select optgroup {
     background-color: #171717;
     color: #ffffff;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }
 

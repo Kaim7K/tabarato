@@ -5,10 +5,24 @@ export function sendJson(res, status, body) {
 
 export async function readJson(req) {
   if (req.body && typeof req.body === "object") return req.body;
+  if (typeof req.body === "string") {
+    try {
+      return req.body ? JSON.parse(req.body) : {};
+    } catch {
+      throw Object.assign(new Error("JSON invalido."), { statusCode: 400 });
+    }
+  }
   const chunks = [];
   for await (const chunk of req) chunks.push(chunk);
   const raw = Buffer.concat(chunks).toString("utf8");
-  return raw ? JSON.parse(raw) : {};
+  if (Buffer.byteLength(raw, "utf8") > 1_000_000) {
+    throw Object.assign(new Error("Corpo da requisicao muito grande."), { statusCode: 413 });
+  }
+  try {
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    throw Object.assign(new Error("JSON invalido."), { statusCode: 400 });
+  }
 }
 
 export function getBearer(req) {
@@ -27,14 +41,26 @@ export function getAdminSessionCookie(value, maxAge = 60 * 60 * 24 * 7) {
   return `tb_admin_session=${encodeURIComponent(value)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge};${secure}`;
 }
 
+export function createAdminSessionToken(secret) {
+  return createHmac("sha256", String(secret)).update("tb_admin_session:v1").digest("hex");
+}
+
+function safeEqual(left, right) {
+  const a = Buffer.from(String(left || ""));
+  const b = Buffer.from(String(right || ""));
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
 export function requireAdmin(req, res) {
   const expected = process.env.ADMIN_API_KEY;
   if (!expected) {
     sendJson(res, 500, { error: "ADMIN_API_KEY não configurada." });
     return false;
   }
-  const provided = req.headers["x-admin-api-key"] || getBearer(req) || getCookie(req, "tb_admin_session");
-  if (provided !== expected) {
+  const providedKey = req.headers["x-admin-api-key"] || getBearer(req);
+  const session = getCookie(req, "tb_admin_session");
+  const authorized = safeEqual(providedKey, expected) || safeEqual(session, createAdminSessionToken(expected));
+  if (!authorized) {
     sendJson(res, 401, { error: "Acesso administrativo não autorizado." });
     return false;
   }
@@ -47,8 +73,8 @@ export function requireCron(req, res) {
     sendJson(res, 500, { error: "CRON_SECRET não configurado." });
     return false;
   }
-  const provided = req.headers["x-cron-secret"] || getBearer(req) || req.query?.secret;
-  if (provided !== expected) {
+  const provided = req.headers["x-cron-secret"] || getBearer(req);
+  if (!safeEqual(provided, expected)) {
     sendJson(res, 401, { error: "Cron não autorizado." });
     return false;
   }
@@ -60,7 +86,19 @@ export function methodNotAllowed(res, methods) {
   return sendJson(res, 405, { error: "Método não permitido." });
 }
 
+export function isValidUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ""));
+}
+
+export function requireUuid(value, res) {
+  if (isValidUuid(value)) return true;
+  sendJson(res, 400, { error: "ID invalido." });
+  return false;
+}
+
 export function publicError(res, error, fallback = "Erro interno.") {
   console.error(error?.message || error);
-  return sendJson(res, 500, { error: fallback });
+  const status = Number(error?.statusCode) || 500;
+  return sendJson(res, status, { error: status < 500 ? error.message : fallback });
 }
+import { createHmac, timingSafeEqual } from "node:crypto";

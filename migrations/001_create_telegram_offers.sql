@@ -26,10 +26,30 @@ CREATE TABLE IF NOT EXISTS telegram_offers (
   )
 );
 
+ALTER TABLE telegram_offers ALTER COLUMN short_description DROP NOT NULL;
+
+CREATE TABLE IF NOT EXISTS telegram_auto_messages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  title TEXT NOT NULL,
+  message TEXT NOT NULL,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  interval_minutes INTEGER NOT NULL DEFAULT 1440,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  next_send_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_sent_at TIMESTAMPTZ,
+  telegram_message_id TEXT,
+  telegram_response JSONB,
+  error_message TEXT,
+  send_count INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE INDEX IF NOT EXISTS idx_telegram_offers_status ON telegram_offers (status);
 CREATE INDEX IF NOT EXISTS idx_telegram_offers_scheduled_at ON telegram_offers (scheduled_at);
 CREATE INDEX IF NOT EXISTS idx_telegram_offers_created_at ON telegram_offers (created_at);
 CREATE INDEX IF NOT EXISTS idx_telegram_offers_category ON telegram_offers (category);
+CREATE INDEX IF NOT EXISTS idx_telegram_auto_messages_due ON telegram_auto_messages (is_active, next_send_at, sort_order);
 
 CREATE OR REPLACE FUNCTION set_telegram_offers_updated_at()
 RETURNS TRIGGER AS $$
@@ -42,5 +62,11 @@ $$ LANGUAGE plpgsql;
 DROP TRIGGER IF EXISTS trg_telegram_offers_updated_at ON telegram_offers;
 CREATE TRIGGER trg_telegram_offers_updated_at
 BEFORE UPDATE ON telegram_offers
+FOR EACH ROW
+EXECUTE FUNCTION set_telegram_offers_updated_at();
+
+DROP TRIGGER IF EXISTS trg_telegram_auto_messages_updated_at ON telegram_auto_messages;
+CREATE TRIGGER trg_telegram_auto_messages_updated_at
+BEFORE UPDATE ON telegram_auto_messages
 FOR EACH ROW
 EXECUTE FUNCTION set_telegram_offers_updated_at();

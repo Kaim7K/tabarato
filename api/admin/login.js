@@ -1,4 +1,4 @@
-import { getAdminSessionCookie, methodNotAllowed, readJson, requireAdmin, sendJson } from "../_lib/http.js";
+import { createAdminSessionToken, getAdminSessionCookie, methodNotAllowed, readJson, requireAdmin, sendJson } from "../_lib/http.js";
 import { createHash, timingSafeEqual } from "node:crypto";
 
 const ADMIN_USER = process.env.ADMIN_USERNAME || "admin";
@@ -43,6 +43,6 @@ export default async function handler(req, res) {
     return sendJson(res, 401, { error: "Usuario ou senha invalidos." });
   }
 
-  res.setHeader("Set-Cookie", getAdminSessionCookie(expectedKey));
+  res.setHeader("Set-Cookie", getAdminSessionCookie(createAdminSessionToken(expectedKey)));
   return sendJson(res, 200, { ok: true });
 }

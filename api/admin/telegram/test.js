@@ -19,8 +19,7 @@ export default async function handler(req, res) {
         text: "✅ Bot do Tá Barato conectado com sucesso!",
       }),
       signal: controller.signal,
-    });
-    clearTimeout(timeout);
+    }).finally(() => clearTimeout(timeout));
 
     const payload = await response.json().catch(() => null);
     if (!response.ok || !payload?.ok) {

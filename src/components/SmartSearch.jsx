@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Search, ArrowRight, Package, Tag } from "lucide-react";
 import { formatPrice, normalizeText } from "@/lib/catalog";
@@ -9,26 +9,34 @@ export default function SmartSearch({ placeholder = "Buscar por nome, categoria.
   const [results, setResults] = useState([]);
   const [open, setOpen] = useState(false);
   const [allOffers, setAllOffers] = useState([]);
+  const [activeIndex, setActiveIndex] = useState(-1);
   const containerRef = useRef(null);
+  const loadingRef = useRef(false);
   const inputId = useId();
   const resultsId = useId();
   const navigate = useNavigate();
 
-  useEffect(() => {
-    listPublicOffers({ limit: 100 }).then(setAllOffers).catch(() => {});
-  }, []);
+  const loadOffers = useCallback(() => {
+    if (allOffers.length || loadingRef.current) return;
+    loadingRef.current = true;
+    listPublicOffers({ limit: 100 })
+      .then(setAllOffers)
+      .catch(() => {})
+      .finally(() => { loadingRef.current = false; });
+  }, [allOffers.length]);
 
   useEffect(() => {
     if (!query.trim()) {
       setResults([]);
+      setActiveIndex(-1);
       return;
     }
     const q = normalizeText(query);
-    setResults(
-      allOffers
-        .filter((offer) => normalizeText(offer.name).includes(q) || normalizeText(offer.category).includes(q))
-        .slice(0, 6)
-    );
+    const matches = allOffers
+      .filter((offer) => normalizeText(offer.name).includes(q) || normalizeText(offer.category).includes(q))
+      .slice(0, 6);
+    setResults(matches);
+    setActiveIndex(matches.length ? 0 : -1);
   }, [query, allOffers]);
 
   useEffect(() => {
@@ -45,6 +53,22 @@ export default function SmartSearch({ placeholder = "Buscar por nome, categoria.
     setOpen(false);
   };
 
+  const handleKeyDown = (event) => {
+    if (event.key === "Escape") {
+      setOpen(false);
+      return;
+    }
+    if (!open || !results.length) return;
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      const direction = event.key === "ArrowDown" ? 1 : -1;
+      setActiveIndex((current) => (current + direction + results.length) % results.length);
+    } else if (event.key === "Enter" && activeIndex >= 0) {
+      event.preventDefault();
+      handleSelect(results[activeIndex]);
+    }
+  };
+
   return (
     <div ref={containerRef} className="relative w-full">
       <form onSubmit={(e) => { e.preventDefault(); if (query.trim()) { navigate(`/buscar?q=${encodeURIComponent(query.trim())}`); setOpen(false); } }} className="relative">
@@ -54,13 +78,15 @@ export default function SmartSearch({ placeholder = "Buscar por nome, categoria.
           id={inputId}
           type="text"
           value={query}
-          onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
-          onFocus={() => setOpen(true)}
+          onChange={(e) => { setQuery(e.target.value); setOpen(true); loadOffers(); }}
+          onFocus={() => { setOpen(true); loadOffers(); }}
+          onKeyDown={handleKeyDown}
           placeholder={placeholder}
           role="combobox"
           aria-expanded={open && Boolean(query.trim())}
           aria-controls={resultsId}
           aria-autocomplete="list"
+          aria-activedescendant={activeIndex >= 0 ? `${resultsId}-${results[activeIndex]?.id}` : undefined}
           className="w-full pl-10 pr-4 py-2.5 bg-white rounded-full text-sm text-[#111111] placeholder:text-[#111111]/40 border border-[#111111]/8 focus:outline-none focus:ring-2 focus:ring-[var(--brand-primary)]/30 transition"
         />
       </form>
@@ -77,7 +103,7 @@ export default function SmartSearch({ placeholder = "Buscar por nome, categoria.
                 {results.length} resultado{results.length === 1 ? "" : "s"}
               </div>
               {results.map((offer) => (
-                <button key={offer.id} type="button" role="option" aria-selected="false" onClick={() => handleSelect(offer)} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[#F5F2EB] focus:bg-[#F5F2EB] focus:outline-none transition text-left border-b border-[#111111]/5 last:border-0">
+                <button id={`${resultsId}-${offer.id}`} key={offer.id} type="button" role="option" aria-selected={activeIndex === results.indexOf(offer)} onClick={() => handleSelect(offer)} className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-[#F5F2EB] focus:bg-[#F5F2EB] focus:outline-none transition text-left border-b border-[#111111]/5 last:border-0 ${activeIndex === results.indexOf(offer) ? "bg-[#F5F2EB]" : ""}`}>
                   <div className="w-10 h-10 rounded-lg overflow-hidden bg-[#F5F2EB] shrink-0 flex items-center justify-center">
                     {offer.image ? <img src={offer.image} alt="" className="w-full h-full object-contain bg-white" /> : <Package className="w-4 h-4 text-[#111111]/30" />}
                   </div>

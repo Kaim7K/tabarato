@@ -5,6 +5,7 @@ import Footer from "@/components/Footer";
 import { categoryNameBySlug } from "@/lib/catalog";
 import { listPublicOffers } from "@/lib/offersApi";
 import { EmptyState, FilterChip, LoadingState, OfferGrid, PageShell, SectionHeader } from "@/components/PublicUi";
+import { useDocumentMetadata } from "@/hooks/useDocumentMetadata";
 
 const FILTERS = [
   { key: "recent", label: "Mais recentes" },
@@ -48,6 +49,7 @@ export default function CategoryPage() {
 
   const platforms = [...new Set(offers.map((offer) => offer.platform).filter(Boolean))];
   const title = categoryNameBySlug(slug) || (slug === "abaixo-de-50" ? "Produtos abaixo de R$ 50" : slug === "abaixo-de-100" ? "Produtos abaixo de R$ 100" : slug);
+  useDocumentMetadata(`${title} | Tá Barato`, `Ofertas de ${title} selecionadas pelo Tá Barato.`);
 
   return (
     <PageShell>

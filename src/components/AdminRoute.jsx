@@ -16,7 +16,7 @@ export default function AdminRoute({ children }) {
   }, [status]);
 
   if (status === "checking") {
-    return <div className="min-h-screen bg-[#0D0D0D] text-white flex items-center justify-center">Validando acesso...</div>;
+    return <div className="min-h-screen bg-[#0D0D0D] text-white flex items-center justify-center" role="status">Validando acesso...</div>;
   }
 
   if (status === "blocked") return <Navigate to="/admin/login" replace state={{ from: location }} />;

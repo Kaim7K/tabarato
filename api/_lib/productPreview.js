@@ -8,7 +8,7 @@ function decodeEntities(value) {
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
     .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, " ")
+    .replace(/&gt;/g, ">")
     .replace(/&nbsp;/g, " ");
 }
 
@@ -179,23 +179,37 @@ function descriptionFromTitle(name, descriptionText) {
 }
 
 async function loadHtml(link) {
-  const url = new URL(link);
-  if (!["http:", "https:"].includes(url.protocol)) throw new Error("Link invalido.");
+  let url = await assertSafeProductUrl(link);
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 12000);
-  const response = await fetch(url, {
-    redirect: "follow",
-    signal: controller.signal,
-    headers: {
-      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36",
-      "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-      "accept-language": "pt-BR,pt;q=0.9,en;q=0.7",
-    },
-  }).finally(() => clearTimeout(timeout));
+  for (let redirects = 0; redirects <= MAX_REDIRECTS; redirects += 1) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 12000);
+    const response = await fetch(url, {
+      redirect: "manual",
+      signal: controller.signal,
+      headers: {
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36",
+        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "accept-language": "pt-BR,pt;q=0.9,en;q=0.7",
+      },
+    }).finally(() => clearTimeout(timeout));
 
-  if (!response.ok) throw new Error(`A loja respondeu com status ${response.status}.`);
-  return { html: await response.text(), finalUrl: response.url };
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get("location");
+      if (!location) throw new Error("A loja respondeu com um redirecionamento invalido.");
+      url = await assertSafeProductUrl(new URL(location, url).toString());
+      continue;
+    }
+    if (!response.ok) throw new Error(`A loja respondeu com status ${response.status}.`);
+
+    const contentLength = Number(response.headers.get("content-length") || 0);
+    if (contentLength > MAX_HTML_BYTES) throw new Error("A pagina do produto e grande demais para processar.");
+    const html = await response.text();
+    if (Buffer.byteLength(html, "utf8") > MAX_HTML_BYTES) throw new Error("A pagina do produto e grande demais para processar.");
+    return { html, finalUrl: url.toString() };
+  }
+
+  throw new Error("A loja redirecionou o link muitas vezes.");
 }
 
 function mercadoLivreSearchUrlFromBrokenLink(link) {
@@ -293,6 +307,8 @@ async function mercadoLivrePreviewFromLink(link) {
 }
 
 export async function fetchProductPreview(link) {
+  await assertSafeProductUrl(link);
+
   if (isMercadoLivre(link)) {
     try {
       const product = await mercadoLivrePreviewFromLink(link);
@@ -335,4 +351,44 @@ export async function fetchProductPreview(link) {
     throw new Error("Nao encontrei dados confiaveis de produto nesse link. Cole o link da pagina exata do produto.");
   }
   return product;
+}
+import { lookup } from "node:dns/promises";
+
+const MAX_HTML_BYTES = 2 * 1024 * 1024;
+const MAX_REDIRECTS = 5;
+
+export function isPrivateAddress(address = "") {
+  const value = String(address).toLowerCase().replace(/^\[|\]$/g, "");
+  if (value.includes(":")) {
+    if (value === "::" || value === "::1" || value.startsWith("fc") || value.startsWith("fd")) return true;
+    if (/^fe[89ab]/.test(value)) return true;
+    if (value.startsWith("::ffff:")) return isPrivateAddress(value.slice(7));
+    return false;
+  }
+
+  const parts = value.split(".").map(Number);
+  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) return false;
+  const [a, b] = parts;
+  return a === 0 || a === 10 || a === 127 || a >= 224
+    || (a === 100 && b >= 64 && b <= 127)
+    || (a === 169 && b === 254)
+    || (a === 172 && b >= 16 && b <= 31)
+    || (a === 192 && b === 168)
+    || (a === 198 && (b === 18 || b === 19));
+}
+
+export async function assertSafeProductUrl(link) {
+  const url = new URL(link);
+  const hostname = url.hostname.toLowerCase();
+  if (url.protocol !== "https:") throw new Error("O link do produto deve usar HTTPS.");
+  if (url.username || url.password) throw new Error("O link do produto nao pode conter credenciais.");
+  if (hostname === "localhost" || hostname.endsWith(".localhost") || isPrivateAddress(hostname)) {
+    throw new Error("O link do produto deve apontar para um endereco publico.");
+  }
+
+  const addresses = await lookup(hostname, { all: true, verbatim: true });
+  if (!addresses.length || addresses.some(({ address }) => isPrivateAddress(address))) {
+    throw new Error("O link do produto deve apontar para um endereco publico.");
+  }
+  return url;
 }

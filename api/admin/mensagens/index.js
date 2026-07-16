@@ -1,5 +1,5 @@
 import { createAutoMessage, deleteAutoMessage, listAutoMessages, sendAutoMessageNow, updateAutoMessage, validateAutoMessage } from "../../_lib/autoMessages.js";
-import { requireAdmin, sendJson, methodNotAllowed, readJson, publicError } from "../../_lib/http.js";
+import { requireAdmin, requireUuid, sendJson, methodNotAllowed, readJson, publicError } from "../../_lib/http.js";
 
 export default async function handler(req, res) {
   if (!requireAdmin(req, res)) return;
@@ -13,7 +13,7 @@ export default async function handler(req, res) {
     if (req.method === "POST") {
       if (req.query.action === "send") {
         const id = req.query.id;
-        if (!id) return sendJson(res, 400, { error: "ID obrigatorio." });
+        if (!requireUuid(id, res)) return;
         const result = await sendAutoMessageNow(id);
         if (!result) return sendJson(res, 404, { error: "Mensagem nao encontrada." });
         if (!result.ok) return sendJson(res, 500, { error: result.error || "Erro ao enviar mensagem.", message: result.message });
@@ -29,7 +29,7 @@ export default async function handler(req, res) {
 
     if (req.method === "PATCH") {
       const id = req.query.id;
-      if (!id) return sendJson(res, 400, { error: "ID obrigatorio." });
+      if (!requireUuid(id, res)) return;
       const input = await readJson(req);
       const errors = validateAutoMessage(input);
       if (errors.length) return sendJson(res, 400, { error: errors.join(" "), errors });
@@ -39,7 +39,7 @@ export default async function handler(req, res) {
 
     if (req.method === "DELETE") {
       const id = req.query.id;
-      if (!id) return sendJson(res, 400, { error: "ID obrigatorio." });
+      if (!requireUuid(id, res)) return;
       const ok = await deleteAutoMessage(id);
       return ok ? sendJson(res, 200, { ok: true }) : sendJson(res, 404, { error: "Mensagem nao encontrada." });
     }

@@ -1,6 +1,8 @@
 import { Link, useLocation } from "react-router-dom";
+import { useDocumentMetadata } from "@/hooks/useDocumentMetadata";
 
 export default function PageNotFound() {
+  useDocumentMetadata("Página não encontrada | Tá Barato", undefined, "noindex, nofollow");
   const location = useLocation();
   const pageName = location.pathname.substring(1);
 
@@ -13,7 +15,7 @@ export default function PageNotFound() {
         </div>
         <div className="space-y-3">
           <h2 className="text-2xl font-semibold text-[#111111]">Página não encontrada</h2>
-          <p className="text-[#111111]/60 leading-relaxed">
+          <p className="text-[#111111]/60 leading-relaxed break-words">
             A página <span className="font-medium text-[#111111]">"{pageName}"</span> não existe ou foi removida.
           </p>
         </div>

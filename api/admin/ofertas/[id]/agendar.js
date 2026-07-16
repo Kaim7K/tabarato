@@ -1,10 +1,11 @@
 import { query } from "../../../_lib/db.js";
-import { requireAdmin, sendJson, methodNotAllowed, readJson, publicError } from "../../../_lib/http.js";
+import { requireAdmin, requireUuid, sendJson, methodNotAllowed, readJson, publicError } from "../../../_lib/http.js";
 import { mapOffer } from "../../../_lib/offers.js";
 
 export default async function handler(req, res) {
   if (!requireAdmin(req, res)) return;
   if (req.method !== "POST") return methodNotAllowed(res, ["POST"]);
+  if (!requireUuid(req.query.id, res)) return;
 
   try {
     const input = await readJson(req);

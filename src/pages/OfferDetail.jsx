@@ -6,6 +6,7 @@ import { ArrowUpRight, ArrowLeft, Check, Loader2, AlertCircle, Heart, Share2 } f
 import { useFavorites } from "@/lib/FavoritesContext";
 import { formatPrice, slugify } from "@/lib/catalog";
 import { getPublicOffer, listPublicOffers, trackOfferClick } from "@/lib/offersApi";
+import { useDocumentMetadata } from "@/hooks/useDocumentMetadata";
 
 export default function OfferDetail() {
   const { id } = useParams();
@@ -13,14 +14,17 @@ export default function OfferDetail() {
   const [related, setRelated] = useState([]);
   const [loading, setLoading] = useState(true);
   const { toggle, isFavorite } = useFavorites();
+  useDocumentMetadata(offer ? `${offer.name} | Tá Barato` : "Oferta | Tá Barato", offer?.description || undefined);
 
   useEffect(() => {
     let active = true;
     const load = async () => {
       setLoading(true);
       try {
-        const data = await getPublicOffer(id);
-        const all = await listPublicOffers({ limit: 50 });
+        const [data, all] = await Promise.all([
+          getPublicOffer(id),
+          listPublicOffers({ limit: 50 }),
+        ]);
         if (!active) return;
         setOffer(data);
         setRelated(all.filter((item) => item.id !== id && item.category === data.category).slice(0, 3));

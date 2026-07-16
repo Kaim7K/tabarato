@@ -10,6 +10,9 @@
 - Telegram: testar conexão, publicar oferta e verificar resposta/erro no painel.
 - Mensagens recorrentes: criar, editar, enviar agora, ativar/desativar e excluir.
 - Mobile: conferir menu, busca, cards, CTAs da hero, tabelas/listas admin e botões de ação em telas pequenas.
+- Viewports: testar 320 px, 390 px, 768 px, 1366 px, 1920 px e ultrawide, sem rolagem horizontal.
+- Teclado: percorrer menu, busca com setas/Enter/Escape, favoritos, formulários e ações administrativas com foco visível.
+- Cron: no plano Hobby, confirmar a execução diária; intervalos menores exigem um agendador com frequência compatível.
 
 ## Checklist final
 

@@ -1,30 +1,13 @@
 import { query } from "../_lib/db.js";
-import { sendJson, methodNotAllowed, publicError } from "../_lib/http.js";
-
-const mapPublicOffer = (row) => ({
-  id: row.id,
-  name: row.product_name,
-  description: row.short_description,
-  category: row.category,
-  affiliate_link: row.affiliate_link,
-  platform: row.platform,
-  image: row.image_url || "",
-  price: Number(row.current_price),
-  previous_price: row.previous_price == null ? null : Number(row.previous_price),
-  benefit: row.short_description,
-  reason: row.extra_text || "",
-  score: 100,
-  status: "published",
-  published_date: row.published_at || row.updated_at || row.created_at,
-  clicks: row.clicks || 0,
-  is_featured: false,
-  time_label: row.published_at ? new Date(row.published_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "",
-});
+import { sendJson, methodNotAllowed, publicError, requireUuid } from "../_lib/http.js";
+import { mapPublicOffer, PUBLIC_OFFER_COLUMNS, setPublicCache } from "../_lib/publicOffers.js";
 
 export default async function handler(req, res) {
+  if (!requireUuid(req.query.id, res)) return;
   try {
     if (req.method === "GET") {
-      const result = await query("SELECT * FROM telegram_offers WHERE id=$1 AND status='PUBLICADO'", [req.query.id]);
+      const result = await query(`SELECT ${PUBLIC_OFFER_COLUMNS} FROM telegram_offers WHERE id=$1 AND status='PUBLICADO'`, [req.query.id]);
+      setPublicCache(res);
       return result.rows[0]
         ? sendJson(res, 200, { offer: mapPublicOffer(result.rows[0]) })
         : sendJson(res, 404, { error: "Oferta não encontrada." });
@@ -32,7 +15,7 @@ export default async function handler(req, res) {
 
     if (req.method === "POST") {
       const result = await query(
-        "UPDATE telegram_offers SET clicks = COALESCE(clicks, 0) + 1 WHERE id=$1 RETURNING clicks",
+        "UPDATE telegram_offers SET clicks = COALESCE(clicks, 0) + 1 WHERE id=$1 AND status='PUBLICADO' RETURNING clicks",
         [req.query.id]
       );
       return result.rows[0]
@@ -45,4 +28,3 @@ export default async function handler(req, res) {
     return publicError(res, error, "Não foi possível carregar oferta.");
   }
 }
-

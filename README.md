@@ -53,7 +53,7 @@ Execute a migration:
 migrations/001_create_telegram_offers.sql
 ```
 
-Ela cria a tabela `telegram_offers` e índices para `status`, `scheduled_at`, `created_at` e `category`.
+Ela cria as tabelas `telegram_offers` e `telegram_auto_messages`, além dos índices e gatilhos de atualização necessários.
 
 ## Telegram
 
@@ -88,7 +88,7 @@ A rota de cron é:
 /api/cron/publicar-agendadas
 ```
 
-O `vercel.json` agenda execução a cada 5 minutos. A rota valida `CRON_SECRET` pelo header `Authorization: Bearer <CRON_SECRET>`, header `x-cron-secret` ou query `secret`. Em produção, configure `CRON_SECRET` na Vercel.
+O `vercel.json` agenda uma execução diária às 12:00 UTC, compatível com o plano Hobby. A rota valida `CRON_SECRET` pelo header `Authorization: Bearer <CRON_SECRET>` ou pelo header `x-cron-secret`. Para intervalos menores nas mensagens recorrentes, configure um agendador compatível com a frequência desejada.
 
 ## Painel
 
@@ -136,5 +136,6 @@ Depois rode novo deploy. Não há deploy automático neste repositório.
 ```bash
 npm run lint
 npm run typecheck
+npm test
 npm run build
 ```

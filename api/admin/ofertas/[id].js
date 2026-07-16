@@ -1,10 +1,11 @@
 import { query } from "../../_lib/db.js";
-import { requireAdmin, sendJson, methodNotAllowed, readJson, publicError } from "../../_lib/http.js";
+import { requireAdmin, requireUuid, sendJson, methodNotAllowed, readJson, publicError } from "../../_lib/http.js";
 import { getOffer, updateOffer, validateOffer } from "../../_lib/offers.js";
 
 export default async function handler(req, res) {
   if (!requireAdmin(req, res)) return;
   const { id } = req.query;
+  if (!requireUuid(id, res)) return;
 
   try {
     if (req.method === "GET") {

@@ -71,6 +71,20 @@ export function validateOffer(input, { requireSchedule = false } = {}) {
     if (!String(input[key] || "").trim()) errors.push(`${label} é obrigatório.`);
   });
 
+  const limits = [
+    ["productName", "Nome do produto", 200],
+    ["shortDescription", "Descricao curta", 1000],
+    ["coupon", "Cupom", 100],
+    ["category", "Categoria", 100],
+    ["platform", "Plataforma", 100],
+    ["extraText", "Texto complementar", 600],
+    ["imageUrl", "URL da imagem", 2048],
+    ["affiliateLink", "Link oficial de afiliado", 2048],
+  ];
+  limits.forEach(([key, label, max]) => {
+    if (String(input[key] || "").length > max) errors.push(`${label} deve ter no maximo ${max} caracteres.`);
+  });
+
   const currentPrice = parsePrice(input.currentPrice);
   if (!Number.isFinite(currentPrice) || currentPrice <= 0) errors.push("Preço atual deve ser maior que zero.");
 
