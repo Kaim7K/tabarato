@@ -3,7 +3,21 @@
   globalThis.__TABARATO_WHATSAPP_AUTOMATION__ = true;
 
   const clean = (value = "") => String(value).replace(/\s+/g, " ").trim();
-  const normalized = (value = "") => clean(value).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const normalized = (value = "") => clean(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f\u200B-\u200D\uFE0F\uFEFF]/g, "")
+    .toLowerCase();
+
+  const plainGroupName = (value = "") => normalized(value).replace(/^[^a-z0-9]+/, "");
+  const sameGroupName = (candidate, groupName) => {
+    const candidateName = normalized(candidate);
+    const expectedName = normalized(groupName);
+    const plainCandidate = plainGroupName(candidate);
+    const plainExpected = plainGroupName(groupName);
+    return candidateName === expectedName
+      || candidateName.includes(expectedName)
+      || (plainExpected && plainCandidate.includes(plainExpected));
+  };
 
   const waitFor = async (read, timeout = 30000) => {
     const startedAt = Date.now();
@@ -38,14 +52,13 @@
     || [...document.querySelectorAll('#side [role="textbox"], #side [contenteditable="true"], #pane-side [contenteditable="true"]')]
       .find(visible);
 
-  const currentGroupIs = (groupName) => [...document.querySelectorAll('#main header [title], #main header span[dir="auto"], header [data-testid="conversation-info-header-chat-title"]')]
-    .some((element) => visible(element)
-      && normalized(element.getAttribute("title") || element.textContent) === normalized(groupName));
+  const currentGroupIs = (groupName) => [...document.querySelectorAll("#main header, header [data-testid*='conversation'], header")]
+    .some((header) => visible(header) && sameGroupName(header.textContent, groupName));
 
   const exactGroup = (groupName) => [...document.querySelectorAll("#pane-side span[title], #pane-side [data-testid='cell-frame-title']")]
     .find((element) => {
       const title = element.getAttribute("title") || element.textContent;
-      return visible(element) && normalized(title) === normalized(groupName);
+      return visible(element) && sameGroupName(title, groupName);
     });
 
   const actionByLabel = (patterns) => [...document.querySelectorAll("button, [role='button']")]
@@ -59,6 +72,30 @@
     return new File([await response.blob()], fileName || "oferta.png", { type: "image/png" });
   };
 
+  const clickableGroupRow = (group) => {
+    const semanticRow = group.closest("[role='listitem'], [role='row'], [data-testid='cell-frame-container']");
+    if (semanticRow) return semanticRow;
+
+    let candidate = group;
+    for (let parent = group.parentElement; parent && parent.id !== "pane-side"; parent = parent.parentElement) {
+      const rectangle = parent.getBoundingClientRect();
+      if (rectangle.width >= 240 && rectangle.height >= 44 && rectangle.height <= 120) candidate = parent;
+      if (parent.hasAttribute("tabindex")) return parent;
+    }
+    return candidate;
+  };
+
+  const activateGroupRow = (element) => {
+    element.scrollIntoView({ block: "center" });
+    element.focus({ preventScroll: true });
+    const pointerOptions = { bubbles: true, cancelable: true, composed: true, button: 0, buttons: 1 };
+    element.dispatchEvent(new PointerEvent("pointerdown", pointerOptions));
+    element.dispatchEvent(new MouseEvent("mousedown", pointerOptions));
+    element.dispatchEvent(new PointerEvent("pointerup", { ...pointerOptions, buttons: 0 }));
+    element.dispatchEvent(new MouseEvent("mouseup", { ...pointerOptions, buttons: 0 }));
+    element.click();
+  };
+
   async function selectGroup(groupName) {
     if (currentGroupIs(groupName)) return;
 
@@ -67,8 +104,13 @@
     setEditableText(search, groupName);
     const group = await waitFor(() => exactGroup(groupName), 15000);
     if (!group) throw new Error(`Grupo "${groupName}" nao encontrado no WhatsApp.`);
-    (group.closest("[role='listitem'], [role='row'], [data-testid='cell-frame-container']") || group).click();
-    const selected = await waitFor(() => currentGroupIs(groupName), 10000);
+    const groupRow = clickableGroupRow(group);
+    activateGroupRow(groupRow);
+    let selected = await waitFor(() => currentGroupIs(groupName), 5000);
+    if (!selected && groupRow !== group) {
+      activateGroupRow(group);
+      selected = await waitFor(() => currentGroupIs(groupName), 5000);
+    }
     if (!selected) throw new Error(`Nao foi possivel abrir o grupo "${groupName}".`);
   }
 

@@ -98,6 +98,10 @@ test("extension creates an image and formatted text for WhatsApp sharing", () =>
   assert.match(background, /withTimeout/);
   assert.match(whatsapp, /exactGroup/);
   assert.match(whatsapp, /currentGroupIs/);
+  assert.match(whatsapp, /sameGroupName/);
+  assert.match(whatsapp, /\\uFE0F/);
+  assert.match(whatsapp, /clickableGroupRow/);
+  assert.match(whatsapp, /activateGroupRow/);
   assert.match(whatsapp, /DataTransfer/);
   assert.match(whatsapp, /TABARATO_WHATSAPP_SEND/);
   assert.ok(manifest.host_permissions.some((permission) => permission.includes("mlstatic.com")));
