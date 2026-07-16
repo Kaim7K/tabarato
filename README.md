@@ -1,14 +1,14 @@
 # Tá Barato
 
-Aplicação de curadoria de ofertas com vitrine pública, favoritos locais, painel administrativo e publicação de ofertas no Telegram.
+Aplicação própria de curadoria de ofertas com vitrine pública, favoritos locais, painel administrativo, PostgreSQL e publicação/agendamento no Telegram.
 
 ## Stack
 
 - React 18 + Vite
 - Tailwind CSS
 - Vercel Functions em `api/`
-- PostgreSQL para ofertas publicadas/agendadas no Telegram
-- Base44 SDK ainda usado pelas entidades legadas do site
+- PostgreSQL para ofertas, cliques e agendamentos
+- Telegram Bot API para publicação no canal
 
 ## Rodar Localmente
 
@@ -28,8 +28,6 @@ npx vercel dev
 Copie `.env.example` para `.env.local` e configure:
 
 ```bash
-VITE_BASE44_APP_ID=
-VITE_BASE44_APP_BASE_URL=
 POSTGRES_URL=
 DATABASE_URL=
 ADMIN_API_KEY=
@@ -86,16 +84,7 @@ A rota de cron é:
 
 O `vercel.json` agenda execução a cada 5 minutos. A rota valida `CRON_SECRET` pelo header `Authorization: Bearer <CRON_SECRET>`, header `x-cron-secret` ou query `secret`. Em produção, configure `CRON_SECRET` na Vercel.
 
-Ela:
-
-- busca ofertas `AGENDADO` vencidas;
-- limita a quantidade por execução;
-- muda para `PUBLICANDO` antes do envio;
-- muda para `PUBLICADO` ou `ERRO`;
-- registra `telegram_message_id` ou `error_message`;
-- evita duplicidade se já houver `telegram_message_id`.
-
-## Painel de Ofertas
+## Painel
 
 Acesse:
 
@@ -124,8 +113,6 @@ Configure manualmente no projeto:
 - `TELEGRAM_CHANNEL_ID`
 - `CRON_SECRET`
 - `APP_URL`
-- `VITE_BASE44_APP_ID`
-- `VITE_BASE44_APP_BASE_URL`
 
 Depois rode novo deploy. Não há deploy automático neste repositório.
 

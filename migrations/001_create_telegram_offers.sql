@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS telegram_offers (
   telegram_message_id TEXT,
   telegram_response JSONB,
   error_message TEXT,
+  clicks INTEGER NOT NULL DEFAULT 0,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CONSTRAINT telegram_offers_status_check CHECK (

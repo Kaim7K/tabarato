@@ -2,17 +2,13 @@ import { Link, Outlet } from "react-router-dom";
 import { useState } from "react";
 import { Menu, X, Zap, Heart } from "lucide-react";
 import SmartSearch from "@/components/SmartSearch";
-import { SettingsProvider, useSettings } from "@/lib/SettingsContext";
 import { FavoritesProvider } from "@/lib/FavoritesContext";
 import { DEFAULT_CATEGORIES, SITE_NAME } from "@/lib/catalog";
 
 function Header() {
   const [mobileOpen, setMobileOpen] = useState(false);
-  const settings = useSettings();
-  const siteName = settings.site_name || SITE_NAME;
-  const [firstWord, ...rest] = siteName.split(" ");
+  const [firstWord, ...rest] = SITE_NAME.split(" ");
   const restName = rest.join(" ");
-  const whatsappLink = settings.whatsapp_link || "https://chat.whatsapp.com/";
 
   return (
     <header className="sticky top-0 z-50 bg-[#F5F2EB]/85 backdrop-blur-md border-b border-[#111111]/8">
@@ -44,20 +40,14 @@ function Header() {
                 ))}
               </div>
             </div>
-            <Link to="/" className="text-sm font-medium text-[#111111] hover:text-[#FF6B35] transition flex items-center gap-2">
-              Ofertas recentes
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#168A55] opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-[#168A55]"></span>
-              </span>
-            </Link>
+            <Link to="/" className="text-sm font-medium text-[#111111] hover:text-[#FF6B35] transition">Ofertas recentes</Link>
             <Link to="/favoritos" className="text-sm font-medium text-[#111111] hover:text-[#FF6B35] transition flex items-center gap-1.5">
               <Heart className="w-4 h-4" />
               Favoritos
             </Link>
-            <a href={whatsappLink} target="_blank" rel="noopener noreferrer" className="px-5 py-2.5 bg-[#FF6B35] hover:bg-[#D95426] text-white text-sm font-semibold rounded-full transition shadow-sm">
-              Entrar no grupo
-            </a>
+            <Link to="/admin/ofertas" className="px-5 py-2.5 bg-[#FF6B35] hover:bg-[#D95426] text-white text-sm font-semibold rounded-full transition shadow-sm">
+              Painel
+            </Link>
           </nav>
 
           <button onClick={() => setMobileOpen(!mobileOpen)} className="lg:hidden p-2 text-[#111111]" aria-label="Abrir menu">
@@ -79,9 +69,9 @@ function Header() {
           <Link to="/favoritos" onClick={() => setMobileOpen(false)} className="text-center px-5 py-3 bg-white text-[#111111] text-sm font-semibold rounded-full flex items-center justify-center gap-2">
             <Heart className="w-4 h-4" /> Meus favoritos
           </Link>
-          <a href={whatsappLink} target="_blank" rel="noopener noreferrer" onClick={() => setMobileOpen(false)} className="block text-center px-5 py-3 bg-[#FF6B35] text-white text-sm font-semibold rounded-full">
-            Entrar no grupo
-          </a>
+          <Link to="/admin/ofertas" onClick={() => setMobileOpen(false)} className="block text-center px-5 py-3 bg-[#FF6B35] text-white text-sm font-semibold rounded-full">
+            Painel
+          </Link>
         </div>
       )}
     </header>
@@ -90,15 +80,13 @@ function Header() {
 
 export default function Layout() {
   return (
-    <SettingsProvider>
-      <FavoritesProvider>
-        <div className="min-h-screen bg-[#F5F2EB] flex flex-col">
-          <Header />
-          <main className="flex-1">
-            <Outlet />
-          </main>
-        </div>
-      </FavoritesProvider>
-    </SettingsProvider>
+    <FavoritesProvider>
+      <div className="min-h-screen bg-[#F5F2EB] flex flex-col">
+        <Header />
+        <main className="flex-1">
+          <Outlet />
+        </main>
+      </div>
+    </FavoritesProvider>
   );
 }

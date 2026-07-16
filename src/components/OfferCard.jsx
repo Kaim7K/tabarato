@@ -1,8 +1,8 @@
 import { Link } from "react-router-dom";
 import { ArrowUpRight, Clock, Heart, Share2 } from "lucide-react";
-import { base44 } from "@/api/base44Client";
 import { useFavorites } from "@/lib/FavoritesContext";
 import { formatPrice } from "@/lib/catalog";
+import { trackOfferClick } from "@/lib/offersApi";
 
 export default function OfferCard({ offer }) {
   const { toggle, isFavorite } = useFavorites();
@@ -16,7 +16,7 @@ export default function OfferCard({ offer }) {
   };
 
   const handleClick = () => {
-    base44.entities.Offer.update(offer.id, { clicks: (offer.clicks || 0) + 1 }).catch(() => {});
+    trackOfferClick(offer.id);
   };
 
   return (
