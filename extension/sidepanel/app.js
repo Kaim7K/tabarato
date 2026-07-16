@@ -2,6 +2,7 @@ const STORAGE_KEY = "tabarato_extension_session";
 const WHATSAPP_GROUP_KEY = "tabarato_whatsapp_group";
 const LAST_BASE_URL_KEY = "tabarato_last_base_url";
 const runtime = globalThis.TaBaratoRuntime;
+const artwork = globalThis.TaBaratoArtwork;
 const REQUEST_TIMEOUT = 20000;
 const CAPTURE_TIMEOUT = 30000;
 const WHATSAPP_TIMEOUT = 95000;
@@ -381,6 +382,24 @@ async function pngFromImage(blob) {
   return pngBlob;
 }
 
+async function extensionAssetBlob(path) {
+  const response = await runtime.fetchWithTimeout(
+    chrome.runtime.getURL(path),
+    {},
+    8000,
+    "Nao foi possivel carregar as logos da oferta.",
+  );
+  if (!response.ok) throw new Error("Nao foi possivel carregar as logos da oferta.");
+  return response.blob();
+}
+
+function storeLogoPath(platform) {
+  const normalizedPlatform = normalizedText(platform);
+  if (normalizedPlatform.includes("mercado livre")) return "assets/mercado-livre.png";
+  if (normalizedPlatform.includes("shopee")) return "assets/shopee.svg";
+  return "";
+}
+
 function fileToDataUrl(file) {
   return runtime.withTimeout(new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -391,12 +410,41 @@ function fileToDataUrl(file) {
   }), 12000, "A imagem demorou para ser preparada para o WhatsApp.");
 }
 
-function prepareWhatsAppImage(payload) {
-  const key = payload.imageUrl;
+function prepareWhatsAppImage(payload, { branded = true } = {}) {
+  const key = JSON.stringify([
+    branded,
+    payload.imageUrl,
+    payload.productName,
+    payload.currentPrice,
+    payload.previousPrice,
+    payload.platform,
+  ]);
   if (key === shareImageKey && shareImagePromise) return shareImagePromise;
   shareImageKey = key;
   const pendingImage = productImageBlob(payload.imageUrl).then(async (sourceBlob) => {
-    const imageBlob = await pngFromImage(sourceBlob);
+    let imageBlob;
+    if (branded) {
+      const storePath = storeLogoPath(payload.platform);
+      const [siteLogoBlob, storeLogoBlob] = await Promise.all([
+        extensionAssetBlob("assets/tabarato-logo.png"),
+        storePath ? extensionAssetBlob(storePath) : Promise.resolve(null),
+      ]);
+      imageBlob = await runtime.withTimeout(
+        artwork.createOfferArtwork({
+          productBlob: sourceBlob,
+          siteLogoBlob,
+          storeLogoBlob,
+          productName: payload.productName,
+          currentPrice: payload.currentPrice,
+          previousPrice: payload.previousPrice,
+          platform: payload.platform,
+        }),
+        18000,
+        "A arte da oferta demorou para ser gerada.",
+      );
+    } else {
+      imageBlob = await pngFromImage(sourceBlob);
+    }
     const slug = payload.productName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || "produto";
     return new File([imageBlob], `${slug}.png`, { type: "image/png" });
   });
@@ -648,7 +696,10 @@ async function sendScheduledMessage() {
     let fileName = "mensagem.png";
     if (scheduledMessage.imageUrl) {
       setBusy(elements.scheduledMessageButton, true, "Preparando imagem...");
-      const file = await prepareWhatsAppImage({ imageUrl: scheduledMessage.imageUrl, productName: scheduledMessage.title || "mensagem" });
+      const file = await prepareWhatsAppImage(
+        { imageUrl: scheduledMessage.imageUrl, productName: scheduledMessage.title || "mensagem" },
+        { branded: false },
+      );
       imageDataUrl = await fileToDataUrl(file);
       fileName = file.name;
     }
@@ -698,11 +749,20 @@ async function publishOffer() {
 
   setOfferActionsBusy(elements.publishButton, true, "Publicando...");
   try {
+    elements.publishButton.textContent = "Gerando arte...";
+    const shareFile = await prepareWhatsAppImage(payload);
+    const shareImageDataUrl = await fileToDataUrl(shareFile);
+    if (shareImageDataUrl.length > 3_500_000) throw new Error("A arte gerada ficou muito grande. Use uma imagem de produto menor.");
+    elements.publishButton.textContent = "Publicando...";
     const created = await requestApi("/api/admin/ofertas", {
       method: "POST",
       body: { ...payload, status: "APROVADO" },
     });
-    await requestApi(`/api/admin/ofertas/${created.offer.id}/publicar`, { method: "POST" });
+    await requestApi(`/api/admin/ofertas/${created.offer.id}/publicar`, {
+      method: "POST",
+      body: { shareImageDataUrl },
+      timeout: 30000,
+    });
     if (!groupName) {
       showToast(`Oferta publicada no Telegram. Informe o grupo para enviar tambem ao WhatsApp.`, "success");
       return;

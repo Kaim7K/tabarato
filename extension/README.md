@@ -27,7 +27,8 @@ Sem essa variavel, o servidor aceita origens com o formato oficial de extensoes 
 - O login retorna um token assinado valido por 24 horas.
 - Produtos sao criados como `RASCUNHO`.
 - A acao **Publicar agora** exige confirmacao, cria a oferta como `APROVADO` e envia pelo publicador existente do Telegram.
-- **Enviar ao WhatsApp** reutiliza a aba aberta, entra no grupo configurado, preenche a legenda e cola pelo clipboard a imagem original do produto.
+- **Enviar ao WhatsApp** reutiliza a aba aberta, entra no grupo configurado, preenche a legenda e cola pelo clipboard a arte gerada a partir da imagem original do produto.
+- Ofertas enviadas pela extensao usam uma arte quadrada com foto, titulo, preco, desconto e as logos do Ta Barato e da loja. A mesma arte e reutilizada no Telegram e no WhatsApp.
 - O botao **Painel** no cabecalho abre ou reutiliza a aba administrativa mesmo quando nenhum produto foi capturado.
 - O botao **Enviar mensagem agendada** busca a proxima mensagem de WhatsApp vencida, envia texto e imagem e confirma o resultado no painel.
 - A extensao pede acesso apenas ao dominio configurado pelo administrador.

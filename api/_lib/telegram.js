@@ -68,11 +68,22 @@ export async function sendTelegramOffer(offer) {
     inline_keyboard: [[{ text: "🛒 Ver oferta", url: offer.affiliateLink }]],
   };
 
-  const hasImage = offer.imageUrl && /^https:\/\//i.test(offer.imageUrl);
+  const embedded = imageDataUrl(offer.shareImageDataUrl);
+  const hasRemoteImage = offer.imageUrl && /^https:\/\//i.test(offer.imageUrl);
+  const hasImage = Boolean(embedded || hasRemoteImage);
   const method = hasImage ? "sendPhoto" : "sendMessage";
-  const body = hasImage
-    ? { chat_id: chatId, photo: offer.imageUrl, caption, parse_mode: "HTML", reply_markup }
-    : { chat_id: chatId, text: caption, parse_mode: "HTML", reply_markup };
+  let body = { chat_id: chatId, text: caption, parse_mode: "HTML", reply_markup };
+  if (embedded) {
+    if (embedded.bytes.length > 3 * 1024 * 1024) throw new Error("Arte da oferta muito grande para o Telegram.");
+    body = new FormData();
+    body.set("chat_id", chatId);
+    body.set("photo", new Blob([embedded.bytes], { type: embedded.mimeType }), "oferta.png");
+    body.set("caption", caption);
+    body.set("parse_mode", "HTML");
+    body.set("reply_markup", JSON.stringify(reply_markup));
+  } else if (hasRemoteImage) {
+    body = { chat_id: chatId, photo: offer.imageUrl, caption, parse_mode: "HTML", reply_markup };
+  }
 
   const payload = await telegramRequest(method, body);
   const messageId = payload.result?.message_id || payload.result?.[0]?.message_id;

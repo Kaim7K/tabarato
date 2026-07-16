@@ -139,6 +139,19 @@ test("scheduled messages separate automatic Telegram from manual WhatsApp delive
   assert.match(telegram, /body instanceof FormData/);
 });
 
+test("extension publication sends a transient branded image to Telegram", () => {
+  const route = readFileSync(join(root, "api", "admin", "ofertas", "[id]", "publicar.js"), "utf8");
+  const publisher = readFileSync(join(root, "api", "_lib", "publisher.js"), "utf8");
+  const telegram = readFileSync(join(root, "api", "_lib", "telegram.js"), "utf8");
+  assert.match(route, /shareImageDataUrl/);
+  assert.match(route, /3_500_000/);
+  assert.match(route, /data:image\\\/png;base64/);
+  assert.match(publisher, /sendTelegramOffer\(\{ \.\.\.offer, shareImageDataUrl \}\)/);
+  assert.match(telegram, /imageDataUrl\(offer\.shareImageDataUrl\)/);
+  assert.match(telegram, /body = new FormData\(\)/);
+  assert.match(telegram, /body\.set\("reply_markup", JSON\.stringify\(reply_markup\)\)/);
+});
+
 test("database migration records real price changes", () => {
   const migration = readFileSync(join(root, "migrations", "001_create_telegram_offers.sql"), "utf8");
   assert.match(migration, /CREATE TABLE IF NOT EXISTS offer_price_history/);

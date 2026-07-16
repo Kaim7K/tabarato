@@ -3,8 +3,9 @@
   if (!tools || globalThis.TaBaratoStores?.some((store) => store.id === "mercado-livre")) return;
   const MELI_LINK_PATTERN = /^https:\/\/meli\.la\/[A-Za-z0-9_-]+/i;
   let affiliateRequestStartedAt = 0;
+  let capturedAffiliateLink = "";
+  let capturedAffiliatePage = "";
 
-  const generatedAffiliateLink = () => tools.findAffiliateLink(MELI_LINK_PATTERN);
   const visible = (element) => {
     if (!element) return false;
     const rectangle = element.getBoundingClientRect();
@@ -19,6 +20,73 @@
   const visibleDialog = (pattern) => [...document.querySelectorAll("[role='dialog'], .andes-modal, [class*='modal']")]
     .find((element) => visible(element) && pattern.test(tools.clean(element.textContent)));
 
+  const affiliateDialog = () => visibleDialog(/gerar link\s*\/\s*id de produto|link do produto.*id do produto|texto sugerido/i);
+
+  const inputContext = (element) => {
+    let current = element;
+    let value = "";
+    for (let depth = 0; current && depth < 3; depth += 1) {
+      value += ` ${tools.clean(current.textContent)}`;
+      current = current.parentElement;
+    }
+    return value;
+  };
+
+  const productLinkField = (dialog = affiliateDialog()) => {
+    if (!dialog) return null;
+    const candidates = [...dialog.querySelectorAll("input, textarea")]
+      .filter((element) => MELI_LINK_PATTERN.test(tools.clean(element.value)))
+      .map((element) => ({
+        element,
+        score: (element.matches("input") ? 30 : 0)
+          + (/link do produto/i.test(inputContext(element)) ? 20 : 0)
+          - (/texto sugerido/i.test(inputContext(element)) ? 10 : 0),
+      }))
+      .sort((left, right) => right.score - left.score);
+    return candidates[0]?.element || null;
+  };
+
+  const readProductLink = (dialog = affiliateDialog()) => {
+    const field = productLinkField(dialog);
+    if (field) return tools.clean(field.value).match(MELI_LINK_PATTERN)?.[0] || "";
+    const link = [...(dialog?.querySelectorAll("a[href]") || [])]
+      .map((element) => tools.clean(element.href))
+      .find((value) => MELI_LINK_PATTERN.test(value));
+    return link?.match(MELI_LINK_PATTERN)?.[0] || "";
+  };
+
+  const copyProductLink = async (dialog, link) => {
+    const field = productLinkField(dialog);
+    const fieldContainer = field?.parentElement;
+    const copyControl = [...(fieldContainer?.querySelectorAll("button, [role='button']") || [])]
+      .filter(visible)
+      .find((element) => /copiar|copy/i.test(tools.clean(`${element.textContent} ${element.getAttribute("aria-label")} ${element.getAttribute("title")}`)))
+      || [...(fieldContainer?.querySelectorAll("button, [role='button']") || [])].filter(visible)[0];
+    if (copyControl) {
+      copyControl.click();
+      return;
+    }
+    if (!document.hasFocus() || !navigator.clipboard?.writeText) return;
+    await navigator.clipboard.writeText(link).catch(() => {});
+  };
+
+  const captureAffiliateLink = async () => {
+    if (capturedAffiliatePage === location.href && MELI_LINK_PATTERN.test(capturedAffiliateLink)) {
+      return capturedAffiliateLink;
+    }
+    if (capturedAffiliatePage !== location.href) affiliateRequestStartedAt = 0;
+    capturedAffiliateLink = "";
+    capturedAffiliatePage = location.href;
+    prepareAffiliateLink();
+    const dialog = await tools.waitFor(affiliateDialog, 10000);
+    if (!dialog) return "";
+    const link = await tools.waitFor(() => readProductLink(dialog), 10000);
+    if (!MELI_LINK_PATTERN.test(link)) return "";
+    await copyProductLink(dialog, link);
+    capturedAffiliateLink = link;
+    return link;
+  };
+
   const closeDialog = (dialog) => {
     const close = [...dialog.querySelectorAll("button, [role='button']")].find((element) => {
       const label = tools.clean(`${element.getAttribute("aria-label") || ""} ${element.getAttribute("title") || ""} ${element.textContent || ""}`);
@@ -28,10 +96,10 @@
   };
 
   const closeAffiliateDialog = async () => {
-    const dialog = visibleDialog(/gerar link|id de produto|texto sugerido/i);
+    const dialog = affiliateDialog();
     if (!dialog) return;
     closeDialog(dialog);
-    await tools.waitFor(() => (visibleDialog(/gerar link|id de produto|texto sugerido/i) ? "" : true), 3000);
+    await tools.waitFor(() => (affiliateDialog() ? "" : true), 3000);
   };
 
   const promotionSummary = (value) => {
@@ -171,7 +239,7 @@
     })[0];
 
   const prepareAffiliateLink = () => {
-    if (generatedAffiliateLink()) return true;
+    if (affiliateDialog()) return true;
     if (Date.now() - affiliateRequestStartedAt < 8000) return true;
     const control = shareControl();
     if (!control) return false;
@@ -188,9 +256,7 @@
       || Boolean(document.querySelector(".ui-pdp-title, .ui-pdp-price__second-line")),
     prepareAffiliateLink,
     extract: async () => {
-      const shouldWaitForLink = prepareAffiliateLink();
-      const affiliateLink = generatedAffiliateLink()
-        || (shouldWaitForLink ? await tools.waitFor(generatedAffiliateLink) : "");
+      const affiliateLink = await captureAffiliateLink();
       const structured = tools.jsonProduct();
       const productId = location.href.match(/\b(MLB-?\d{6,})\b/i)?.[1]?.replace("-", "").toUpperCase() || "";
       const productName = tools.text(".ui-pdp-title", "h1") || tools.clean(structured.name) || tools.meta("og:title");

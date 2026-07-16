@@ -69,7 +69,13 @@ test("Mercado Livre capture waits for and requires the generated meli.la link", 
   assert.match(mercadoLivre, /ganhos\?\\s\*\(\?:extras\?\)\?\\s\*\\d/);
   assert.match(mercadoLivre, /\.filter\(affiliateShareContext\)/);
   assert.match(mercadoLivre, /rectangle\.height > 180/);
-  assert.match(mercadoLivre, /tools\.waitFor\(generatedAffiliateLink\)/);
+  assert.match(mercadoLivre, /captureAffiliateLink/);
+  assert.match(mercadoLivre, /affiliateDialog/);
+  assert.match(mercadoLivre, /productLinkField/);
+  assert.match(mercadoLivre, /link do produto/i);
+  assert.match(mercadoLivre, /copyProductLink/);
+  assert.match(mercadoLivre, /copyControl\.click\(\)/);
+  assert.match(mercadoLivre, /capturedAffiliatePage === location\.href/);
   assert.match(sidePanel, /Use o link meli\.la gerado pelo botao Compartilhar/);
 });
 
@@ -112,9 +118,10 @@ test("extension keeps only the first captured description paragraph", () => {
   stores.forEach((source) => assert.match(source, /tools\.description/));
 });
 
-test("extension shares the original product image and Telegram-style text on WhatsApp", () => {
+test("extension shares the branded offer artwork and Telegram-style text on WhatsApp", () => {
   const html = readFileSync(join(extensionRoot, "sidepanel", "index.html"), "utf8");
   const app = readFileSync(join(extensionRoot, "sidepanel", "app.js"), "utf8");
+  const artwork = readFileSync(join(extensionRoot, "sidepanel", "artwork.js"), "utf8");
   const background = readFileSync(join(extensionRoot, "background", "service-worker.js"), "utf8");
   const whatsapp = readFileSync(join(extensionRoot, "content", "whatsapp.js"), "utf8");
   const manifest = JSON.parse(readFileSync(join(extensionRoot, "manifest.json"), "utf8"));
@@ -124,11 +131,19 @@ test("extension shares the original product image and Telegram-style text on Wha
   assert.match(app, /productImageBlob\(payload\.imageUrl\)/);
   assert.match(app, /data:image\\\/\(\?:png\|jpe\?g\|webp\);base64/);
   assert.match(app, /new File\(\[imageBlob\]/);
-  assert.doesNotMatch(app, /context\.fillText/);
+  assert.match(app, /artwork\.createOfferArtwork/);
+  assert.match(app, /assets\/tabarato-logo\.png/);
+  assert.match(app, /assets\/mercado-livre\.png/);
+  assert.match(app, /assets\/shopee\.svg/);
+  assert.match(artwork, /createOfferArtwork/);
+  assert.match(artwork, /drawStoreBrand/);
+  assert.match(artwork, /new Intl\.NumberFormat\("pt-BR"/);
+  assert.match(artwork, /context\.fillRect\(8, 642, 704, 70\)/);
   assert.match(app, /controller\.abort\(\)/);
   assert.match(app, /TABARATO_SHARE_WHATSAPP/);
   assert.match(app, /async function sendOfferToWhatsApp/);
   assert.match(app, /await sendOfferToWhatsApp\(payload, groupName/);
+  assert.match(app, /body: \{ shareImageDataUrl \}/);
   assert.match(app, /Publicada no Telegram, mas o WhatsApp falhou/);
   assert.match(app, /payload\.extraText/);
   assert.match(app, /Pre\\u00e7o e disponibilidade podem mudar/);

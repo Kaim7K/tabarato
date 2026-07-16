@@ -19,7 +19,11 @@ export default async function handler(req, res) {
       );
       return sendJson(res, 201, { ok: true });
     }
-    const result = await publishOfferById(req.query.id);
+    const shareImageDataUrl = String(req.body?.shareImageDataUrl || "");
+    if (shareImageDataUrl && (!/^data:image\/png;base64,[A-Za-z0-9+/=]+$/i.test(shareImageDataUrl) || shareImageDataUrl.length > 3_500_000)) {
+      return sendJson(res, 400, { error: "Arte da oferta invalida ou muito grande." });
+    }
+    const result = await publishOfferById(req.query.id, { shareImageDataUrl });
     if (!result.ok) return sendJson(res, result.status || 500, result);
     return sendJson(res, 200, result);
   } catch (error) {
