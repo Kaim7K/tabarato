@@ -365,7 +365,6 @@ export default function AdminOffers() {
   const validateClient = () => {
     const missing = [];
     if (!form.productName) missing.push("nome");
-    if (!form.shortDescription) missing.push("descricao");
     if (!form.currentPrice) missing.push("preco");
     if (!form.affiliateLink) missing.push("link");
     if (!form.category) missing.push("categoria");
@@ -715,12 +714,11 @@ function EditorView({ form, selected, categories, saving, autoFilling, set, star
   const completion = [
     form.affiliateLink,
     form.productName,
-    form.shortDescription,
     form.currentPrice,
     form.category,
     form.imageUrl,
   ].filter(Boolean).length;
-  const completionPct = Math.round((completion / 6) * 100);
+  const completionPct = Math.round((completion / 5) * 100);
 
   return (
     <div className="grid xl:grid-cols-[minmax(0,1fr)_360px] gap-5">
@@ -768,7 +766,7 @@ function EditorView({ form, selected, categories, saving, autoFilling, set, star
               </select>
             </Field>
             <div className="md:col-span-2">
-              <Field label="Descricao curta *"><textarea value={form.shortDescription} onChange={(e) => set("shortDescription", e.target.value)} rows={3} className={`${inputCls} resize-none`} /></Field>
+              <Field label="Descricao curta"><textarea value={form.shortDescription} onChange={(e) => set("shortDescription", e.target.value)} rows={3} className={`${inputCls} resize-none`} /></Field>
             </div>
             <Field label="Categoria *">
               <select value={form.category} onChange={(e) => set("category", e.target.value)} className={inputCls}>
@@ -808,7 +806,7 @@ function EditorView({ form, selected, categories, saving, autoFilling, set, star
           <div className="h-2 bg-white/10 rounded-full overflow-hidden">
             <div className="h-full bg-[#FF6B35]" style={{ width: `${completionPct}%` }} />
           </div>
-          <p className="text-xs text-white/35 mt-3">Link, nome, descricao, preco, categoria e imagem deixam a oferta mais forte.</p>
+          <p className="text-xs text-white/35 mt-3">Link, nome, preco, categoria e imagem deixam a oferta mais forte. A descricao e opcional.</p>
         </Panel>
         <OfferPreview form={form} />
         <Panel title="Previa Telegram" icon={Send}>

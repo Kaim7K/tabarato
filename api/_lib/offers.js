@@ -48,7 +48,6 @@ export function validateOffer(input, { requireSchedule = false } = {}) {
   const errors = [];
   const required = [
     ["productName", "Nome do produto"],
-    ["shortDescription", "Descrição curta"],
     ["currentPrice", "Preço atual"],
     ["category", "Categoria"],
     ["affiliateLink", "Link oficial de afiliado"],

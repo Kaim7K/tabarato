@@ -33,7 +33,7 @@ export async function ensureSchema() {
       CREATE TABLE IF NOT EXISTS telegram_offers (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         product_name TEXT NOT NULL,
-        short_description TEXT NOT NULL,
+        short_description TEXT,
         current_price NUMERIC(12, 2) NOT NULL,
         previous_price NUMERIC(12, 2),
         coupon TEXT,
@@ -57,6 +57,7 @@ export async function ensureSchema() {
       );
 
       ALTER TABLE telegram_offers ADD COLUMN IF NOT EXISTS clicks INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE telegram_offers ALTER COLUMN short_description DROP NOT NULL;
 
       CREATE INDEX IF NOT EXISTS idx_telegram_offers_status ON telegram_offers (status);
       CREATE INDEX IF NOT EXISTS idx_telegram_offers_scheduled_at ON telegram_offers (scheduled_at);
