@@ -17,7 +17,9 @@ const elements = {
   logoutButton: document.getElementById("logout-button"),
   saveButton: document.getElementById("save-button"),
   saveOpenButton: document.getElementById("save-open-button"),
+  publishButton: document.getElementById("publish-button"),
   duplicateWarning: document.getElementById("duplicate-warning"),
+  affiliateWarning: document.getElementById("affiliate-warning"),
   toast: document.getElementById("toast"),
   previewImage: document.getElementById("preview-image"),
   previewName: document.getElementById("preview-name"),
@@ -85,6 +87,18 @@ function setBusy(button, busy, label) {
   }
 }
 
+function setOfferActionsBusy(activeButton, busy, label) {
+  [elements.saveButton, elements.saveOpenButton, elements.publishButton].forEach((button) => {
+    button.disabled = busy;
+  });
+  setBusy(activeButton, busy, label);
+  if (!busy) {
+    [elements.saveButton, elements.saveOpenButton, elements.publishButton].forEach((button) => {
+      button.disabled = false;
+    });
+  }
+}
+
 async function saveSession(value) {
   session = value;
   await chrome.storage.local.set({ [STORAGE_KEY]: value });
@@ -141,6 +155,19 @@ function suggestCategory(product) {
   return "Tecnologia";
 }
 
+function updateAffiliateNotice() {
+  const platform = elements.fields.platform.value;
+  const link = elements.fields.affiliateLink.value.trim();
+  const generatedMeliLink = platform === "Mercado Livre" && /^https:\/\/meli\.la\//i.test(link);
+  elements.affiliateWarning.classList.toggle("notice-success", generatedMeliLink);
+  elements.affiliateWarning.classList.toggle("notice-warning", platform === "Mercado Livre" && !generatedMeliLink);
+  elements.affiliateWarning.textContent = generatedMeliLink
+    ? "Link meli.la gerado pelo programa de afiliados e confirmado."
+    : platform === "Mercado Livre"
+      ? "Nao foi possivel capturar o meli.la. Abra Compartilhar no Mercado Livre ou cole o link gerado abaixo."
+      : "Confirme se o link abaixo e o seu link de afiliado antes de salvar.";
+}
+
 function fillForm(product) {
   activeProduct = product;
   const values = {
@@ -159,6 +186,7 @@ function fillForm(product) {
   elements.captureSource.textContent = product.externalProductId
     ? `${product.platform} - ${product.externalProductId}`
     : product.platform || "Produto capturado";
+  updateAffiliateNotice();
   elements.offerForm.classList.remove("hidden");
   updatePreview();
   checkDuplicate();
@@ -204,6 +232,7 @@ function updatePreview() {
   elements.platformBadge.textContent = payload.platform || "Loja";
   elements.previewImage.src = payload.imageUrl || "";
   elements.previewImage.hidden = !payload.imageUrl;
+  updateAffiliateNotice();
 }
 
 async function checkDuplicate() {
@@ -260,16 +289,47 @@ async function captureProduct() {
 
 async function saveOffer(openPanel = false) {
   if (!elements.offerForm.reportValidity()) return;
+  const payload = formPayload();
+  if (payload.platform === "Mercado Livre" && !/^https:\/\/meli\.la\/[A-Za-z0-9_-]+/i.test(payload.affiliateLink)) {
+    elements.fields.affiliateLink.focus();
+    showToast("Use o link meli.la gerado pelo botao Compartilhar.", "error");
+    return;
+  }
   const button = openPanel ? elements.saveOpenButton : elements.saveButton;
-  setBusy(button, true, "Salvando...");
+  setOfferActionsBusy(button, true, "Salvando...");
   try {
-    const data = await requestApi("/api/admin/ofertas", { method: "POST", body: formPayload() });
+    const data = await requestApi("/api/admin/ofertas", { method: "POST", body: payload });
     showToast(`Rascunho salvo: ${data.offer.productName}`, "success");
     if (openPanel) await chrome.tabs.create({ url: `${session.baseUrl}/admin/ofertas` });
   } catch (error) {
     showToast(error.message, "error");
   } finally {
-    setBusy(button, false);
+    setOfferActionsBusy(button, false);
+  }
+}
+
+async function publishOffer() {
+  if (!elements.offerForm.reportValidity()) return;
+  const payload = formPayload();
+  if (payload.platform === "Mercado Livre" && !/^https:\/\/meli\.la\/[A-Za-z0-9_-]+/i.test(payload.affiliateLink)) {
+    elements.fields.affiliateLink.focus();
+    showToast("Use o link meli.la gerado pelo botao Compartilhar.", "error");
+    return;
+  }
+  if (!window.confirm(`Publicar "${payload.productName}" agora no Telegram?`)) return;
+
+  setOfferActionsBusy(elements.publishButton, true, "Publicando...");
+  try {
+    const created = await requestApi("/api/admin/ofertas", {
+      method: "POST",
+      body: { ...payload, status: "APROVADO" },
+    });
+    const result = await requestApi(`/api/admin/ofertas/${created.offer.id}/publicar`, { method: "POST" });
+    showToast(`Oferta publicada: ${result.offer.productName}`, "success");
+  } catch (error) {
+    showToast(error.message, "error");
+  } finally {
+    setOfferActionsBusy(elements.publishButton, false);
   }
 }
 
@@ -307,6 +367,7 @@ elements.offerForm.addEventListener("submit", (event) => {
   saveOffer(false);
 });
 elements.saveOpenButton.addEventListener("click", () => saveOffer(true));
+elements.publishButton.addEventListener("click", publishOffer);
 elements.refreshButton.addEventListener("click", captureProduct);
 elements.logoutButton.addEventListener("click", async () => {
   await clearSession();

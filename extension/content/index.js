@@ -34,7 +34,10 @@
     });
     button.addEventListener("mouseenter", () => { button.style.background = "#ff6b35"; });
     button.addEventListener("mouseleave", () => { button.style.background = "#111111"; });
-    button.addEventListener("click", () => chrome.runtime.sendMessage({ type: "TABARATO_OPEN_PANEL" }));
+    button.addEventListener("click", () => {
+      adapter.prepareAffiliateLink?.();
+      chrome.runtime.sendMessage({ type: "TABARATO_OPEN_PANEL" });
+    });
     document.body.appendChild(button);
   };
 
@@ -45,11 +48,11 @@
       sendResponse({ ok: false, error: "Abra a pagina exata de um produto compativel." });
       return;
     }
-    try {
-      sendResponse({ ok: true, product: adapter.extract() });
-    } catch {
-      sendResponse({ ok: false, error: "Nao foi possivel ler os dados desta pagina." });
-    }
+    Promise.resolve()
+      .then(() => adapter.extract())
+      .then((product) => sendResponse({ ok: true, product }))
+      .catch(() => sendResponse({ ok: false, error: "Nao foi possivel ler os dados desta pagina." }));
+    return true;
   });
 
   updateButton();

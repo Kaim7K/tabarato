@@ -95,13 +95,29 @@
     return "";
   };
 
-  const affiliateLink = () => {
+  const candidateUrls = () => {
     const candidates = [location.href];
-    document.querySelectorAll('input[type="text"], input:not([type]), textarea, a[href]').forEach((element) => {
+    document.querySelectorAll("input, textarea, a[href]").forEach((element) => {
       candidates.push(element.value || element.href || "");
     });
-    const affiliatePattern = /(?:amzn\.to|shope\.ee|s\.shopee\.|[?&](?:tag|ascsubtag|matt_tool|matt_word|matt_source|affiliate_id|aff_id|utm_source)=)/i;
-    return candidates.map(clean).find((value) => /^https:\/\//i.test(value) && affiliatePattern.test(value)) || location.href;
+    return candidates.flatMap((value) => clean(value).match(/https:\/\/[^\s"'<>]+/gi) || []);
+  };
+
+  const findAffiliateLink = (pattern) => candidateUrls().find((value) => pattern.test(value)) || "";
+
+  const affiliateLink = () => {
+    const affiliatePattern = /(?:meli\.la|amzn\.to|shope\.ee|s\.shopee\.|[?&](?:tag|ascsubtag|matt_tool|matt_word|matt_source|affiliate_id|aff_id|utm_source)=)/i;
+    return findAffiliateLink(affiliatePattern) || location.href;
+  };
+
+  const waitFor = async (read, timeout = 7000) => {
+    const startedAt = Date.now();
+    let value = read();
+    while (!value && Date.now() - startedAt < timeout) {
+      await new Promise((resolve) => window.setTimeout(resolve, 150));
+      value = read();
+    }
+    return value || "";
   };
 
   const canonicalUrl = () => attribute("href", 'link[rel="canonical"]') || location.href;
@@ -113,6 +129,7 @@
     canonicalUrl,
     clean,
     coupon,
+    findAffiliateLink,
     jsonProduct,
     meta,
     normalizePrice,
@@ -120,6 +137,7 @@
     productImage,
     productPrice,
     text,
+    waitFor,
   };
   globalThis.TaBaratoStores = [];
 })();

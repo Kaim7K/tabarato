@@ -45,3 +45,23 @@ test("extension never embeds admin secrets or writes captured HTML", () => {
   assert.doesNotMatch(source, /innerHTML\s*=/);
   assert.match(source, /status: "RASCUNHO"/);
 });
+
+test("Mercado Livre capture waits for and requires the generated meli.la link", () => {
+  const shared = readFileSync(join(extensionRoot, "content", "shared.js"), "utf8");
+  const mercadoLivre = readFileSync(join(extensionRoot, "content", "stores", "mercado-livre.js"), "utf8");
+  const sidePanel = readFileSync(join(extensionRoot, "sidepanel", "app.js"), "utf8");
+  assert.match(shared, /meli\\\.la/);
+  assert.match(mercadoLivre, /prepareAffiliateLink/);
+  assert.match(mercadoLivre, /tools\.waitFor\(generatedAffiliateLink\)/);
+  assert.match(sidePanel, /Use o link meli\.la gerado pelo botao Compartilhar/);
+});
+
+test("extension publishes through the protected existing publisher", () => {
+  const sidePanel = readFileSync(join(extensionRoot, "sidepanel", "app.js"), "utf8");
+  const publishRoute = readFileSync(join(root, "api", "admin", "ofertas", "[id]", "publicar.js"), "utf8");
+  assert.match(sidePanel, /status: "APROVADO"/);
+  assert.match(sidePanel, /\/api\/admin\/ofertas\/\$\{created\.offer\.id\}\/publicar/);
+  assert.match(sidePanel, /window\.confirm/);
+  assert.match(publishRoute, /handleExtensionCors/);
+  assert.match(publishRoute, /allowExtension: true/);
+});

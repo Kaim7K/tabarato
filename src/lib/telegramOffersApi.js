@@ -53,6 +53,6 @@ export function formatTelegramPreview(offer) {
   if (offer.coupon) lines.push(`Cupom: ${offer.coupon}`);
   if (offer.category) lines.push("", `📦 ${offer.category}`);
   if (offer.extraText) lines.push("", offer.extraText);
-  lines.push("", "Link de afiliado", "Preco e disponibilidade podem mudar.", "", "🛒 Ver oferta");
+  lines.push("", "Preco e disponibilidade podem mudar.", "", "🛒 Ver oferta");
   return compactLines(lines);
 }

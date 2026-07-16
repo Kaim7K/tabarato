@@ -56,3 +56,10 @@ test("comparison removal uses a dedicated action", () => {
   assert.match(compare, /removeCompare\(id\)/);
   assert.match(compare, /setOffers\(\(current\) => current\.filter/);
 });
+
+test("admin offer table header stays in document flow", () => {
+  const offersView = readFileSync(join(root, "src", "features", "admin", "AdminOffersView.jsx"), "utf8");
+  const header = offersView.match(/<div className="([^"]+)">\s*<input type="checkbox" checked=\{allVisibleSelected\}/)?.[1] || "";
+  assert.ok(header, "Expected to find the desktop offer table header");
+  assert.doesNotMatch(header, /\bsticky\b|\btop-\d+\b/);
+});

@@ -21,14 +21,14 @@ export function formatTelegramMessage(offer) {
   ];
 
   if (offer.previousPrice) {
-    lines.push(`Antes: R$ ${Number(offer.previousPrice).toFixed(2).replace(".", ",")}`);
+    lines.push(`Antes: <s>R$ ${Number(offer.previousPrice).toFixed(2).replace(".", ",")}</s>`);
   }
   if (offer.coupon) {
     lines.push(`Cupom: <b>${escapeHtml(offer.coupon)}</b>`);
   }
   if (offer.category) lines.push("", `📦 ${escapeHtml(offer.category)}`);
   if (offer.extraText) lines.push("", escapeHtml(offer.extraText));
-  lines.push("", "Link de afiliado", "Preço e disponibilidade podem mudar.");
+  lines.push("", "Preço e disponibilidade podem mudar.");
 
   return compactLines(lines);
 }

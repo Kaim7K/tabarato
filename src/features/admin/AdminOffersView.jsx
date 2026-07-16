@@ -146,7 +146,7 @@ export function OffersView({
       )}
 
       <div className="bg-white/5 border border-white/10 rounded-lg overflow-hidden">
-        <div className="hidden md:grid sticky top-16 z-10 grid-cols-[32px_minmax(0,1fr)_120px_140px_120px_120px] gap-4 px-4 py-3 text-xs uppercase text-white/40 border-b border-white/10 bg-[#171717]">
+        <div className="hidden md:grid grid-cols-[32px_minmax(0,1fr)_120px_140px_120px_120px] gap-4 px-4 py-3 text-xs uppercase text-white/40 border-b border-white/10 bg-[#171717]">
           <input type="checkbox" checked={allVisibleSelected} onChange={() => toggleAllVisible(pageOffers)} className="w-4 h-4 accent-[#FF6B35]" aria-label="Selecionar ofertas desta pagina" />
           <span>Produto</span>
           <span>Status</span>
