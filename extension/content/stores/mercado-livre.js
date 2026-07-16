@@ -86,10 +86,31 @@
   const couponFromText = (value) => {
     const text = tools.clean(value);
     if (!/cupom|coupon/i.test(text)) return "";
-    const code = text.match(/(?:cupom|coupon|c[oó]digo|use)\s*[:\-]?\s*([A-Z0-9][A-Z0-9_-]{3,29})\b/i)?.[1];
-    if (code && !/^(?:DISPONIVEL|DISPONÍVEL|DESCONTO|PRODUTO|COPIAR|APLICAR)$/i.test(code)) return code.toUpperCase();
+    const namedCode = text.match(/\bCUPOM[A-Z0-9_-]{3,25}\b/i)?.[0];
+    if (namedCode) return namedCode.toUpperCase();
+
+    const ignoredLabels = /^(?:CUPOM|CUPONS|COUPON|COUPONS|DISPONIVEL|DISPONÍVEL|DESCONTO|PRODUTO|COPIAR|APLICAR|CONFERIR)$/i;
+    const codePatterns = [
+      /(?:c[oó]digo|use)\s*[:\-]?\s*([A-Z0-9][A-Z0-9_-]{3,29})\b/gi,
+      /(?:cupom(?!s\b)|coupon(?!s\b))\s*[:\-]?\s*([A-Z0-9][A-Z0-9_-]{3,29})\b/gi,
+    ];
+    for (const pattern of codePatterns) {
+      for (const match of text.matchAll(pattern)) {
+        if (!ignoredLabels.test(match[1])) return match[1].toUpperCase();
+      }
+    }
     return text.match(/\b\d{1,2}(?:[.,]\d+)?%\s*(?:OFF|DE\s+DESCONTO)\b/i)?.[0]?.toUpperCase() || "";
   };
+
+  const couponElementText = (element) => [
+    element?.value,
+    element?.textContent,
+    element?.getAttribute?.("aria-label"),
+    element?.getAttribute?.("title"),
+    element?.getAttribute?.("data-clipboard-text"),
+    element?.getAttribute?.("data-copy"),
+    element?.getAttribute?.("data-value"),
+  ].filter(Boolean).join(" ");
 
   const couponConditions = (value) => {
     const text = tools.clean(value);
@@ -108,13 +129,16 @@
       ".ui-pdp-container [data-testid*='coupon']",
       ".ui-pdp-container [class*='voucher']",
       "[aria-label*='cupom' i]",
+      "[data-clipboard-text]",
+      "[data-copy]",
     ];
     for (const selector of selectors) {
       for (const element of document.querySelectorAll(selector)) {
-        const coupon = couponFromText(element.value || element.textContent);
+        const elementText = couponElementText(element);
+        const coupon = couponFromText(elementText);
         if (!coupon) continue;
         inlineCoupon ||= coupon;
-        inlineConditions ||= couponConditions(element.textContent);
+        inlineConditions ||= couponConditions(elementText);
       }
     }
 
@@ -129,8 +153,13 @@
         && /compra m[ií]nima|limite|venc\.?|v[aá]lido at[eé]/i.test(element.textContent))
       .filter((element) => ![...element.children].some((child) => /\d{1,2}(?:[.,]\d+)?%\s*OFF/i.test(child.textContent)
         && /compra m[ií]nima|limite|venc\.?|v[aá]lido at[eé]/i.test(child.textContent)));
-    const couponText = cards[0]?.textContent || couponModalText() || surface.textContent;
-    const coupon = couponFromText(`Cupom ${couponText}`) || inlineCoupon;
+    const metadataText = [...surface.querySelectorAll("input, textarea, [value], [data-clipboard-text], [data-copy], [data-value]")]
+      .map(couponElementText)
+      .join(" ");
+    const couponText = [metadataText, cards[0]?.textContent, couponModalText(), surface.textContent]
+      .filter(Boolean)
+      .join(" ");
+    const coupon = couponFromText(couponText) || inlineCoupon;
     const details = couponConditions(couponText) || inlineConditions;
     if (surface !== document) closeDialog(surface);
     return { label: coupon, details };
