@@ -278,7 +278,7 @@ async function productImageBlob(url) {
 }
 
 async function pngFromImage(blob) {
-  if (blob.type !== "image/webp") return blob;
+  if (blob.type === "image/png") return blob;
   const image = await createImageBitmap(blob);
   const canvas = document.createElement("canvas");
   canvas.width = image.width;
@@ -306,9 +306,8 @@ function prepareWhatsAppImage(payload) {
   shareImageKey = key;
   shareImagePromise = productImageBlob(payload.imageUrl).then(async (sourceBlob) => {
     const imageBlob = await pngFromImage(sourceBlob);
-    const extension = imageBlob.type === "image/png" ? "png" : "jpg";
     const slug = payload.productName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || "produto";
-    return new File([imageBlob], `${slug}.${extension}`, { type: imageBlob.type });
+    return new File([imageBlob], `${slug}.png`, { type: "image/png" });
   });
   return shareImagePromise;
 }

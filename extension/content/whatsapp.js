@@ -114,29 +114,41 @@
     if (!selected) throw new Error(`Nao foi possivel abrir o grupo "${groupName}".`);
   }
 
-  async function attachImage(file, caption) {
-    let input = [...document.querySelectorAll('input[type="file"]')]
-      .find((element) => /image/i.test(element.accept || ""));
-    if (!input) {
-      const attach = actionByLabel(["anexar", "attach"])
-        || [...document.querySelectorAll('[data-icon="plus-rounded"], [data-icon="clip"]')]
-          .map((element) => element.closest("button, [role='button']"))
-          .find(visible);
-      attach?.click();
-      input = await waitFor(() => [...document.querySelectorAll('input[type="file"]')]
-        .find((element) => /image/i.test(element.accept || "")), 8000);
-    }
-    if (!input) throw new Error("O botao de anexar imagem do WhatsApp nao foi encontrado.");
+  const messageComposer = () => [...document.querySelectorAll('#main footer [contenteditable="true"], footer [data-testid="conversation-compose-box-input"], footer [role="textbox"]')]
+    .find(visible);
 
+  async function copyImageToClipboard(file) {
+    if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined") {
+      throw new Error("O navegador nao permitiu copiar a imagem para o clipboard.");
+    }
+    await navigator.clipboard.write([new ClipboardItem({ "image/png": file })]);
+  }
+
+  function pasteImageFromClipboard(composer, file) {
     const transfer = new DataTransfer();
     transfer.items.add(file);
-    input.files = transfer.files;
-    input.dispatchEvent(new Event("change", { bubbles: true }));
+    composer.focus();
+    const pasted = composer.dispatchEvent(new ClipboardEvent("paste", {
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+      clipboardData: transfer,
+    }));
+    if (pasted) document.execCommand("paste");
+  }
+
+  async function pasteOffer(file, caption) {
+    const composer = await waitFor(messageComposer, 10000);
+    if (!composer) throw new Error("O campo de mensagem do WhatsApp nao foi encontrado.");
+
+    setEditableText(composer, caption);
+    await copyImageToClipboard(file);
+    pasteImageFromClipboard(composer, file);
 
     const captionBox = await waitFor(() => editableByLabel(["legenda", "caption"])
       || [...document.querySelectorAll('[role="dialog"] [contenteditable="true"], [data-animate-modal-popup] [contenteditable="true"]')].find(visible), 15000);
-    if (!captionBox) throw new Error("O campo de legenda do WhatsApp nao foi encontrado.");
-    setEditableText(captionBox, caption);
+    if (!captionBox) throw new Error("A imagem foi copiada, mas o WhatsApp nao abriu a previa de envio.");
+    if (!clean(captionBox.textContent)) setEditableText(captionBox, caption);
 
     const send = await waitFor(() => actionByLabel(["enviar", "send"])
       || [...document.querySelectorAll('[data-icon="send"]')].map((element) => element.closest("button, [role='button']")).find(visible), 10000);
@@ -149,7 +161,7 @@
     Promise.resolve()
       .then(async () => {
         await selectGroup(message.groupName);
-        await attachImage(await dataUrlFile(message.imageDataUrl, message.fileName), message.text);
+        await pasteOffer(await dataUrlFile(message.imageDataUrl, message.fileName), message.text);
         return { ok: true };
       })
       .then(sendResponse)
