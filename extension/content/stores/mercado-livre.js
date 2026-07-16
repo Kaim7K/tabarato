@@ -26,9 +26,11 @@
     close?.click();
   };
 
-  const closeAffiliateDialog = () => {
+  const closeAffiliateDialog = async () => {
     const dialog = visibleDialog(/gerar link|id de produto|texto sugerido/i);
-    if (dialog) closeDialog(dialog);
+    if (!dialog) return;
+    closeDialog(dialog);
+    await tools.waitFor(() => (visibleDialog(/gerar link|id de produto|texto sugerido/i) ? "" : true), 3000);
   };
 
   const couponFromText = (value) => {
@@ -79,7 +81,24 @@
     const candidates = [...root.querySelectorAll("article, li, [class*='card'], div")]
       .filter((element) => visible(element) && /\d{1,2}(?:[.,]\d+)?%\s*OFF/i.test(element.textContent))
       .filter((element) => ![...element.children].some((child) => /\d{1,2}(?:[.,]\d+)?%\s*OFF/i.test(child.textContent)));
-    return unique(candidates.map((element) => promotionSummary(element.textContent)));
+    const sourceText = root.innerText || root.documentElement?.innerText || root.textContent || "";
+    const lines = sourceText.split(/\r?\n/).map(tools.clean).filter(Boolean);
+    const textBlocks = [];
+    lines.forEach((line, index) => {
+      if (!/\d{1,2}(?:[.,]\d+)?%\s*OFF/i.test(line)) return;
+      const block = [line];
+      for (let offset = 1; offset <= 8 && index + offset < lines.length; offset += 1) {
+        const nextLine = lines[index + offset];
+        if (/\d{1,2}(?:[.,]\d+)?%\s*OFF/i.test(nextLine)) break;
+        block.push(nextLine);
+        if (/ver termos|saiba mais/i.test(nextLine)) break;
+      }
+      textBlocks.push(block.join(" "));
+    });
+    return unique([
+      ...candidates.map((element) => promotionSummary(element.textContent)),
+      ...textBlocks.map(promotionSummary),
+    ]);
   };
 
   const interestFreeOptions = (value) => {
@@ -105,12 +124,27 @@
     const control = visibleControl(/meios de pagamento|formas de pagamento|ver.*pagamento/i);
     if (control) {
       control.click();
-      const dialog = await tools.waitFor(() => visibleDialog(/meios de pagamento|cart[oõ]es de cr[eé]dito|aproveite estas promo[cç][oõ]es/i), 6000);
-      if (dialog) {
-        promotions = unique([...promotions, ...paymentPromotions(dialog)]);
-        if (price > 500) installments = unique([...installments, ...interestFreeOptions(dialog.textContent)]);
-        closeDialog(dialog);
+      await tools.waitFor(() => (/meios de pagamento|cart[oõ]es de cr[eé]dito|aproveite estas promo[cç][oõ]es/i.test(document.body.innerText) ? true : ""), 8000);
+      const dialog = visibleDialog(/meios de pagamento|cart[oõ]es de cr[eé]dito|aproveite estas promo[cç][oõ]es/i);
+      const paymentRoot = dialog || document;
+      promotions = unique([...promotions, ...paymentPromotions(paymentRoot)]);
+      if (price > 500) {
+        installments = unique([...installments, ...interestFreeOptions(paymentRoot.innerText || document.body.innerText)]);
+        if (!installments.length) {
+          const details = [...paymentRoot.querySelectorAll("button, a, [role='button']")].find((element) => {
+            const label = tools.clean(`${element.textContent || ""} ${element.getAttribute("aria-label") || ""}`);
+            return visible(element)
+              && /saiba mais|ver (?:detalhes|condi[cç][oõ]es)|parcelamento/i.test(label)
+              && /cart[aã]o|pagamento|parcela|juros/i.test(contextText(element));
+          });
+          if (details) {
+            details.click();
+            await tools.waitFor(() => (/\d{1,2}x\s+sem\s+juros/i.test(document.body.innerText) ? true : ""), 6000);
+            installments = interestFreeOptions(document.body.innerText);
+          }
+        }
       }
+      if (dialog && visible(dialog)) closeDialog(dialog);
     }
     return unique([
       ...promotions.map((item) => `Promo\u00e7\u00e3o: ${item}.`),
@@ -162,18 +196,23 @@
       const shouldWaitForLink = prepareAffiliateLink();
       const affiliateLink = generatedAffiliateLink()
         || (shouldWaitForLink ? await tools.waitFor(generatedAffiliateLink) : "");
-      closeAffiliateDialog();
       const structured = tools.jsonProduct();
       const productId = location.href.match(/\b(MLB-?\d{6,})\b/i)?.[1]?.replace("-", "").toUpperCase() || "";
       const currentPrice = tools.price(".ui-pdp-price__second-line .andes-money-amount", ".ui-pdp-price__main-container .andes-money-amount") || tools.productPrice(structured);
-      const coupon = await productCoupon();
-      const extraText = await paymentBenefits(Number(currentPrice));
+      let coupon = "";
+      let extraText = "";
+      if (MELI_LINK_PATTERN.test(affiliateLink)) {
+        await closeAffiliateDialog();
+        coupon = await productCoupon()
+          || tools.coupon(".ui-pdp-container [class*='coupon']", ".ui-pdp-container [data-testid*='coupon']", ".ui-pdp-container [class*='voucher']");
+        extraText = await paymentBenefits(Number(currentPrice));
+      }
       return {
         productName: tools.text(".ui-pdp-title", "h1") || tools.clean(structured.name) || tools.meta("og:title"),
         shortDescription: tools.description(".ui-pdp-description__content", ".ui-pdp-description") || tools.firstParagraph(structured.description) || tools.firstParagraph(tools.meta("og:description")),
         currentPrice,
         previousPrice: tools.price(".ui-pdp-price__original-value .andes-money-amount", ".andes-money-amount--previous"),
-        coupon: coupon || tools.coupon(".ui-pdp-container [class*='coupon']", ".ui-pdp-container [data-testid*='coupon']", ".ui-pdp-container [class*='voucher']"),
+        coupon,
         extraText,
         imageUrl: tools.bestImage(".ui-pdp-gallery__figure img", ".ui-pdp-image", "img[src*='mlstatic']") || tools.productImage(structured),
         affiliateLink: affiliateLink || tools.affiliateLink(),

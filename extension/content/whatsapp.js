@@ -50,11 +50,26 @@
     element.focus();
     document.execCommand("selectAll", false, null);
     document.execCommand("delete", false, null);
-    String(value).split("\n").forEach((line, index, lines) => {
+    const text = String(value);
+    const transfer = new DataTransfer();
+    transfer.setData("text/plain", text);
+    element.dispatchEvent(new ClipboardEvent("paste", {
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+      clipboardData: transfer,
+    }));
+
+    const needsFallback = !clean(element.textContent)
+      || (text.includes("\n") && !String(element.innerText || "").includes("\n"));
+    if (!needsFallback) return;
+
+    document.execCommand("selectAll", false, null);
+    document.execCommand("delete", false, null);
+    text.split("\n").forEach((line, index, lines) => {
       if (line) document.execCommand("insertText", false, line);
-      if (index < lines.length - 1) document.execCommand("insertLineBreak", false, null);
+      if (index < lines.length - 1) document.execCommand("insertParagraph", false, null);
     });
-    element.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: null }));
   };
 
   const searchBox = () => editableByLabel(["pesquisar", "search"])
