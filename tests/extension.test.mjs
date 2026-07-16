@@ -131,6 +131,7 @@ test("extension shares the original product image and Telegram-style text on Wha
   assert.match(whatsapp, /transfer\.setData\("text\/plain", text\)/);
   assert.match(whatsapp, /insertParagraph/);
   assert.match(whatsapp, /await setEditableText\(captionBox, caption\)/);
+  assert.match(whatsapp, /if \(!clean\(captionBox\.innerText \|\| captionBox\.textContent\)\)/);
   assert.match(whatsapp, /replaceChildren\(content\)/);
   assert.match(whatsapp, /aria-placeholder/);
   assert.match(whatsapp, /sentMessageAppeared/);
@@ -138,8 +139,9 @@ test("extension shares the original product image and Telegram-style text on Wha
   assert.ok(manifest.host_permissions.some((permission) => permission.includes("mlstatic.com")));
   assert.ok(manifest.host_permissions.includes("https://web.whatsapp.com/*"));
   assert.ok(manifest.permissions.includes("clipboardWrite"));
-  assert.match(app, /OFERTA T\\u00c1 BARATO/);
-  assert.match(app, /Publicidade\. Pre\\u00e7o e disponibilidade podem mudar/);
+  assert.match(app, /T\\u00c1 BARATO!/);
+  assert.match(app, /Agora: \*\$\{formatPrice\(payload\.currentPrice\)\}\*/);
+  assert.match(app, /Pre\\u00e7o e disponibilidade podem mudar/);
 });
 
 test("extension can open the admin panel without a captured product", () => {

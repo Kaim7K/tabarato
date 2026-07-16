@@ -319,19 +319,20 @@ function scheduleWhatsAppImage() {
 
 function whatsappMessage(payload) {
   const lines = [
-    "\u{1F525} *OFERTA T\u00c1 BARATO*",
+    "\u{1F525} *T\u00c1 BARATO!*",
     "",
     `*${payload.productName}*`,
     "",
-    `\u{1F4B0} *${formatPrice(payload.currentPrice)}*`,
+    `\u{1F4B0} Agora: *${formatPrice(payload.currentPrice)}*`,
   ];
-  if (payload.previousPrice) lines.push(`De: ~${formatPrice(payload.previousPrice)}~`);
+  if (payload.previousPrice) lines.push(`Antes: ~${formatPrice(payload.previousPrice)}~`);
   if (payload.coupon) lines.push("", `\u{1F3AB} Cupom: *${payload.coupon}*`);
+  if (payload.category) lines.push("", `\u{1F4E6} ${payload.category}`);
   if (payload.extraText) {
     const benefits = payload.extraText.split(/\.\s+/).map((item) => item.replace(/\.$/, "").trim()).filter(Boolean);
     lines.push("", ...benefits.map((item) => `\u{1F4B3} ${item}`));
   }
-  lines.push("", "\u2139\uFE0F _Publicidade. Pre\u00e7o e disponibilidade podem mudar._", "", "\u{1F6D2} *Comprar:*", payload.affiliateLink);
+  lines.push("", "Pre\u00e7o e disponibilidade podem mudar.", "", "\u{1F6D2} *Comprar:*", payload.affiliateLink);
   return lines.join("\n");
 }
 

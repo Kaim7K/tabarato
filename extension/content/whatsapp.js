@@ -213,7 +213,9 @@
       throw new Error("A imagem foi copiada, mas o WhatsApp nao abriu a previa de envio.");
     }
     await new Promise((resolve) => window.setTimeout(resolve, 700));
-    await setEditableText(captionBox, caption);
+    if (!clean(captionBox.innerText || captionBox.textContent)) {
+      await setEditableText(captionBox, caption);
+    }
     await new Promise((resolve) => window.setTimeout(resolve, 250));
 
     const send = await waitFor(() => actionByLabel(["enviar", "send"])
