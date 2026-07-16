@@ -22,9 +22,11 @@ export default function Footer() {
                 <MessageCircle className="w-5 h-5" /> Entrar no WhatsApp
               </a>
             )}
-            <a href={TELEGRAM_CHANNEL_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center gap-2 px-8 py-4 bg-white text-[#111111] font-semibold rounded-full hover:bg-white/90 transition shadow-lg">
-              <Send className="w-5 h-5" /> Seguir no Telegram
-            </a>
+            {TELEGRAM_CHANNEL_URL && (
+              <a href={TELEGRAM_CHANNEL_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center gap-2 px-8 py-4 bg-white text-[#111111] font-semibold rounded-full hover:bg-white/90 transition shadow-lg">
+                <Send className="w-5 h-5" /> Seguir no Telegram
+              </a>
+            )}
           </div>
         </div>
       </div>

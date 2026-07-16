@@ -31,6 +31,8 @@ Copie `.env.example` para `.env.local` e configure:
 POSTGRES_URL=
 DATABASE_URL=
 ADMIN_API_KEY=
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=
 TELEGRAM_BOT_TOKEN=
 TELEGRAM_CHANNEL_ID=
 CRON_SECRET=
@@ -40,6 +42,8 @@ VITE_TELEGRAM_CHANNEL_URL=
 ```
 
 Use `POSTGRES_URL` ou `DATABASE_URL`. Não coloque tokens reais no repositório.
+
+Para o painel administrativo, configure `ADMIN_USERNAME` e `ADMIN_PASSWORD`. Se preferir não manter senha em texto claro no ambiente, use `ADMIN_PASSWORD_SHA256` com `ADMIN_PASSWORD_SALT`.
 
 ## Banco de Dados
 
@@ -60,7 +64,7 @@ Ela cria a tabela `telegram_offers` e índices para `status`, `scheduled_at`, `c
 5. Dê permissão para publicar mensagens.
 6. Configure `TELEGRAM_CHANNEL_ID` com o ID do canal, por exemplo `@seucanal` ou o ID numérico.
 
-No painel `/admin/ofertas`, salve a `ADMIN_API_KEY` no navegador e use **Testar conexão com Telegram**. O teste envia:
+No painel `/admin/ofertas`, entre com `ADMIN_USERNAME` e `ADMIN_PASSWORD`. Depois use **Testar conexão com Telegram**. O teste envia:
 
 ```text
 ✅ Bot do Tá Barato conectado com sucesso!
@@ -122,7 +126,7 @@ Depois rode novo deploy. Não há deploy automático neste repositório.
 
 ## Diagnóstico
 
-- 401 no painel: confira `ADMIN_API_KEY`.
+- 401 no painel: confira `ADMIN_API_KEY`, `ADMIN_USERNAME` e `ADMIN_PASSWORD`.
 - 500 de banco: confira `POSTGRES_URL` ou `DATABASE_URL` e se a migration foi executada.
 - Erro no Telegram: confira token, canal e se o bot é administrador.
 - Oferta não publica: confira status, campos obrigatórios e se já existe `telegram_message_id`.

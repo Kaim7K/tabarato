@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Search, ArrowRight, Package, Tag } from "lucide-react";
 import { formatPrice, normalizeText } from "@/lib/catalog";
@@ -10,6 +10,8 @@ export default function SmartSearch({ placeholder = "Buscar por nome, categoria.
   const [open, setOpen] = useState(false);
   const [allOffers, setAllOffers] = useState([]);
   const containerRef = useRef(null);
+  const inputId = useId();
+  const resultsId = useId();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -46,18 +48,24 @@ export default function SmartSearch({ placeholder = "Buscar por nome, categoria.
   return (
     <div ref={containerRef} className="relative w-full">
       <form onSubmit={(e) => { e.preventDefault(); if (query.trim()) { navigate(`/buscar?q=${encodeURIComponent(query.trim())}`); setOpen(false); } }} className="relative">
+        <label htmlFor={inputId} className="sr-only">{placeholder}</label>
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#111111]/40 pointer-events-none" />
         <input
+          id={inputId}
           type="text"
           value={query}
           onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
           onFocus={() => setOpen(true)}
           placeholder={placeholder}
+          role="combobox"
+          aria-expanded={open && Boolean(query.trim())}
+          aria-controls={resultsId}
+          aria-autocomplete="list"
           className="w-full pl-10 pr-4 py-2.5 bg-white rounded-full text-sm text-[#111111] placeholder:text-[#111111]/40 border border-[#111111]/8 focus:outline-none focus:ring-2 focus:ring-[var(--brand-primary)]/30 transition"
         />
       </form>
       {open && query.trim() && (
-        <div className="absolute top-full mt-2 w-full bg-white rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.12)] border border-[#111111]/8 overflow-hidden z-50 max-h-[28rem] overflow-y-auto">
+        <div id={resultsId} role="listbox" className="absolute top-full mt-2 w-full bg-white rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.12)] border border-[#111111]/8 overflow-hidden z-50 max-h-[28rem] overflow-y-auto">
           {results.length === 0 ? (
             <div className="p-6 text-center">
               <p className="text-sm text-[#111111]/40 mb-1">Nenhum resultado para "{query}"</p>
@@ -69,7 +77,7 @@ export default function SmartSearch({ placeholder = "Buscar por nome, categoria.
                 {results.length} resultado{results.length === 1 ? "" : "s"}
               </div>
               {results.map((offer) => (
-                <button key={offer.id} onClick={() => handleSelect(offer)} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[#F5F2EB] transition text-left border-b border-[#111111]/5 last:border-0">
+                <button key={offer.id} type="button" role="option" aria-selected="false" onClick={() => handleSelect(offer)} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[#F5F2EB] focus:bg-[#F5F2EB] focus:outline-none transition text-left border-b border-[#111111]/5 last:border-0">
                   <div className="w-10 h-10 rounded-lg overflow-hidden bg-[#F5F2EB] shrink-0 flex items-center justify-center">
                     {offer.image ? <img src={offer.image} alt="" className="w-full h-full object-contain bg-white" /> : <Package className="w-4 h-4 text-[#111111]/30" />}
                   </div>

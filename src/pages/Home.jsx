@@ -10,15 +10,19 @@ import {
   Home as HomeIcon,
   Laptop,
   Loader2,
+  MessageCircle,
   PackageSearch,
   Paperclip,
   Search,
+  Send,
   Sparkles,
   TrendingUp,
+  UsersRound,
   Wrench,
 } from "lucide-react";
 import { DEFAULT_CATEGORIES, formatPrice, normalizeText } from "@/lib/catalog";
 import { listPublicOffers } from "@/lib/offersApi";
+import { TELEGRAM_CHANNEL_URL, WHATSAPP_GROUP_URL } from "@/lib/publicLinks";
 
 const categoryIcons = {
   Casa: HomeIcon,
@@ -51,9 +55,78 @@ export default function Home() {
   const featuredCopy = featured?.benefit || featured?.description || "Oferta selecionada para comprar melhor sem perder tempo.";
   const recent = filtered.filter((offer) => offer.id !== featured?.id);
   const mostClicked = [...filtered].sort((a, b) => (b.clicks || 0) - (a.clicks || 0)).slice(0, 5);
+  const hasTelegramLink = Boolean(TELEGRAM_CHANNEL_URL);
+  const hasWhatsAppLink = Boolean(WHATSAPP_GROUP_URL);
 
   return (
     <div className="bg-[#F5F2EB] min-h-screen">
+      <section className="border-b border-[#111111]/8 bg-[#111111] text-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16 lg:py-20">
+          <div className="grid lg:grid-cols-[1.05fr_0.95fr] gap-9 lg:gap-14 items-center">
+            <div>
+              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 border border-white/10 text-white/70 text-xs font-bold uppercase tracking-widest mb-5">
+                <UsersRound className="w-4 h-4 text-[#FF6B35]" />
+                Comunidade Tá Barato
+              </div>
+              <h1 className="text-3xl sm:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.03] max-w-3xl">
+                Receba os melhores achados direto no Telegram e WhatsApp.
+              </h1>
+              <p className="mt-5 text-white/65 text-base sm:text-lg leading-relaxed max-w-2xl">
+                Entre nos grupos oficiais do Tá Barato para acompanhar ofertas publicadas em tempo real, alertas rápidos e oportunidades antes que acabem.
+              </p>
+              <div className="mt-8 flex flex-col sm:flex-row gap-3">
+                {hasTelegramLink && (
+                  <a
+                    href={TELEGRAM_CHANNEL_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center justify-center gap-2 px-7 py-4 bg-[#FF6B35] hover:bg-[#D95426] text-white font-semibold rounded-full transition shadow-lg text-base"
+                  >
+                    Entrar no Telegram <Send className="w-5 h-5" />
+                  </a>
+                )}
+                {hasWhatsAppLink && (
+                  <a
+                    href={WHATSAPP_GROUP_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center justify-center gap-2 px-7 py-4 bg-[#168A55] hover:bg-[#137247] text-white font-semibold rounded-full transition shadow-lg text-base"
+                  >
+                    Entrar no WhatsApp <MessageCircle className="w-5 h-5" />
+                  </a>
+                )}
+              </div>
+              {!hasTelegramLink && !hasWhatsAppLink && (
+                <p className="mt-6 text-white/45 text-sm">
+                  Configure os links dos grupos nas variáveis públicas para ativar os botões.
+                </p>
+              )}
+            </div>
+
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div className="bg-white/[0.06] border border-white/10 rounded-2xl p-5 sm:p-6">
+                <div className="w-11 h-11 rounded-full bg-[#FF6B35]/15 text-[#FF6B35] flex items-center justify-center mb-5">
+                  <Send className="w-5 h-5" />
+                </div>
+                <h2 className="text-xl font-bold mb-2">Canal no Telegram</h2>
+                <p className="text-white/55 text-sm leading-relaxed">
+                  Receba publicações organizadas, chamadas rápidas e links diretos para aproveitar cada oferta.
+                </p>
+              </div>
+              <div className="bg-white/[0.06] border border-white/10 rounded-2xl p-5 sm:p-6">
+                <div className="w-11 h-11 rounded-full bg-[#168A55]/15 text-[#4ade80] flex items-center justify-center mb-5">
+                  <MessageCircle className="w-5 h-5" />
+                </div>
+                <h2 className="text-xl font-bold mb-2">Grupo no WhatsApp</h2>
+                <p className="text-white/55 text-sm leading-relaxed">
+                  Acompanhe avisos no celular, compartilhe achados e veja oportunidades enquanto ainda estão disponíveis.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {featured ? (
         <section className="border-b border-[#111111]/8">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 lg:py-16">

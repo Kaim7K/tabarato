@@ -23,6 +23,16 @@ export async function loginAdmin(username, password) {
   return payload;
 }
 
+export async function validateAdminSession() {
+  if (!isAdminLoggedIn()) return false;
+  const response = await fetch("/api/admin/session", { credentials: "include" }).catch(() => null);
+  if (!response?.ok) {
+    setAdminLoggedIn(false);
+    return false;
+  }
+  return true;
+}
+
 export async function logoutAdmin() {
   await fetch("/api/admin/logout", { method: "POST", credentials: "include" }).catch(() => {});
   setAdminLoggedIn(false);

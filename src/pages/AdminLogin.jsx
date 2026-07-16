@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { Loader2, LockKeyhole } from "lucide-react";
 import { SITE_NAME } from "@/lib/catalog";
-import { isAdminLoggedIn, loginAdmin } from "@/lib/adminAuth";
+import { isAdminLoggedIn, loginAdmin, validateAdminSession } from "@/lib/adminAuth";
 import { BRAND_LOGO } from "@/lib/brand";
 
 export default function AdminLogin() {
@@ -10,7 +10,22 @@ export default function AdminLogin() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [checking, setChecking] = useState(() => isAdminLoggedIn());
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!checking) return;
+    let active = true;
+    validateAdminSession().then((valid) => {
+      if (valid) window.location.href = location.state?.from?.pathname || "/admin";
+      else if (active) setChecking(false);
+    });
+    return () => { active = false; };
+  }, [checking, location.state?.from?.pathname]);
+
+  if (checking) {
+    return <div className="min-h-screen bg-[#0D0D0D] text-white flex items-center justify-center">Validando acesso...</div>;
+  }
 
   if (isAdminLoggedIn()) {
     return <Navigate to={location.state?.from?.pathname || "/admin"} replace />;
