@@ -1,0 +1,93 @@
+{
+  "name": "Offer",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "category": {
+      "type": "string"
+    },
+    "barcode": {
+      "type": "string"
+    },
+    "internal_code": {
+      "type": "string"
+    },
+    "affiliate_link": {
+      "type": "string"
+    },
+    "platform": {
+      "type": "string"
+    },
+    "image": {
+      "type": "string"
+    },
+    "price": {
+      "type": "number"
+    },
+    "cost": {
+      "type": "number"
+    },
+    "stock": {
+      "type": "number",
+      "default": 0
+    },
+    "benefit": {
+      "type": "string"
+    },
+    "reason": {
+      "type": "string"
+    },
+    "score": {
+      "type": "number",
+      "default": 0
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "pending",
+        "published",
+        "scheduled",
+        "hidden",
+        "removed"
+      ],
+      "default": "draft"
+    },
+    "published_date": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "review_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "channels": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "clicks": {
+      "type": "number",
+      "default": 0
+    },
+    "is_featured": {
+      "type": "boolean",
+      "default": false
+    },
+    "time_label": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "name",
+    "category",
+    "affiliate_link",
+    "price"
+  ]
+}
