@@ -24,7 +24,9 @@ export function formatTelegramMessage(offer) {
     lines.push(`Antes: <s>R$ ${Number(offer.previousPrice).toFixed(2).replace(".", ",")}</s>`);
   }
   if (offer.coupon) {
-    lines.push(`Cupom: <b>${escapeHtml(offer.coupon)}</b>`);
+    lines.push(/^use o cupom da loja$/i.test(offer.coupon)
+      ? `<b>${escapeHtml(offer.coupon)}</b>`
+      : `Cupom: <b>${escapeHtml(offer.coupon)}</b>`);
   }
   if (offer.category) lines.push("", `📦 ${escapeHtml(offer.category)}`);
   if (offer.extraText) lines.push("", escapeHtml(offer.extraText));

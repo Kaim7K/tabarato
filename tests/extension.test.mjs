@@ -65,6 +65,9 @@ test("Mercado Livre captures product coupons, payment promotions and interest-fr
   assert.match(mercadoLivre, /CUPOM\[A-Z0-9_/);
   assert.match(mercadoLivre, /CUPONS\|COUPON/);
   assert.match(mercadoLivre, /couponElementText/);
+  assert.match(mercadoLivre, /storeCouponLabel/);
+  assert.match(mercadoLivre, /Use o cupom da loja/);
+  assert.match(mercadoLivre, /cupom da loja|cupons\?/);
   assert.match(mercadoLivre, /data-clipboard-text/);
   assert.match(mercadoLivre, /interactiveControl/);
   assert.match(mercadoLivre, /activateControl/);

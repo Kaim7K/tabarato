@@ -379,7 +379,12 @@ function whatsappMessage(payload) {
     `\u{1F4B0} Agora: *${formatPrice(payload.currentPrice)}*`,
   ];
   if (payload.previousPrice) lines.push(`Antes: ~${formatPrice(payload.previousPrice)}~`);
-  if (payload.coupon) lines.push("", `\u{1F3AB} Cupom: *${payload.coupon}*`);
+  if (payload.coupon) {
+    const couponText = /^use o cupom da loja$/i.test(payload.coupon)
+      ? `\u{1F3AB} *${payload.coupon}*`
+      : `\u{1F3AB} Cupom: *${payload.coupon}*`;
+    lines.push("", couponText);
+  }
   if (payload.category) lines.push("", `\u{1F4E6} ${payload.category}`);
   if (payload.extraText) {
     const benefits = payload.extraText.split(/\.\s+/).map((item) => item.replace(/\.$/, "").trim()).filter(Boolean);

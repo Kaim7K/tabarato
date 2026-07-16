@@ -112,6 +112,13 @@
     element?.getAttribute?.("data-value"),
   ].filter(Boolean).join(" ");
 
+  const storeCouponLabel = (value) => {
+    const text = tools.clean(value);
+    return /cupons?(?:\s+exclusivos?)?(?:\s+[^.]{0,24})?\s+(?:da|desta|de)\s+loja|cupons?\s+do\s+vendedor|oferecido\s+pelo\s+vendedor/i.test(text)
+      ? "Use o cupom da loja"
+      : "";
+  };
+
   const couponConditions = (value) => {
     const text = tools.clean(value);
     const minimum = text.match(/compra m[ií]nima(?:\s+de)?\s*R\$\s*[\d.,]+/i)?.[0];
@@ -124,6 +131,7 @@
   const productCoupon = async () => {
     let inlineCoupon = "";
     let inlineConditions = "";
+    let inlineStoreCoupon = "";
     const selectors = [
       ".ui-pdp-container [class*='coupon']",
       ".ui-pdp-container [data-testid*='coupon']",
@@ -135,18 +143,18 @@
     for (const selector of selectors) {
       for (const element of document.querySelectorAll(selector)) {
         const elementText = couponElementText(element);
+        inlineStoreCoupon ||= storeCouponLabel(elementText);
         const coupon = couponFromText(elementText);
-        if (!coupon) continue;
-        inlineCoupon ||= coupon;
+        if (coupon) inlineCoupon ||= coupon;
         inlineConditions ||= couponConditions(elementText);
       }
     }
 
     const control = interactiveControl(/(?:ver|aplicar|usar|conferir|copiar).{0,24}cupons?|cupons?\s+dispon[ií]ve(?:l|is)/i);
-    if (!control) return { label: inlineCoupon, details: inlineConditions };
+    if (!control) return { label: inlineStoreCoupon || inlineCoupon, details: inlineConditions };
     activateControl(control);
     const surface = await tools.waitFor(() => couponSurface() || (couponModalText() ? document : null), 7000);
-    if (!surface) return { label: inlineCoupon, details: inlineConditions };
+    if (!surface) return { label: inlineStoreCoupon || inlineCoupon, details: inlineConditions };
     const cards = [...surface.querySelectorAll("article, li, [class*='card'], div")]
       .filter((element) => visible(element)
         && /\d{1,2}(?:[.,]\d+)?%\s*OFF/i.test(element.textContent)
@@ -159,7 +167,7 @@
     const couponText = [metadataText, cards[0]?.textContent, couponModalText(), surface.textContent]
       .filter(Boolean)
       .join(" ");
-    const coupon = couponFromText(couponText) || inlineCoupon;
+    const coupon = storeCouponLabel(couponText) || inlineStoreCoupon || couponFromText(couponText) || inlineCoupon;
     const details = couponConditions(couponText) || inlineConditions;
     if (surface !== document) closeDialog(surface);
     return { label: coupon, details };
