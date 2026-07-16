@@ -953,13 +953,14 @@ function OffersView({
         <div className="grid lg:grid-cols-[1fr_180px_220px_auto] gap-3">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} className={`${inputCls} pl-10`} placeholder="Buscar por produto, loja ou categoria" />
+            <label className="sr-only" htmlFor="admin-offer-search">Buscar ofertas</label>
+            <input id="admin-offer-search" value={search} onChange={(e) => setSearch(e.target.value)} className={`${inputCls} pl-10`} placeholder="Buscar por produto, loja ou categoria" />
           </div>
-          <select value={status} onChange={(e) => setStatus(e.target.value)} className={inputCls}>
+          <select aria-label="Filtrar por status" value={status} onChange={(e) => setStatus(e.target.value)} className={inputCls}>
             <option value="">Todos os status</option>
             {telegramStatuses.map((item) => <option key={item} value={item}>{statusLabels[item]}</option>)}
           </select>
-          <select value={category} onChange={(e) => setCategory(e.target.value)} className={inputCls}>
+          <select aria-label="Filtrar por categoria" value={category} onChange={(e) => setCategory(e.target.value)} className={inputCls}>
             <option value="">Todas as categorias</option>
             {categories.map((item) => <option key={item} value={item}>{item}</option>)}
           </select>
@@ -989,8 +990,8 @@ function OffersView({
               </Field>
             </div>
             <div className="flex flex-wrap gap-2">
-              <button disabled={bulkBusy} onClick={bulkUpdate} className="px-4 py-2.5 bg-white text-[#111111] rounded-xl font-semibold disabled:opacity-50 flex items-center gap-2"><Save className="w-4 h-4" /> Aplicar</button>
-              <button disabled={bulkBusy} onClick={bulkRemove} className="px-4 py-2.5 bg-red-500 text-white rounded-xl font-semibold disabled:opacity-50 flex items-center gap-2"><Trash2 className="w-4 h-4" /> Excluir</button>
+              <button disabled={bulkBusy} onClick={bulkUpdate} className="min-h-10 px-4 py-2.5 bg-white text-[#111111] rounded-xl font-semibold disabled:opacity-50 flex items-center gap-2"><Save className="w-4 h-4" /> Aplicar</button>
+              <button disabled={bulkBusy} onClick={bulkRemove} className="min-h-10 px-4 py-2.5 bg-red-500 text-white rounded-xl font-semibold disabled:opacity-50 flex items-center gap-2"><Trash2 className="w-4 h-4" /> Excluir</button>
             </div>
           </div>
         </div>
@@ -1291,8 +1292,8 @@ function CategoryList({ items, offers, onRemove = (_name) => {} }) {
 
 function OfferRow({ offer, selected, onToggleSelected, onEdit, onRetry, onRemove }) {
   return (
-    <div className={`grid md:grid-cols-[32px_minmax(0,1fr)_130px_150px_120px_96px] gap-4 p-4 items-center hover:bg-white/[0.03] ${selected ? "bg-[#FF6B35]/10" : ""}`}>
-      <input type="checkbox" checked={selected} onChange={() => onToggleSelected(offer.id)} className="w-4 h-4 accent-[#FF6B35]" aria-label={`Selecionar ${offer.productName}`} />
+    <div className={`grid md:grid-cols-[32px_minmax(0,1fr)_130px_150px_120px_96px] gap-4 p-4 items-start md:items-center hover:bg-white/[0.03] ${selected ? "bg-[#FF6B35]/10" : ""}`}>
+      <input type="checkbox" checked={selected} onChange={() => onToggleSelected(offer.id)} className="w-4 h-4 mt-5 md:mt-0 accent-[#FF6B35]" aria-label={`Selecionar ${offer.productName}`} />
       <button onClick={() => onEdit(offer)} className="flex items-center gap-3 min-w-0 text-left">
         <div className="w-14 h-14 bg-white rounded-xl overflow-hidden shrink-0">
           {offer.imageUrl && <img src={offer.imageUrl} alt="" className="w-full h-full object-contain" />}
@@ -1304,14 +1305,14 @@ function OfferRow({ offer, selected, onToggleSelected, onEdit, onRetry, onRemove
         </div>
       </button>
       <span className={`w-max px-2.5 py-1 rounded-full text-xs font-semibold ${statusClasses[offer.status] || statusClasses.RASCUNHO}`}>{statusLabels[offer.status] || offer.status}</span>
-      <div>
+      <div className="md:block flex items-end gap-2">
         <p className="font-semibold">{formatPrice(number(offer.currentPrice))}</p>
         {offer.previousPrice && <p className="text-xs text-white/35 line-through">{formatPrice(number(offer.previousPrice))}</p>}
       </div>
-      <p className="text-xs text-white/40">{offer.scheduledAt ? new Date(offer.scheduledAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "-"}</p>
-      <div className="flex justify-end gap-1">
-        {offer.status === "ERRO" && <button onClick={() => onRetry(offer)} title="Reenviar" className="p-2 text-white/50 hover:text-[#FF6B35]"><RefreshCw className="w-4 h-4" /></button>}
-        <button onClick={() => onRemove(offer)} title="Excluir" className="p-2 text-white/50 hover:text-red-300"><Trash2 className="w-4 h-4" /></button>
+      <p className="text-xs text-white/40 md:block">{offer.scheduledAt ? new Date(offer.scheduledAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "Sem agenda"}</p>
+      <div className="flex md:justify-end gap-1">
+        {offer.status === "ERRO" && <button onClick={() => onRetry(offer)} title="Reenviar" aria-label={`Reenviar ${offer.productName}`} className="min-h-10 min-w-10 p-2 text-white/50 hover:text-[#FF6B35]"><RefreshCw className="w-4 h-4" /></button>}
+        <button onClick={() => onRemove(offer)} title="Excluir" aria-label={`Excluir ${offer.productName}`} className="min-h-10 min-w-10 p-2 text-white/50 hover:text-red-300"><Trash2 className="w-4 h-4" /></button>
       </div>
     </div>
   );
@@ -1417,4 +1418,4 @@ const tooltipStyle = {
   color: "#fff",
 };
 
-const inputCls = "w-full px-3.5 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm placeholder:text-white/30 focus:outline-none focus:border-[#FF6B35]/50";
+const inputCls = "w-full min-h-10 px-3.5 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm placeholder:text-white/30 focus:outline-none focus:border-[#FF6B35]/50 focus:ring-2 focus:ring-[#FF6B35]/15";

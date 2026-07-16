@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { ArrowUpRight, Clock, Heart, Share2 } from "lucide-react";
+import { ArrowUpRight, Clock, Heart, ImageOff, Share2 } from "lucide-react";
 import { useFavorites } from "@/lib/FavoritesContext";
 import { formatPrice } from "@/lib/catalog";
 import { trackOfferClick } from "@/lib/offersApi";
@@ -13,7 +13,7 @@ export default function OfferCard({ offer }) {
     e.preventDefault();
     e.stopPropagation();
     const text = `Oferta Tá Barato: ${offer.name}\n\n${formatPrice(offer.price)}\n${summary}\n\n${offer.affiliate_link}`;
-    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer");
   };
 
   const handleClick = () => {
@@ -23,11 +23,18 @@ export default function OfferCard({ offer }) {
   return (
     <article className="group bg-white rounded-2xl overflow-hidden shadow-[0_18px_45px_rgba(0,0,0,0.04)] hover:shadow-[0_24px_65px_rgba(0,0,0,0.08)] transition-all duration-300 flex flex-col h-full border border-[#111111]/5">
       <Link to={`/oferta/${offer.id}`} className="block relative overflow-hidden aspect-[4/3] bg-white">
-        <img
-          src={offer.image}
-          alt={offer.name}
-          className="w-full h-full object-contain group-hover:scale-[1.03] transition-transform duration-500 bg-white p-2"
-        />
+        {offer.image ? (
+          <img
+            src={offer.image}
+            alt={offer.name}
+            loading="lazy"
+            className="w-full h-full object-contain group-hover:scale-[1.03] transition-transform duration-500 bg-white p-2"
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center bg-[#F5F2EB] text-[#111111]/25">
+            <ImageOff className="w-10 h-10" aria-hidden="true" />
+          </div>
+        )}
         <span className="absolute top-3 left-3 max-w-[72%] px-3 py-1 bg-white/95 backdrop-blur-sm text-[#111111] text-xs font-medium rounded-full truncate shadow-sm">
           {offer.category}
         </span>
