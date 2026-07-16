@@ -24,6 +24,7 @@ export function mapOffer(row) {
     telegramMessageId: row.telegram_message_id || "",
     telegramResponse: row.telegram_response || null,
     errorMessage: row.error_message || "",
+    clicks: row.clicks || 0,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

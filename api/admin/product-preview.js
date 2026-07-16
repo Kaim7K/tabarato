@@ -1,4 +1,4 @@
-import { requireAdmin, methodNotAllowed, readJson, sendJson, publicError } from "../_lib/http.js";
+import { requireAdmin, methodNotAllowed, readJson, sendJson } from "../_lib/http.js";
 import { fetchProductPreview } from "../_lib/productPreview.js";
 
 export default async function handler(req, res) {
@@ -16,6 +16,11 @@ export default async function handler(req, res) {
 
     return sendJson(res, 200, { product });
   } catch (error) {
-    return publicError(res, error, error.name === "AbortError" ? "Tempo esgotado ao consultar a loja." : "Nao foi possivel preencher automaticamente.");
+    console.error(error?.message || error);
+    return sendJson(res, 422, {
+      error: error.name === "AbortError"
+        ? "Tempo esgotado ao consultar a loja."
+        : error.message || "Nao foi possivel preencher automaticamente.",
+    });
   }
 }
