@@ -52,6 +52,10 @@ test("Mercado Livre capture waits for and requires the generated meli.la link", 
   const sidePanel = readFileSync(join(extensionRoot, "sidepanel", "app.js"), "utf8");
   assert.match(shared, /meli\\\.la/);
   assert.match(mercadoLivre, /prepareAffiliateLink/);
+  assert.match(mercadoLivre, /affiliateShareContext/);
+  assert.match(mercadoLivre, /ganhos\?\\s\*\(\?:extras\?\)\?\\s\*\\d/);
+  assert.match(mercadoLivre, /\.filter\(affiliateShareContext\)/);
+  assert.match(mercadoLivre, /rectangle\.height > 180/);
   assert.match(mercadoLivre, /tools\.waitFor\(generatedAffiliateLink\)/);
   assert.match(sidePanel, /Use o link meli\.la gerado pelo botao Compartilhar/);
 });
@@ -151,6 +155,8 @@ test("extension shares the original product image and Telegram-style text on Wha
   assert.match(whatsapp, /activateGroupRow/);
   assert.match(whatsapp, /DataTransfer/);
   assert.match(whatsapp, /navigator\.clipboard\.write/);
+  assert.match(whatsapp, /document\.hasFocus\(\)/);
+  assert.match(whatsapp, /pasteImageFromClipboard\(composer, file\)/);
   assert.match(whatsapp, /new ClipboardItem/);
   assert.match(whatsapp, /new ClipboardEvent\("paste"/);
   assert.match(whatsapp, /await setEditableText\(composer, caption\)/);

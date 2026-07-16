@@ -178,10 +178,13 @@
   };
 
   async function copyImageToClipboard(file) {
-    if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined") {
-      throw new Error("O navegador nao permitiu copiar a imagem para o clipboard.");
+    if (!document.hasFocus() || !navigator.clipboard?.write || typeof ClipboardItem === "undefined") return false;
+    try {
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": file })]);
+      return true;
+    } catch {
+      return false;
     }
-    await navigator.clipboard.write([new ClipboardItem({ "image/png": file })]);
   }
 
   function pasteImageFromClipboard(composer, file) {
@@ -203,10 +206,15 @@
     const messageCountBefore = outgoingMessages().length;
 
     await setEditableText(composer, caption);
-    await copyImageToClipboard(file);
     pasteImageFromClipboard(composer, file);
 
-    const captionBox = await waitFor(() => captionEditor(composer), 15000);
+    let captionBox = await waitFor(() => captionEditor(composer), 3000);
+    if (!captionBox && await copyImageToClipboard(file)) {
+      window.focus();
+      composer.focus();
+      document.execCommand("paste");
+      captionBox = await waitFor(() => captionEditor(composer), 12000);
+    }
     if (!captionBox) {
       const sent = await waitFor(() => sentMessageAppeared(messageCountBefore, caption), 3000);
       if (sent) return;

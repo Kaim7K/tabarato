@@ -310,6 +310,19 @@
     return value;
   };
 
+  const affiliateShareContext = (element) => {
+    let current = element;
+    for (let depth = 0; current && depth < 5; depth += 1) {
+      const text = tools.clean(current.textContent);
+      if (/ganhos?\s*(?:extras?)?\s*\d+(?:[.,]\d+)?\s*%/i.test(text)
+        || /programa\s+de\s+afiliados?|link\s+de\s+afiliado/i.test(text)) return true;
+      const rectangle = current.getBoundingClientRect();
+      if (depth > 0 && rectangle.height > 180) break;
+      current = current.parentElement;
+    }
+    return false;
+  };
+
   const shareControl = () => [...document.querySelectorAll("button, a, [role='button']")]
     .filter((element) => element.id !== "tabarato-send-product")
     .filter((element) => /^compartilhar$/i.test(tools.clean(element.textContent)))
@@ -317,9 +330,9 @@
       const rectangle = element.getBoundingClientRect();
       return rectangle.width > 0 && rectangle.height > 0;
     })
+    .filter(affiliateShareContext)
     .sort((left, right) => {
-      const score = (element) => (/ganhos\s*\d+%/i.test(contextText(element)) ? 100 : 0)
-        + (element.getBoundingClientRect().top < 180 ? 20 : 0);
+      const score = (element) => (element.getBoundingClientRect().top < 180 ? 20 : 0);
       return score(right) - score(left);
     })[0];
 

@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Ta Barato - Captura de ofertas",
   "description": "Capture produtos das lojas e envie ofertas para o painel administrativo do Ta Barato.",
-  "version": "1.1.2",
+  "version": "1.1.4",
   "minimum_chrome_version": "114",
   "icons": {
     "128": "assets/icon.png"

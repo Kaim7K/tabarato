@@ -53,6 +53,7 @@ async function sendToWhatsApp(message) {
   await chrome.windows.update(tab.windowId, { focused: true });
   await chrome.tabs.update(tab.id, { active: true });
   await waitForTab(tab.id);
+  await new Promise((resolve) => setTimeout(resolve, 350));
 
   const payload = {
     type: "TABARATO_WHATSAPP_SEND",
