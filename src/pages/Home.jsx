@@ -192,7 +192,7 @@ export default function Home() {
                     </Link>
                   </div>
                   <p className="mt-5 text-[#111111]/40 text-xs leading-relaxed">
-                    Publicidade: este site utiliza links de afiliado e pode receber comissão pelas compras, sem custo adicional para você.
+                    Este site utiliza links de afiliado e pode receber comissão pelas compras, sem custo adicional para você.
                   </p>
                 </div>
               </div>

@@ -1,4 +1,4 @@
-import { createAdminSessionToken, getAdminSessionCookie, methodNotAllowed, readJson, requireAdmin, sendJson } from "../_lib/http.js";
+import { createAdminExtensionToken, createAdminSessionToken, getAdminSessionCookie, handleExtensionCors, methodNotAllowed, readJson, requireAdmin, sendJson } from "../_lib/http.js";
 import { createHash, timingSafeEqual } from "node:crypto";
 
 const ADMIN_USER = process.env.ADMIN_USERNAME || "admin";
@@ -23,6 +23,8 @@ function passwordMatches(password) {
 }
 
 export default async function handler(req, res) {
+  if (handleExtensionCors(req, res, ["GET", "POST"])) return;
+
   if (req.method === "GET") {
     if (!requireAdmin(req, res)) return;
     return sendJson(res, 200, { ok: true });
@@ -41,6 +43,15 @@ export default async function handler(req, res) {
   const body = await readJson(req);
   if (body.username !== ADMIN_USER || !passwordMatches(body.password || "")) {
     return sendJson(res, 401, { error: "Usuario ou senha invalidos." });
+  }
+
+  if (body.client === "extension") {
+    const expiresAt = Date.now() + 24 * 60 * 60 * 1000;
+    return sendJson(res, 200, {
+      ok: true,
+      token: createAdminExtensionToken(expectedKey, expiresAt),
+      expiresAt: new Date(expiresAt).toISOString(),
+    });
   }
 
   res.setHeader("Set-Cookie", getAdminSessionCookie(createAdminSessionToken(expectedKey)));

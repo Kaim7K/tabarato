@@ -28,7 +28,7 @@ export function formatTelegramMessage(offer) {
   }
   if (offer.category) lines.push("", `📦 ${escapeHtml(offer.category)}`);
   if (offer.extraText) lines.push("", escapeHtml(offer.extraText));
-  lines.push("", "Publicidade | Link de afiliado", "Preço e disponibilidade podem mudar.");
+  lines.push("", "Link de afiliado", "Preço e disponibilidade podem mudar.");
 
   return compactLines(lines);
 }

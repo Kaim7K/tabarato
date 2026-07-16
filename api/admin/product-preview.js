@@ -1,8 +1,9 @@
-import { requireAdmin, methodNotAllowed, readJson, sendJson } from "../_lib/http.js";
+import { handleExtensionCors, requireAdmin, methodNotAllowed, readJson, sendJson } from "../_lib/http.js";
 import { fetchProductPreview } from "../_lib/productPreview.js";
 
 export default async function handler(req, res) {
-  if (!requireAdmin(req, res)) return;
+  if (handleExtensionCors(req, res, ["POST"])) return;
+  if (!requireAdmin(req, res, { allowExtension: true })) return;
   if (req.method !== "POST") return methodNotAllowed(res, ["POST"]);
 
   try {

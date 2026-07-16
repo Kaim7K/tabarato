@@ -45,13 +45,60 @@ export function createAdminSessionToken(secret) {
   return createHmac("sha256", String(secret)).update("tb_admin_session:v1").digest("hex");
 }
 
+const EXTENSION_TOKEN_PREFIX = "tbx1";
+
+export function createAdminExtensionToken(secret, expiresAt = Date.now() + 24 * 60 * 60 * 1000) {
+  const payload = Buffer.from(JSON.stringify({
+    exp: Math.floor(expiresAt / 1000),
+    scope: "admin:offers",
+  })).toString("base64url");
+  const unsigned = `${EXTENSION_TOKEN_PREFIX}.${payload}`;
+  const signature = createHmac("sha256", String(secret)).update(unsigned).digest("base64url");
+  return `${unsigned}.${signature}`;
+}
+
+export function verifyAdminExtensionToken(token, secret, now = Date.now()) {
+  const [prefix, payload, signature, extra] = String(token || "").split(".");
+  if (extra || prefix !== EXTENSION_TOKEN_PREFIX || !payload || !signature) return false;
+
+  const unsigned = `${prefix}.${payload}`;
+  const expected = createHmac("sha256", String(secret)).update(unsigned).digest("base64url");
+  if (!safeEqual(signature, expected)) return false;
+
+  try {
+    const claims = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+    return claims.scope === "admin:offers" && Number(claims.exp) > Math.floor(now / 1000);
+  } catch {
+    return false;
+  }
+}
+
+export function handleExtensionCors(req, res, methods) {
+  const origin = String(req.headers.origin || "");
+  const configuredOrigin = String(process.env.EXTENSION_ORIGIN || "").trim();
+  const validOrigin = /^chrome-extension:\/\/[a-p]{32}$/.test(origin)
+    && (!configuredOrigin || configuredOrigin === origin);
+
+  if (!validOrigin) return false;
+
+  res.setHeader("Access-Control-Allow-Origin", origin);
+  res.setHeader("Access-Control-Allow-Methods", [...methods, "OPTIONS"].join(", "));
+  res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
+  res.setHeader("Access-Control-Max-Age", "86400");
+  res.setHeader("Vary", "Origin");
+
+  if (req.method !== "OPTIONS") return false;
+  res.status(204).end();
+  return true;
+}
+
 function safeEqual(left, right) {
   const a = Buffer.from(String(left || ""));
   const b = Buffer.from(String(right || ""));
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-export function requireAdmin(req, res) {
+export function requireAdmin(req, res, { allowExtension = false } = {}) {
   const expected = process.env.ADMIN_API_KEY;
   if (!expected) {
     sendJson(res, 500, { error: "ADMIN_API_KEY não configurada." });
@@ -59,7 +106,9 @@ export function requireAdmin(req, res) {
   }
   const providedKey = req.headers["x-admin-api-key"] || getBearer(req);
   const session = getCookie(req, "tb_admin_session");
-  const authorized = safeEqual(providedKey, expected) || safeEqual(session, createAdminSessionToken(expected));
+  const authorized = safeEqual(providedKey, expected)
+    || safeEqual(session, createAdminSessionToken(expected))
+    || (allowExtension && verifyAdminExtensionToken(providedKey, expected));
   if (!authorized) {
     sendJson(res, 401, { error: "Acesso administrativo não autorizado." });
     return false;

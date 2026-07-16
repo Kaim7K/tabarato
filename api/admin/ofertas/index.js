@@ -1,8 +1,9 @@
-import { requireAdmin, sendJson, methodNotAllowed, readJson, publicError } from "../../_lib/http.js";
+import { handleExtensionCors, requireAdmin, sendJson, methodNotAllowed, readJson, publicError } from "../../_lib/http.js";
 import { createOffer, listOffers, validateOffer } from "../../_lib/offers.js";
 
 export default async function handler(req, res) {
-  if (!requireAdmin(req, res)) return;
+  if (handleExtensionCors(req, res, ["GET", "POST"])) return;
+  if (!requireAdmin(req, res, { allowExtension: true })) return;
 
   try {
     if (req.method === "GET") {

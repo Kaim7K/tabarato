@@ -64,7 +64,7 @@ export default function Footer() {
           </div>
           <div className="border-t border-white/10 pt-6 flex flex-col sm:flex-row justify-between gap-3">
             <p className="text-white/40 text-xs leading-relaxed max-w-3xl">
-              Publicidade: este site utiliza links de afiliado e pode receber comissão pelas compras, sem custo adicional para você. Preços e disponibilidade podem mudar no site da loja.
+              Este site utiliza links de afiliado e pode receber comissão pelas compras, sem custo adicional para você. Preços e disponibilidade podem mudar no site da loja.
             </p>
             <p className="text-white/40 text-xs whitespace-nowrap">© 2026 {SITE_NAME}</p>
           </div>

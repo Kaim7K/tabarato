@@ -157,7 +157,7 @@ export default function OfferDetail() {
               {alertSaved && <p className="mt-2 text-sm text-[#168A55]" role="status">Alerta salvo. Você pode acompanhá-lo na central de alertas.</p>}
             </div>
             <p className="text-[#111111]/40 text-xs leading-relaxed mt-4">
-              Publicidade | Link de afiliado — Este site pode receber comissão pela compra, sem custo adicional para você. Preço e disponibilidade podem mudar no site da loja.
+              Este site pode receber comissão pela compra, sem custo adicional para você. Preço e disponibilidade podem mudar no site da loja.
             </p>
           </div>
         </section>

@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { assertSafeProductUrl, isPrivateAddress } from "../api/_lib/productPreview.js";
-import { createAdminSessionToken, isValidUuid, requireAdmin, requireCron } from "../api/_lib/http.js";
+import { createAdminExtensionToken, createAdminSessionToken, handleExtensionCors, isValidUuid, requireAdmin, requireCron, verifyAdminExtensionToken } from "../api/_lib/http.js";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -16,6 +16,7 @@ function mockResponse() {
     setHeader(name, value) { this.headers[name] = value; },
     status(value) { this.statusCode = value; return this; },
     json(value) { this.body = value; return value; },
+    end() { return null; },
   };
 }
 
@@ -43,6 +44,36 @@ test("admin cookie uses a derived token instead of the API key", () => {
     if (previous === undefined) delete process.env.ADMIN_API_KEY;
     else process.env.ADMIN_API_KEY = previous;
   }
+});
+
+test("extension token expires and is limited to explicitly enabled routes", () => {
+  const previous = process.env.ADMIN_API_KEY;
+  process.env.ADMIN_API_KEY = "extension-test-secret";
+  try {
+    const now = Date.now();
+    const token = createAdminExtensionToken(process.env.ADMIN_API_KEY, now + 60_000);
+    assert.equal(verifyAdminExtensionToken(token, process.env.ADMIN_API_KEY, now), true);
+    assert.equal(verifyAdminExtensionToken(token, process.env.ADMIN_API_KEY, now + 61_000), false);
+
+    const request = { headers: { authorization: `Bearer ${token}` } };
+    assert.equal(requireAdmin(request, mockResponse()), false);
+    assert.equal(requireAdmin(request, mockResponse(), { allowExtension: true }), true);
+  } finally {
+    if (previous === undefined) delete process.env.ADMIN_API_KEY;
+    else process.env.ADMIN_API_KEY = previous;
+  }
+});
+
+test("extension CORS accepts Chrome extension origins and rejects websites", () => {
+  const extensionResponse = mockResponse();
+  const handled = handleExtensionCors({ method: "OPTIONS", headers: { origin: `chrome-extension://${"a".repeat(32)}` } }, extensionResponse, ["POST"]);
+  assert.equal(handled, true);
+  assert.equal(extensionResponse.statusCode, 204);
+  assert.equal(extensionResponse.headers["Access-Control-Allow-Origin"], `chrome-extension://${"a".repeat(32)}`);
+
+  const websiteResponse = mockResponse();
+  assert.equal(handleExtensionCors({ method: "OPTIONS", headers: { origin: "https://example.com" } }, websiteResponse, ["POST"]), false);
+  assert.equal(websiteResponse.headers["Access-Control-Allow-Origin"], undefined);
 });
 
 test("cron secret is not accepted in the query string", () => {

@@ -1,0 +1,54 @@
+{
+  "manifest_version": 3,
+  "name": "Ta Barato - Captura de ofertas",
+  "description": "Capture produtos das lojas e envie ofertas para o painel administrativo do Ta Barato.",
+  "version": "1.0.0",
+  "minimum_chrome_version": "114",
+  "icons": {
+    "128": "assets/icon.png"
+  },
+  "permissions": [
+    "activeTab",
+    "storage",
+    "sidePanel",
+    "tabs"
+  ],
+  "optional_host_permissions": [
+    "https://*/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*"
+  ],
+  "background": {
+    "service_worker": "background/service-worker.js"
+  },
+  "action": {
+    "default_title": "Enviar produto para o Ta Barato",
+    "default_icon": {
+      "128": "assets/icon.png"
+    }
+  },
+  "side_panel": {
+    "default_path": "sidepanel/index.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.mercadolivre.com.br/*",
+        "https://*.mercadolibre.com/*",
+        "https://*.amazon.com.br/*",
+        "https://*.shopee.com.br/*"
+      ],
+      "js": [
+        "content/shared.js",
+        "content/stores/mercado-livre.js",
+        "content/stores/amazon.js",
+        "content/stores/shopee.js",
+        "content/index.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  }
+}

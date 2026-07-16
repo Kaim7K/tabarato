@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Enviar produto | T&aacute; Barato</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">T&Aacute; BARATO</p>
+        <h1>Enviar produto</h1>
+      </div>
+      <span id="connection-status" class="status" data-tone="neutral">Desconectado</span>
+    </header>
+
+    <main>
+      <section id="setup-view" class="panel">
+        <div class="section-heading">
+          <span class="step">1</span>
+          <div>
+            <h2>Conectar ao painel</h2>
+            <p>Use o endere&ccedil;o e as mesmas credenciais do administrador.</p>
+          </div>
+        </div>
+
+        <form id="login-form" class="form-stack">
+          <label>
+            <span>Endere&ccedil;o do site</span>
+            <input id="base-url" type="url" placeholder="https://seu-dominio.com.br" autocomplete="url" required />
+          </label>
+          <label>
+            <span>Usu&aacute;rio</span>
+            <input id="username" type="text" value="admin" autocomplete="username" required />
+          </label>
+          <label>
+            <span>Senha</span>
+            <input id="password" type="password" autocomplete="current-password" required />
+          </label>
+          <button id="login-button" class="button button-primary" type="submit">Entrar e capturar</button>
+        </form>
+      </section>
+
+      <section id="editor-view" class="hidden">
+        <div class="capture-bar">
+          <div>
+            <p class="eyebrow">PRODUTO DETECTADO</p>
+            <p id="capture-source" class="capture-source">Aguardando p&aacute;gina</p>
+          </div>
+          <button id="refresh-button" class="icon-button" type="button" title="Capturar novamente" aria-label="Capturar novamente">&#8635;</button>
+        </div>
+
+        <div id="loading-state" class="panel state-panel hidden" role="status">
+          <span class="spinner"></span>
+          <p>Lendo os dados da loja...</p>
+        </div>
+
+        <div id="empty-state" class="panel state-panel hidden">
+          <strong>Nenhum produto encontrado</strong>
+          <p>Abra uma p&aacute;gina de produto do Mercado Livre, Amazon ou Shopee.</p>
+        </div>
+
+        <form id="offer-form" class="hidden">
+          <section class="product-preview">
+            <div class="image-wrap">
+              <img id="preview-image" alt="Imagem do produto capturado" />
+              <span id="platform-badge" class="platform-badge">Loja</span>
+            </div>
+            <div class="preview-copy">
+              <p id="preview-category" class="preview-category">Categoria</p>
+              <strong id="preview-name">Produto</strong>
+              <p id="preview-price" class="preview-price">R$ 0,00</p>
+            </div>
+          </section>
+
+          <div id="duplicate-warning" class="notice notice-warning hidden" role="alert"></div>
+          <div id="affiliate-warning" class="notice">
+            Confirme se o link abaixo &eacute; o seu link de afiliado antes de salvar.
+          </div>
+
+          <section class="panel fields-panel">
+            <div class="section-heading compact">
+              <span class="step">2</span>
+              <div><h2>Revisar dados</h2><p>Os campos continuam edit&aacute;veis.</p></div>
+            </div>
+
+            <div class="form-stack">
+              <label class="field-wide"><span>Link de afiliado *</span><input id="affiliate-link" type="url" required /></label>
+              <label><span>Nome do produto *</span><textarea id="product-name" rows="2" maxlength="200" required></textarea></label>
+              <div class="field-grid">
+                <label><span>Pre&ccedil;o atual *</span><input id="current-price" type="number" min="0.01" step="0.01" required /></label>
+                <label><span>Pre&ccedil;o anterior</span><input id="previous-price" type="number" min="0.01" step="0.01" /></label>
+              </div>
+              <div class="field-grid">
+                <label><span>Plataforma *</span><select id="platform"><option>Mercado Livre</option><option>Amazon</option><option>Shopee</option><option>Outra</option></select></label>
+                <label><span>Categoria *</span><select id="category"><option>Casa e organiza&ccedil;&atilde;o</option><option selected>Tecnologia</option><option>Escrit&oacute;rio</option><option>Ferramentas</option><option>Cozinha</option><option>Beleza e cuidados</option></select></label>
+              </div>
+              <label><span>Cupom</span><input id="coupon" type="text" maxlength="100" /></label>
+              <label><span>Descri&ccedil;&atilde;o curta</span><textarea id="short-description" rows="3" maxlength="1000"></textarea></label>
+              <label><span>URL da imagem</span><input id="image-url" type="url" /></label>
+              <label><span>Texto complementar</span><textarea id="extra-text" rows="2" maxlength="600"></textarea></label>
+            </div>
+          </section>
+
+          <div class="sticky-actions">
+            <button id="save-button" class="button button-primary" type="submit">Salvar rascunho</button>
+            <button id="save-open-button" class="button button-secondary" type="button">Salvar e abrir painel</button>
+          </div>
+        </form>
+
+        <button id="logout-button" class="text-button" type="button">Desconectar extens&atilde;o</button>
+      </section>
+    </main>
+
+    <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+    <script src="app.js"></script>
+  </body>
+</html>
