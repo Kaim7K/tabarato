@@ -1,8 +1,9 @@
 import { Link } from "react-router-dom";
-import { ArrowLeft, CheckCircle2, Loader2, LogOut } from "lucide-react";
+import { ArrowLeft, Loader2, LogOut } from "lucide-react";
 import { logoutAdmin } from "@/lib/adminAuth";
 import { SITE_NAME } from "@/lib/catalog";
 import { BRAND_LOGO } from "@/lib/brand";
+import { TelegramIcon } from "@/components/BrandIcons";
 
 export function AdminHeader({ testTelegram, saving }) {
   return (
@@ -13,8 +14,8 @@ export function AdminHeader({ testTelegram, saving }) {
           <span className="font-bold text-lg">{SITE_NAME} <span className="text-white/40 font-normal hidden sm:inline">/ Admin</span></span>
         </div>
         <div className="flex items-center gap-3">
-          <button onClick={testTelegram} disabled={saving} className="hidden sm:flex px-4 py-2 bg-[#168A55] rounded-lg text-sm font-semibold disabled:opacity-50 items-center gap-2">
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+          <button onClick={testTelegram} disabled={saving} className="hidden sm:flex px-4 py-2 bg-[#229ED9] hover:bg-[#187FAF] rounded-lg text-sm font-semibold disabled:opacity-50 items-center gap-2 transition-colors">
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <TelegramIcon className="w-4 h-4" />}
             Telegram
           </button>
           <Link to="/" className="text-sm text-white/60 hover:text-[#FF6B35] transition flex items-center gap-1">
@@ -29,11 +30,11 @@ export function AdminHeader({ testTelegram, saving }) {
   );
 }
 
-export function Panel({ title, icon: Icon, children }) {
+export function Panel({ title, icon: Icon, iconClassName = "text-[#FF6B35]", children }) {
   return (
     <section className="bg-white/5 border border-white/10 rounded-lg p-4 sm:p-5">
       <div className="flex items-center gap-2 mb-4">
-        <Icon className="w-4 h-4 text-[#FF6B35]" />
+        <Icon className={`w-4 h-4 ${iconClassName}`} />
         <h2 className="font-bold">{title}</h2>
       </div>
       {children}
@@ -77,4 +78,3 @@ export function EmptyBlock({ label }) {
 }
 
 export const inputCls = "w-full min-h-10 px-3.5 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white text-sm placeholder:text-white/30 focus:outline-none focus:border-[#FF6B35]/50 focus:ring-2 focus:ring-[#FF6B35]/15";
-

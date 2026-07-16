@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, Pencil, Plus, RefreshCw, Save, Search, Trash2 } from "lucide-react";
 import { formatPrice } from "@/lib/catalog";
 import { telegramStatuses } from "@/lib/telegramOffersApi";
+import { StoreBadge } from "@/components/BrandIcons";
 import { EmptyBlock, Field, inputCls, LoadingBlock } from "@/features/admin/AdminUi";
 import { number, statusClasses, statusLabels } from "@/features/admin/adminOfferConfig";
 
@@ -207,8 +208,9 @@ function OfferRow({ offer, selected, onToggleSelected, onEdit, onRetry, onRemove
         <div className="flex items-start gap-3">
           <input type="checkbox" checked={selected} onChange={() => onToggleSelected(offer.id)} className="w-5 h-5 mt-1 accent-[#FF6B35] shrink-0" aria-label={`Selecionar ${offer.productName}`} />
           <button onClick={() => onEdit(offer)} className="flex items-start gap-3 min-w-0 flex-1 text-left">
-            <div className="w-16 h-16 bg-white rounded-lg overflow-hidden shrink-0">
+            <div className="relative w-16 h-16 bg-white rounded-lg overflow-hidden shrink-0">
               {offer.imageUrl && <img src={offer.imageUrl} alt="" loading="lazy" className="w-full h-full object-contain" />}
+              <StoreBadge platform={offer.platform} compact />
             </div>
             <div className="min-w-0">
               <h2 className="font-medium line-clamp-2">{offer.productName}</h2>
@@ -242,8 +244,9 @@ function OfferRow({ offer, selected, onToggleSelected, onEdit, onRetry, onRemove
       <div className={`hidden md:grid grid-cols-[32px_minmax(0,1fr)_120px_140px_120px_120px] gap-4 p-4 items-center hover:bg-white/[0.03] ${selected ? "bg-[#FF6B35]/10" : ""}`}>
         <input type="checkbox" checked={selected} onChange={() => onToggleSelected(offer.id)} className="w-4 h-4 accent-[#FF6B35]" aria-label={`Selecionar ${offer.productName}`} />
         <button onClick={() => onEdit(offer)} className="flex items-center gap-3 min-w-0 text-left">
-          <div className="w-14 h-14 bg-white rounded-lg overflow-hidden shrink-0">
+          <div className="relative w-14 h-14 bg-white rounded-lg overflow-hidden shrink-0">
             {offer.imageUrl && <img src={offer.imageUrl} alt="" loading="lazy" className="w-full h-full object-contain" />}
+            <StoreBadge platform={offer.platform} compact />
           </div>
           <div className="min-w-0">
             <p className="font-medium truncate">{offer.productName}</p>

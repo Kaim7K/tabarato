@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Search, ArrowRight, Package, Tag } from "lucide-react";
 import { formatPrice, normalizeText } from "@/lib/catalog";
 import { listPublicOffers } from "@/lib/offersApi";
+import { StoreBadge } from "@/components/BrandIcons";
 
 export default function SmartSearch({ placeholder = "Buscar por nome, categoria..." }) {
   const [query, setQuery] = useState("");
@@ -104,8 +105,9 @@ export default function SmartSearch({ placeholder = "Buscar por nome, categoria.
               </div>
               {results.map((offer) => (
                 <button id={`${resultsId}-${offer.id}`} key={offer.id} type="button" role="option" aria-selected={activeIndex === results.indexOf(offer)} onClick={() => handleSelect(offer)} className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-[#F5F2EB] focus:bg-[#F5F2EB] focus:outline-none transition text-left border-b border-[#111111]/5 last:border-0 ${activeIndex === results.indexOf(offer) ? "bg-[#F5F2EB]" : ""}`}>
-                  <div className="w-10 h-10 rounded-lg overflow-hidden bg-[#F5F2EB] shrink-0 flex items-center justify-center">
+                  <div className="relative w-10 h-10 rounded-lg overflow-hidden bg-[#F5F2EB] shrink-0 flex items-center justify-center">
                     {offer.image ? <img src={offer.image} alt="" className="w-full h-full object-contain bg-white" /> : <Package className="w-4 h-4 text-[#111111]/30" />}
+                    <StoreBadge platform={offer.platform} compact />
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-[#111111] truncate">{offer.name}</p>
@@ -114,7 +116,7 @@ export default function SmartSearch({ placeholder = "Buscar por nome, categoria.
                       {offer.category}
                     </p>
                   </div>
-                  <span className="text-sm font-bold text-[#111111] shrink-0" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
+                  <span className="price-type text-sm text-[#111111] shrink-0">
                     {formatPrice(offer.price)}
                   </span>
                   <ArrowRight className="w-4 h-4 text-[#111111]/30 shrink-0" />

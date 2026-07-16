@@ -1,5 +1,6 @@
 import { CalendarClock, CheckCircle2, Clipboard, ExternalLink, Loader2, Plus, Save, Send, Sparkles, Tag } from "lucide-react";
 import { formatPrice } from "@/lib/catalog";
+import { StoreBadge, TelegramIcon } from "@/components/BrandIcons";
 import { formatTelegramPreview } from "@/lib/telegramOffersApi";
 import { Field, inputCls, Panel } from "@/features/admin/AdminUi";
 import { number } from "@/features/admin/adminOfferConfig";
@@ -103,7 +104,7 @@ export function EditorView({ form, selected, categories, saving, autoFilling, se
           <p className="text-xs text-white/35 mt-3">Link, nome, preco, categoria e imagem deixam a oferta mais forte. A descricao e opcional.</p>
         </Panel>
         <OfferPreview form={form} />
-        <Panel title="Previa Telegram" icon={Send}>
+        <Panel title="Previa Telegram" icon={TelegramIcon} iconClassName="text-[#229ED9]">
           <pre className="text-xs text-white/70 whitespace-pre-wrap font-sans leading-relaxed">{formatTelegramPreview(form)}</pre>
         </Panel>
       </div>
@@ -114,7 +115,10 @@ export function EditorView({ form, selected, categories, saving, autoFilling, se
 function OfferPreview({ form }) {
   return (
     <div className="bg-white text-[#111111] rounded-lg overflow-hidden">
-      <div className="aspect-[4/3] bg-white">{form.imageUrl && <img src={form.imageUrl} alt="" className="w-full h-full object-contain" />}</div>
+      <div className="relative aspect-[4/3] bg-white">
+        {form.imageUrl && <img src={form.imageUrl} alt="" className="w-full h-full object-contain" />}
+        <StoreBadge platform={form.platform} />
+      </div>
       <div className="p-4">
         <p className="text-xs text-[#111111]/50 mb-1">{form.category || "Categoria"}</p>
         <h3 className="font-bold leading-snug">{form.productName || "Nome do produto"}</h3>
@@ -127,4 +131,3 @@ function OfferPreview({ form }) {
     </div>
   );
 }
-

@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
-import { ArrowUpRight, Clock, Heart, ImageOff, Share2 } from "lucide-react";
+import { ArrowUpRight, Clock, Heart, ImageOff } from "lucide-react";
+import { StoreBadge, WhatsAppIcon } from "@/components/BrandIcons";
 import { useFavorites } from "@/lib/FavoritesContext";
 import { formatPrice } from "@/lib/catalog";
 import { trackOfferClick } from "@/lib/offersApi";
@@ -48,6 +49,7 @@ export default function OfferCard({ offer }) {
         >
           <Heart className="w-4 h-4" fill={favorite ? "currentColor" : "none"} />
         </button>
+        <StoreBadge platform={offer.platform} />
       </Link>
 
       <div className="p-4 flex flex-col flex-1">
@@ -63,7 +65,7 @@ export default function OfferCard({ offer }) {
         </p>
 
         <div className="mt-5 mb-4">
-          <p className="font-semibold text-[#111111] text-2xl leading-none" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
+          <p className="price-type text-[#111111] text-2xl leading-none">
             {formatPrice(offer.price)}
           </p>
           {offer.time_label && (
@@ -88,11 +90,11 @@ export default function OfferCard({ offer }) {
           <button
             type="button"
             onClick={shareOffer}
-            className="min-h-11 min-w-11 flex items-center justify-center bg-white border border-[#111111]/10 text-[#168A55] rounded-md hover:bg-[#168A55] hover:text-white transition"
+            className="min-h-11 min-w-11 flex items-center justify-center bg-white border border-[#25D366]/40 text-[#128C7E] rounded-md hover:bg-[#25D366] hover:text-[#073B2B] transition-colors"
             title="Compartilhar no WhatsApp"
             aria-label="Compartilhar no WhatsApp"
           >
-            <Share2 className="w-4 h-4" />
+            <WhatsAppIcon className="w-5 h-5" />
           </button>
         </div>
       </div>

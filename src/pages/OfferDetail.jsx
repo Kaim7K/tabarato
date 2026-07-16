@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { AlertCircle, ArrowLeft, ArrowUpRight, Check, Heart, ImageOff, Share2 } from "lucide-react";
+import { AlertCircle, ArrowLeft, ArrowUpRight, Check, Heart, ImageOff } from "lucide-react";
 import Footer from "@/components/Footer";
+import { StoreBadge, WhatsAppIcon } from "@/components/BrandIcons";
 import OfferCard from "@/components/OfferCard";
 import { EmptyState, LoadingState, OfferGrid, SectionTitle } from "@/components/PublicUi";
 import { useFavorites } from "@/lib/FavoritesContext";
@@ -82,6 +83,7 @@ export default function OfferDetail() {
                 <ImageOff className="w-12 h-12 text-[#111111]/15" />
               </div>
             )}
+            <StoreBadge platform={offer.platform} />
           </div>
 
           <div className="p-5 sm:p-7 lg:p-9">
@@ -90,7 +92,7 @@ export default function OfferDetail() {
 
             <div className="mt-7 pb-7 border-b border-[#111111]/8">
               <p className="text-[#111111]/40 text-xs mb-1">Preço no momento da publicação</p>
-              <p className="text-3xl sm:text-4xl font-semibold text-[#111111]" style={{ fontFamily: "'JetBrains Mono', monospace" }}>{formatPrice(offer.price)}</p>
+              <p className="price-type text-3xl sm:text-4xl text-[#111111]">{formatPrice(offer.price)}</p>
             </div>
 
             {offer.description && (
@@ -126,8 +128,8 @@ export default function OfferDetail() {
               <button type="button" onClick={() => toggle(offer.id)} className={`min-h-11 flex items-center justify-center gap-2 px-4 py-2.5 rounded-md font-semibold text-sm transition border ${favorite ? "bg-[#FF6B35] border-[#FF6B35] text-white" : "bg-white text-[#111111] border-[#111111]/12 hover:bg-[#F3F3F3]"}`}>
                 <Heart className="w-4 h-4" fill={favorite ? "currentColor" : "none"} /> {favorite ? "Salvo" : "Salvar"}
               </button>
-              <a href={`https://wa.me/?text=${encodeURIComponent(shareText)}`} target="_blank" rel="noopener noreferrer" className="min-h-11 flex items-center justify-center gap-2 px-4 py-2.5 bg-[#168A55]/10 text-[#168A55] font-semibold rounded-md hover:bg-[#168A55] hover:text-white transition text-sm">
-                <Share2 className="w-4 h-4" /> Compartilhar
+              <a href={`https://wa.me/?text=${encodeURIComponent(shareText)}`} target="_blank" rel="noopener noreferrer" className="min-h-11 flex items-center justify-center gap-2 px-4 py-2.5 bg-[#25D366]/15 text-[#128C7E] font-semibold rounded-md hover:bg-[#25D366] hover:text-[#073B2B] transition-colors text-sm">
+                <WhatsAppIcon className="w-5 h-5" /> Compartilhar
               </a>
             </div>
             <p className="text-[#111111]/40 text-xs leading-relaxed mt-4">

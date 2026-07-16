@@ -7,16 +7,15 @@ import {
   Flame,
   Home as HomeIcon,
   Laptop,
-  MessageCircle,
   PackageSearch,
   Paperclip,
   Search,
-  Send,
   Sparkles,
   UsersRound,
   Wrench,
 } from "lucide-react";
 import Footer from "@/components/Footer";
+import { StoreBadge, TelegramIcon, WhatsAppIcon } from "@/components/BrandIcons";
 import OfferCard from "@/components/OfferCard";
 import { EmptyState, LoadingState, OfferGrid, SectionTitle } from "@/components/PublicUi";
 import { DEFAULT_CATEGORIES, formatPrice, normalizeText, slugify } from "@/lib/catalog";
@@ -89,9 +88,9 @@ export default function Home() {
 
             <div className="grid sm:grid-cols-2 gap-3 mt-7 max-w-2xl">
               {hasTelegramLink && (
-                <a href={TELEGRAM_CHANNEL_URL} target="_blank" rel="noopener noreferrer" className="min-h-14 flex items-center justify-between gap-4 px-5 py-3.5 bg-[#FF6B35] hover:bg-[#D95426] rounded-lg shadow-[0_10px_28px_rgba(0,0,0,0.2)] transition-colors">
+                <a href={TELEGRAM_CHANNEL_URL} target="_blank" rel="noopener noreferrer" className="min-h-14 flex items-center justify-between gap-4 px-5 py-3.5 bg-[#229ED9] hover:bg-[#187FAF] rounded-lg shadow-[0_10px_28px_rgba(0,0,0,0.2)] transition-colors">
                   <span className="flex items-center gap-3">
-                    <Send className="w-5 h-5" />
+                    <TelegramIcon />
                     <span>
                       <strong className="block text-sm">Entrar no Telegram</strong>
                       <span className="block text-xs text-white/75 mt-0.5">Canal no Telegram</span>
@@ -101,12 +100,12 @@ export default function Home() {
                 </a>
               )}
               {hasWhatsAppLink && (
-                <a href={WHATSAPP_GROUP_URL} target="_blank" rel="noopener noreferrer" className="min-h-14 flex items-center justify-between gap-4 px-5 py-3.5 bg-[#168A55] hover:bg-[#137247] rounded-lg shadow-[0_10px_28px_rgba(0,0,0,0.2)] transition-colors">
+                <a href={WHATSAPP_GROUP_URL} target="_blank" rel="noopener noreferrer" className="min-h-14 flex items-center justify-between gap-4 px-5 py-3.5 bg-[#25D366] text-[#073B2B] hover:bg-[#20BD5A] rounded-lg shadow-[0_10px_28px_rgba(0,0,0,0.2)] transition-colors">
                   <span className="flex items-center gap-3">
-                    <MessageCircle className="w-5 h-5" />
+                    <WhatsAppIcon />
                     <span>
                       <strong className="block text-sm">Entrar no WhatsApp</strong>
-                      <span className="block text-xs text-white/75 mt-0.5">Grupo no WhatsApp</span>
+                      <span className="block text-xs text-[#073B2B]/70 mt-0.5">Grupo no WhatsApp</span>
                     </span>
                   </span>
                   <ArrowUpRight className="w-5 h-5" />
@@ -161,6 +160,7 @@ export default function Home() {
                   <span className="absolute top-4 left-4 inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#FF6B35] text-white text-xs font-semibold rounded-md">
                     <Flame className="w-4 h-4" /> Achado do dia
                   </span>
+                  <StoreBadge platform={featured.platform} />
                 </div>
 
                 <div className="p-5 sm:p-7 lg:p-9 flex flex-col justify-center">
@@ -176,7 +176,7 @@ export default function Home() {
                   <p className="text-[#111111]/55 text-sm sm:text-base leading-relaxed mt-3 line-clamp-3">{featuredCopy}</p>
                   <div className="mt-6">
                     <p className="text-[#111111]/40 text-xs mb-1">Preço informado</p>
-                    <p className="text-3xl sm:text-4xl font-semibold text-[#111111]" style={{ fontFamily: "'JetBrains Mono', monospace" }}>{formatPrice(featured.price)}</p>
+                    <p className="price-type text-3xl sm:text-4xl text-[#111111]">{formatPrice(featured.price)}</p>
                     {featured.previous_price && <p className="text-sm text-[#111111]/35 line-through mt-1">{formatPrice(Number(featured.previous_price))}</p>}
                   </div>
                   <div className="flex flex-col sm:flex-row gap-2 mt-7">
@@ -216,14 +216,15 @@ export default function Home() {
               {mostClicked.map((offer, index) => (
                 <Link key={offer.id} to={`/oferta/${offer.id}`} className="grid grid-cols-[2rem_3.5rem_minmax(0,1fr)_auto] sm:grid-cols-[2.5rem_4rem_minmax(0,1fr)_auto] items-center gap-3 sm:gap-5 px-4 sm:px-5 py-3.5 border-b border-[#111111]/8 last:border-0 hover:bg-[#F8F8F8] transition">
                   <span className="text-lg font-semibold text-[#111111]/20">{String(index + 1).padStart(2, "0")}</span>
-                  <div className="w-14 h-14 sm:w-16 sm:h-16 bg-white border border-[#111111]/8 rounded-md overflow-hidden">
+                  <div className="relative w-14 h-14 sm:w-16 sm:h-16 bg-white border border-[#111111]/8 rounded-md overflow-hidden">
                     {offer.image && <img src={offer.image} alt="" loading="lazy" className="w-full h-full object-contain p-1" />}
+                    <StoreBadge platform={offer.platform} compact />
                   </div>
                   <div className="min-w-0">
                     <h3 className="font-medium text-[#111111] text-sm sm:text-base truncate">{offer.name}</h3>
                     <p className="text-[#111111]/40 text-xs mt-1">{offer.clicks || 0} cliques</p>
                   </div>
-                  <span className="font-semibold text-[#111111] text-sm sm:text-lg whitespace-nowrap" style={{ fontFamily: "'JetBrains Mono', monospace" }}>{formatPrice(offer.price)}</span>
+                  <span className="price-type text-[#111111] text-sm sm:text-lg whitespace-nowrap">{formatPrice(offer.price)}</span>
                 </Link>
               ))}
             </div>

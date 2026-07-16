@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { MessageCircle, Send } from "lucide-react";
+import { TelegramIcon, WhatsAppIcon } from "@/components/BrandIcons";
 import { SITE_NAME } from "@/lib/catalog";
 import { TELEGRAM_CHANNEL_URL, WHATSAPP_GROUP_URL } from "@/lib/publicLinks";
 import { BRAND_LOGO } from "@/lib/brand";
@@ -20,13 +20,13 @@ export default function Footer() {
           </div>
           <div className="flex flex-col sm:flex-row gap-2 shrink-0">
             {WHATSAPP_GROUP_URL && (
-              <a href={WHATSAPP_GROUP_URL} target="_blank" rel="noopener noreferrer" className="min-h-12 inline-flex items-center justify-center gap-2 px-5 py-3 bg-[#168A55] text-white font-semibold rounded-md hover:bg-[#137247] transition">
-                <MessageCircle className="w-5 h-5" /> Entrar no WhatsApp
+              <a href={WHATSAPP_GROUP_URL} target="_blank" rel="noopener noreferrer" className="min-h-12 inline-flex items-center justify-center gap-2 px-5 py-3 bg-[#25D366] text-[#073B2B] font-semibold rounded-md hover:bg-[#20BD5A] transition-colors">
+                <WhatsAppIcon /> Entrar no WhatsApp
               </a>
             )}
             {TELEGRAM_CHANNEL_URL && (
-              <a href={TELEGRAM_CHANNEL_URL} target="_blank" rel="noopener noreferrer" className="min-h-12 inline-flex items-center justify-center gap-2 px-5 py-3 bg-white text-[#111111] font-semibold rounded-md hover:bg-[#F3F3F3] transition">
-                <Send className="w-5 h-5" /> Seguir no Telegram
+              <a href={TELEGRAM_CHANNEL_URL} target="_blank" rel="noopener noreferrer" className="min-h-12 inline-flex items-center justify-center gap-2 px-5 py-3 bg-[#229ED9] text-white font-semibold rounded-md hover:bg-[#187FAF] transition-colors">
+                <TelegramIcon /> Seguir no Telegram
               </a>
             )}
           </div>

@@ -1,7 +1,8 @@
 import { Link, Outlet } from "react-router-dom";
 import { useState } from "react";
-import { ChevronDown, Heart, Menu, MessageCircle, Send, X } from "lucide-react";
+import { ChevronDown, Heart, Menu, X } from "lucide-react";
 import SmartSearch from "@/components/SmartSearch";
+import { TelegramIcon, WhatsAppIcon } from "@/components/BrandIcons";
 import { FavoritesProvider } from "@/lib/FavoritesContext";
 import { DEFAULT_CATEGORIES } from "@/lib/catalog";
 import { TELEGRAM_CHANNEL_URL, WHATSAPP_GROUP_URL } from "@/lib/publicLinks";
@@ -64,13 +65,13 @@ function Header() {
           </nav>
           <div className="flex items-center gap-5">
             {TELEGRAM_CHANNEL_URL && (
-              <a href={TELEGRAM_CHANNEL_URL} target="_blank" rel="noopener noreferrer" className="min-h-10 inline-flex items-center gap-1.5 text-sm text-[#111111]/65 hover:text-[#FF6B35] transition">
-                <Send className="w-4 h-4" /> Telegram
+              <a href={TELEGRAM_CHANNEL_URL} target="_blank" rel="noopener noreferrer" className="min-h-10 inline-flex items-center gap-1.5 text-sm font-medium text-[#229ED9] hover:text-[#187FAF] transition-colors">
+                <TelegramIcon className="w-4 h-4" /> Telegram
               </a>
             )}
             {WHATSAPP_GROUP_URL && (
-              <a href={WHATSAPP_GROUP_URL} target="_blank" rel="noopener noreferrer" className="min-h-10 inline-flex items-center gap-1.5 text-sm text-[#111111]/65 hover:text-[#168A55] transition">
-                <MessageCircle className="w-4 h-4" /> WhatsApp
+              <a href={WHATSAPP_GROUP_URL} target="_blank" rel="noopener noreferrer" className="min-h-10 inline-flex items-center gap-1.5 text-sm font-medium text-[#128C7E] hover:text-[#0D6F64] transition-colors">
+                <WhatsAppIcon className="w-4 h-4 text-[#25D366]" /> WhatsApp
               </a>
             )}
           </div>
@@ -89,13 +90,13 @@ function Header() {
           </div>
           <div className="grid sm:grid-cols-2 gap-2 mt-4">
             {TELEGRAM_CHANNEL_URL && (
-              <a href={TELEGRAM_CHANNEL_URL} target="_blank" rel="noopener noreferrer" onClick={() => setMobileOpen(false)} className="min-h-11 px-4 py-2.5 flex items-center justify-center gap-2 bg-[#FF6B35] text-white text-sm font-semibold rounded-md">
-                <Send className="w-4 h-4" /> Telegram
+              <a href={TELEGRAM_CHANNEL_URL} target="_blank" rel="noopener noreferrer" onClick={() => setMobileOpen(false)} className="min-h-11 px-4 py-2.5 flex items-center justify-center gap-2 bg-[#229ED9] text-white text-sm font-semibold rounded-md hover:bg-[#187FAF] transition-colors">
+                <TelegramIcon className="w-4 h-4" /> Telegram
               </a>
             )}
             {WHATSAPP_GROUP_URL && (
-              <a href={WHATSAPP_GROUP_URL} target="_blank" rel="noopener noreferrer" onClick={() => setMobileOpen(false)} className="min-h-11 px-4 py-2.5 flex items-center justify-center gap-2 bg-[#168A55] text-white text-sm font-semibold rounded-md">
-                <MessageCircle className="w-4 h-4" /> WhatsApp
+              <a href={WHATSAPP_GROUP_URL} target="_blank" rel="noopener noreferrer" onClick={() => setMobileOpen(false)} className="min-h-11 px-4 py-2.5 flex items-center justify-center gap-2 bg-[#25D366] text-[#073B2B] text-sm font-semibold rounded-md hover:bg-[#20BD5A] transition-colors">
+                <WhatsAppIcon className="w-4 h-4" /> WhatsApp
               </a>
             )}
           </div>
