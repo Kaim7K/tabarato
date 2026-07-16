@@ -41,7 +41,18 @@
     return text.match(/\b\d{1,2}(?:[.,]\d+)?%\s*(?:OFF|DE\s+DESCONTO)\b/i)?.[0]?.toUpperCase() || "";
   };
 
+  const couponConditions = (value) => {
+    const text = tools.clean(value);
+    const minimum = text.match(/compra m[ií]nima(?:\s+de)?\s*R\$\s*[\d.,]+/i)?.[0];
+    const limit = text.match(/limite(?:\s+de)?\s*R\$\s*[\d.,]+/i)?.[0];
+    const expires = text.match(/(?:venc\.?|v[aá]lido at[eé])\s*\d{2}\/\d{2}\/\d{4}/i)?.[0];
+    const conditions = [minimum, limit, expires].filter(Boolean);
+    return conditions.length ? `Condi\u00e7\u00f5es do cupom: ${conditions.join("; ")}.` : "";
+  };
+
   const productCoupon = async () => {
+    let inlineCoupon = "";
+    let inlineConditions = "";
     const selectors = [
       ".ui-pdp-container [class*='coupon']",
       ".ui-pdp-container [data-testid*='coupon']",
@@ -51,18 +62,28 @@
     for (const selector of selectors) {
       for (const element of document.querySelectorAll(selector)) {
         const coupon = couponFromText(element.value || element.textContent);
-        if (coupon) return coupon;
+        if (!coupon) continue;
+        inlineCoupon ||= coupon;
+        inlineConditions ||= couponConditions(element.textContent);
       }
     }
 
-    const control = visibleControl(/(?:ver|aplicar|usar|conferir|copiar).{0,24}cupom|cupom dispon[ií]vel/i);
-    if (!control) return "";
+    const control = visibleControl(/(?:ver|aplicar|usar|conferir|copiar).{0,24}cupons?|cupons?\s+dispon[ií]ve(?:l|is)/i);
+    if (!control) return { label: inlineCoupon, details: inlineConditions };
     control.click();
-    const dialog = await tools.waitFor(() => visibleDialog(/cupom|coupon/i), 5000);
-    if (!dialog) return "";
-    const coupon = couponFromText(dialog.textContent);
+    const dialog = await tools.waitFor(() => visibleDialog(/cupons?|coupon/i), 7000);
+    if (!dialog) return { label: inlineCoupon, details: inlineConditions };
+    const cards = [...dialog.querySelectorAll("article, li, [class*='card'], div")]
+      .filter((element) => visible(element)
+        && /\d{1,2}(?:[.,]\d+)?%\s*OFF/i.test(element.textContent)
+        && /compra m[ií]nima|limite|venc\.?|v[aá]lido at[eé]/i.test(element.textContent))
+      .filter((element) => ![...element.children].some((child) => /\d{1,2}(?:[.,]\d+)?%\s*OFF/i.test(child.textContent)
+        && /compra m[ií]nima|limite|venc\.?|v[aá]lido at[eé]/i.test(child.textContent)));
+    const couponText = cards[0]?.textContent || dialog.textContent;
+    const coupon = couponFromText(`Cupom ${couponText}`) || inlineCoupon;
+    const details = couponConditions(couponText) || inlineConditions;
     closeDialog(dialog);
-    return coupon;
+    return { label: coupon, details };
   };
 
   const promotionSummary = (value) => {
@@ -211,19 +232,24 @@
         || (shouldWaitForLink ? await tools.waitFor(generatedAffiliateLink) : "");
       const structured = tools.jsonProduct();
       const productId = location.href.match(/\b(MLB-?\d{6,})\b/i)?.[1]?.replace("-", "").toUpperCase() || "";
+      const productName = tools.text(".ui-pdp-title", "h1") || tools.clean(structured.name) || tools.meta("og:title");
+      const shortDescription = tools.description(".ui-pdp-description__content", ".ui-pdp-description") || tools.firstParagraph(structured.description) || tools.firstParagraph(tools.meta("og:description"));
+      const sourceCategory = tools.text(".andes-breadcrumb__container", ".ui-pdp-breadcrumb");
       const currentPrice = tools.price(".ui-pdp-price__second-line .andes-money-amount", ".ui-pdp-price__main-container .andes-money-amount") || tools.productPrice(structured);
       let coupon = "";
       let extraText = "";
       if (MELI_LINK_PATTERN.test(affiliateLink)) {
         await closeAffiliateDialog();
-        coupon = await productCoupon()
+        const couponResult = await productCoupon();
+        coupon = couponResult.label
           || tools.coupon(".ui-pdp-container [class*='coupon']", ".ui-pdp-container [data-testid*='coupon']", ".ui-pdp-container [class*='voucher']");
-        extraText = await paymentBenefits(Number(currentPrice));
+        const paymentText = await paymentBenefits(Number(currentPrice));
+        extraText = [couponResult.details, paymentText].filter(Boolean).join(" ");
       }
       return {
-        productName: tools.text(".ui-pdp-title", "h1") || tools.clean(structured.name) || tools.meta("og:title"),
-        shortDescription: tools.description(".ui-pdp-description__content", ".ui-pdp-description") || tools.firstParagraph(structured.description) || tools.firstParagraph(tools.meta("og:description")),
-        sourceCategory: tools.text(".andes-breadcrumb__container", ".ui-pdp-breadcrumb"),
+        productName,
+        shortDescription,
+        sourceCategory,
         currentPrice,
         previousPrice: tools.price(".ui-pdp-price__original-value .andes-money-amount", ".andes-money-amount--previous"),
         coupon,

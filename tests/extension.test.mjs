@@ -60,6 +60,9 @@ test("Mercado Livre captures product coupons, payment promotions and interest-fr
   const mercadoLivre = readFileSync(join(extensionRoot, "content", "stores", "mercado-livre.js"), "utf8");
   const sidePanel = readFileSync(join(extensionRoot, "sidepanel", "app.js"), "utf8");
   assert.match(mercadoLivre, /productCoupon/);
+  assert.match(mercadoLivre, /couponConditions/);
+  assert.match(mercadoLivre, /cupons\?\\s\+dispon/);
+  assert.match(mercadoLivre, /Condi\\u00e7\\u00f5es do cupom/);
   assert.match(mercadoLivre, /paymentPromotions/);
   assert.match(mercadoLivre, /paymentModalText/);
   assert.match(mercadoLivre, /sourceText\.split/);
@@ -162,5 +165,5 @@ test("extension synchronizes site categories and classifies captured products", 
   assert.match(app, /category\.replaceChildren\(\.\.\.options\)/);
   assert.match(app, /CATEGORY_PROFILES/);
   assert.match(app, /product\.sourceCategory/);
-  stores.forEach((source) => assert.match(source, /sourceCategory:/));
+  stores.forEach((source) => assert.match(source, /sourceCategory\s*[:,]/));
 });
