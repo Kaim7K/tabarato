@@ -89,6 +89,9 @@ test("extension creates an image and formatted text for WhatsApp sharing", () =>
   assert.match(app, /createWhatsAppImage/);
   assert.match(app, /controller\.abort\(\)/);
   assert.match(app, /TABARATO_SHARE_WHATSAPP/);
+  assert.match(app, /async function sendOfferToWhatsApp/);
+  assert.match(app, /await sendOfferToWhatsApp\(payload, groupName/);
+  assert.match(app, /Publicada no Telegram, mas o WhatsApp falhou/);
   assert.match(app, /Publicidade \| Link de afiliado/);
   assert.match(background, /chrome\.tabs\.query\(\{ url: "https:\/\/web\.whatsapp\.com\/\*" \}\)/);
   assert.match(background, /chrome\.tabs\.update\(tab\.id, \{ active: true \}\)/);

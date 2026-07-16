@@ -480,15 +480,30 @@ async function saveOffer(openPanel = false) {
   }
 }
 
+async function sendOfferToWhatsApp(payload, groupName, onProgress = () => {}) {
+  const file = await prepareWhatsAppImage(payload);
+  onProgress("Abrindo WhatsApp...");
+  const result = await chrome.runtime.sendMessage({
+    type: "TABARATO_SHARE_WHATSAPP",
+    groupName,
+    text: whatsappMessage(payload),
+    imageDataUrl: await fileToDataUrl(file),
+    fileName: file.name,
+  });
+  if (!result?.ok) throw new Error(result?.error || "Nao foi possivel enviar para o grupo.");
+}
+
 async function publishOffer() {
   if (!elements.offerForm.reportValidity()) return;
   const payload = formPayload();
+  const groupName = elements.whatsappGroup.value.trim();
   if (payload.platform === "Mercado Livre" && !/^https:\/\/meli\.la\/[A-Za-z0-9_-]+/i.test(payload.affiliateLink)) {
     elements.fields.affiliateLink.focus();
     showToast("Use o link meli.la gerado pelo botao Compartilhar.", "error");
     return;
   }
-  if (!window.confirm(`Publicar "${payload.productName}" agora no Telegram?`)) return;
+  const destinations = groupName ? "Telegram e no WhatsApp" : "Telegram";
+  if (!window.confirm(`Publicar "${payload.productName}" agora no ${destinations}?`)) return;
 
   setOfferActionsBusy(elements.publishButton, true, "Publicando...");
   try {
@@ -496,8 +511,20 @@ async function publishOffer() {
       method: "POST",
       body: { ...payload, status: "APROVADO" },
     });
-    const result = await requestApi(`/api/admin/ofertas/${created.offer.id}/publicar`, { method: "POST" });
-    showToast(`Oferta publicada: ${result.offer.productName}`, "success");
+    await requestApi(`/api/admin/ofertas/${created.offer.id}/publicar`, { method: "POST" });
+    if (!groupName) {
+      showToast(`Oferta publicada no Telegram. Informe o grupo para enviar tambem ao WhatsApp.`, "success");
+      return;
+    }
+
+    try {
+      await sendOfferToWhatsApp(payload, groupName, (label) => {
+        elements.publishButton.textContent = label;
+      });
+      showToast(`Oferta publicada no Telegram e enviada para ${groupName}.`, "success");
+    } catch (whatsappError) {
+      showToast(`Publicada no Telegram, mas o WhatsApp falhou: ${whatsappError.message}`, "error");
+    }
   } catch (error) {
     showToast(error.message, "error");
   } finally {
@@ -516,17 +543,9 @@ async function shareOnWhatsApp() {
   const payload = formPayload();
   setOfferActionsBusy(elements.whatsappButton, true, "Preparando...");
   try {
-    const file = await prepareWhatsAppImage(payload);
-    const text = whatsappMessage(payload);
-    elements.whatsappButton.textContent = "Abrindo WhatsApp...";
-    const result = await chrome.runtime.sendMessage({
-      type: "TABARATO_SHARE_WHATSAPP",
-      groupName,
-      text,
-      imageDataUrl: await fileToDataUrl(file),
-      fileName: file.name,
+    await sendOfferToWhatsApp(payload, groupName, (label) => {
+      elements.whatsappButton.textContent = label;
     });
-    if (!result?.ok) throw new Error(result?.error || "Nao foi possivel enviar para o grupo.");
     showToast(`Oferta enviada para ${groupName}.`, "success");
   } catch (error) {
     showToast(error.message, "error");
