@@ -28,3 +28,9 @@ test("new offers receive an integer click count between 0 and 20", () => {
   const samples = Array.from({ length: 100 }, () => createInitialClickCount());
   assert.ok(samples.every((value) => Number.isInteger(value) && value >= 0 && value <= 20));
 });
+
+test("new offers avoid click counts already used by recent products", () => {
+  const recentCounts = [20, 19, 18, 12, 7, 3];
+  const samples = Array.from({ length: 100 }, () => createInitialClickCount(recentCounts));
+  assert.ok(samples.every((value) => !recentCounts.includes(value)));
+});

@@ -125,8 +125,14 @@ export function toDbParams(input) {
   };
 }
 
-export function createInitialClickCount() {
-  return randomInt(0, 21);
+export function createInitialClickCount(recentClickCounts = []) {
+  const possibleCounts = Array.from({ length: 21 }, (_, index) => index);
+  const usedCounts = new Set(recentClickCounts
+    .map(Number)
+    .filter((value) => Number.isInteger(value) && value >= 0 && value <= 20));
+  const availableCounts = possibleCounts.filter((value) => !usedCounts.has(value));
+  const candidates = availableCounts.length ? availableCounts : possibleCounts;
+  return candidates[randomInt(0, candidates.length)];
 }
 
 export async function listOffers({ search = "", status = "", category = "" } = {}) {
@@ -156,7 +162,8 @@ export async function getOffer(id) {
 
 export async function createOffer(input) {
   const data = toDbParams(input);
-  const initialClicks = createInitialClickCount();
+  const recentClicks = await query("SELECT clicks FROM telegram_offers ORDER BY created_at DESC LIMIT 20");
+  const initialClicks = createInitialClickCount(recentClicks.rows.map((row) => row.clicks));
   const result = await query(
     `INSERT INTO telegram_offers (
       product_name, short_description, current_price, previous_price, coupon, category, image_url,

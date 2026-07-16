@@ -15,8 +15,58 @@
   const visibleControl = (pattern) => [...document.querySelectorAll("button, a, [role='button']")]
     .find((element) => visible(element) && pattern.test(tools.clean(element.textContent || element.getAttribute("aria-label"))));
 
+  const interactiveControl = (pattern) => {
+    const semanticControl = visibleControl(pattern);
+    if (semanticControl) return semanticControl;
+
+    const textElement = [...document.querySelectorAll("span, p, div, strong")]
+      .filter((element) => visible(element)
+        && pattern.test(tools.clean(`${element.textContent || ""} ${element.getAttribute("aria-label") || ""}`)))
+      .sort((first, second) => first.children.length - second.children.length)[0];
+    return textElement?.closest("button, a, [role='button'], [tabindex], [data-testid]") || textElement || null;
+  };
+
+  const activateControl = (element) => {
+    if (!element) return;
+    element.scrollIntoView({ block: "center", inline: "center" });
+    for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) {
+      const EventConstructor = type.startsWith("pointer") && globalThis.PointerEvent ? PointerEvent : MouseEvent;
+      element.dispatchEvent(new EventConstructor(type, {
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+        view: window,
+      }));
+    }
+  };
+
   const visibleDialog = (pattern) => [...document.querySelectorAll("[role='dialog'], .andes-modal, [class*='modal']")]
     .find((element) => visible(element) && pattern.test(tools.clean(element.textContent)));
+
+  const couponModalText = () => {
+    const lines = String(document.body.innerText || "").split(/\r?\n/);
+    const start = lines.findIndex((line) => /^(?:cupons?|cupons? do mercado livre)$/i.test(tools.clean(line)));
+    if (start < 0) return "";
+    return lines.slice(start, Math.min(lines.length, start + 80)).join("\n");
+  };
+
+  const couponSurface = () => {
+    const dialog = visibleDialog(/cupons?|coupon/i);
+    if (dialog) return dialog;
+
+    const heading = [...document.querySelectorAll("h1, h2, h3, [role='heading']")]
+      .find((element) => visible(element) && /cupons?|coupon/i.test(tools.clean(element.textContent)));
+    if (!heading) return null;
+
+    let surface = heading.parentElement;
+    while (surface && surface !== document.body) {
+      const text = tools.clean(surface.textContent);
+      if (/\d{1,2}(?:[.,]\d+)?%\s*OFF/i.test(text)
+        && /compra m[ií]nima|limite|venc\.?|v[aá]lido at[eé]/i.test(text)) return surface;
+      surface = surface.parentElement;
+    }
+    return heading.parentElement;
+  };
 
   const closeDialog = (dialog) => {
     const close = [...dialog.querySelectorAll("button, [role='button']")].find((element) => {
@@ -68,21 +118,21 @@
       }
     }
 
-    const control = visibleControl(/(?:ver|aplicar|usar|conferir|copiar).{0,24}cupons?|cupons?\s+dispon[ií]ve(?:l|is)/i);
+    const control = interactiveControl(/(?:ver|aplicar|usar|conferir|copiar).{0,24}cupons?|cupons?\s+dispon[ií]ve(?:l|is)/i);
     if (!control) return { label: inlineCoupon, details: inlineConditions };
-    control.click();
-    const dialog = await tools.waitFor(() => visibleDialog(/cupons?|coupon/i), 7000);
-    if (!dialog) return { label: inlineCoupon, details: inlineConditions };
-    const cards = [...dialog.querySelectorAll("article, li, [class*='card'], div")]
+    activateControl(control);
+    const surface = await tools.waitFor(() => couponSurface() || (couponModalText() ? document : null), 7000);
+    if (!surface) return { label: inlineCoupon, details: inlineConditions };
+    const cards = [...surface.querySelectorAll("article, li, [class*='card'], div")]
       .filter((element) => visible(element)
         && /\d{1,2}(?:[.,]\d+)?%\s*OFF/i.test(element.textContent)
         && /compra m[ií]nima|limite|venc\.?|v[aá]lido at[eé]/i.test(element.textContent))
       .filter((element) => ![...element.children].some((child) => /\d{1,2}(?:[.,]\d+)?%\s*OFF/i.test(child.textContent)
         && /compra m[ií]nima|limite|venc\.?|v[aá]lido at[eé]/i.test(child.textContent)));
-    const couponText = cards[0]?.textContent || dialog.textContent;
+    const couponText = cards[0]?.textContent || couponModalText() || surface.textContent;
     const coupon = couponFromText(`Cupom ${couponText}`) || inlineCoupon;
     const details = couponConditions(couponText) || inlineConditions;
-    closeDialog(dialog);
+    if (surface !== document) closeDialog(surface);
     return { label: coupon, details };
   };
 

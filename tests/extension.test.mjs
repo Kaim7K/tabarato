@@ -61,6 +61,11 @@ test("Mercado Livre captures product coupons, payment promotions and interest-fr
   const sidePanel = readFileSync(join(extensionRoot, "sidepanel", "app.js"), "utf8");
   assert.match(mercadoLivre, /productCoupon/);
   assert.match(mercadoLivre, /couponConditions/);
+  assert.match(mercadoLivre, /interactiveControl/);
+  assert.match(mercadoLivre, /activateControl/);
+  assert.match(mercadoLivre, /couponSurface/);
+  assert.match(mercadoLivre, /couponModalText/);
+  assert.match(mercadoLivre, /span, p, div, strong/);
   assert.match(mercadoLivre, /cupons\?\\s\+dispon/);
   assert.match(mercadoLivre, /Condi\\u00e7\\u00f5es do cupom/);
   assert.match(mercadoLivre, /paymentPromotions/);
