@@ -331,7 +331,7 @@ function whatsappMessage(payload) {
     const benefits = payload.extraText.split(/\.\s+/).map((item) => item.replace(/\.$/, "").trim()).filter(Boolean);
     lines.push("", ...benefits.map((item) => `\u{1F4B3} ${item}`));
   }
-  lines.push("", `\u{1F6D2} *Comprar:* ${payload.affiliateLink}`, "", "_Publicidade. Pre\u00e7o e disponibilidade podem mudar._");
+  lines.push("", "\u2139\uFE0F _Publicidade. Pre\u00e7o e disponibilidade podem mudar._", "", "\u{1F6D2} *Comprar:*", payload.affiliateLink);
   return lines.join("\n");
 }
 

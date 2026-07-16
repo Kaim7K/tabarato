@@ -61,7 +61,9 @@ test("Mercado Livre captures product coupons, payment promotions and interest-fr
   const sidePanel = readFileSync(join(extensionRoot, "sidepanel", "app.js"), "utf8");
   assert.match(mercadoLivre, /productCoupon/);
   assert.match(mercadoLivre, /paymentPromotions/);
+  assert.match(mercadoLivre, /paymentModalText/);
   assert.match(mercadoLivre, /sourceText\.split/);
+  assert.match(mercadoLivre, /if \(!method && !conditions\.length\) return ""/);
   assert.match(mercadoLivre, /interestFreeOptions/);
   assert.match(mercadoLivre, /price > 500/);
   assert.match(mercadoLivre, /meios de pagamento/);
@@ -125,10 +127,11 @@ test("extension shares the original product image and Telegram-style text on Wha
   assert.match(whatsapp, /navigator\.clipboard\.write/);
   assert.match(whatsapp, /new ClipboardItem/);
   assert.match(whatsapp, /new ClipboardEvent\("paste"/);
-  assert.match(whatsapp, /setEditableText\(composer, caption\)/);
+  assert.match(whatsapp, /await setEditableText\(composer, caption\)/);
   assert.match(whatsapp, /transfer\.setData\("text\/plain", text\)/);
   assert.match(whatsapp, /insertParagraph/);
-  assert.match(whatsapp, /setEditableText\(captionBox, caption\)/);
+  assert.match(whatsapp, /await setEditableText\(captionBox, caption\)/);
+  assert.match(whatsapp, /replaceChildren\(content\)/);
   assert.match(whatsapp, /aria-placeholder/);
   assert.match(whatsapp, /sentMessageAppeared/);
   assert.match(whatsapp, /TABARATO_WHATSAPP_SEND/);

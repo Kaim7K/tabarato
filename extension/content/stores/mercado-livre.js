@@ -74,14 +74,15 @@
     const limit = text.match(/limite:\s*R\$\s*[\d.,]+/i)?.[0];
     const validity = text.match(/v[aá]lido at[eé]\s*\d{2}\/\d{2}\/\d{4}/i)?.[0];
     const conditions = [minimum, limit, validity].filter(Boolean);
+    if (!method && !conditions.length) return "";
     return `${discount}${method ? ` com ${method}` : ""}${conditions.length ? ` (${conditions.join("; ")})` : ""}`;
   };
 
-  const paymentPromotions = (root) => {
+  const paymentPromotions = (root, textSource = "") => {
     const candidates = [...root.querySelectorAll("article, li, [class*='card'], div")]
       .filter((element) => visible(element) && /\d{1,2}(?:[.,]\d+)?%\s*OFF/i.test(element.textContent))
       .filter((element) => ![...element.children].some((child) => /\d{1,2}(?:[.,]\d+)?%\s*OFF/i.test(child.textContent)));
-    const sourceText = root.innerText || root.documentElement?.innerText || root.textContent || "";
+    const sourceText = textSource || root.innerText || root.documentElement?.innerText || root.textContent || "";
     const lines = sourceText.split(/\r?\n/).map(tools.clean).filter(Boolean);
     const textBlocks = [];
     lines.forEach((line, index) => {
@@ -99,6 +100,17 @@
       ...candidates.map((element) => promotionSummary(element.textContent)),
       ...textBlocks.map(promotionSummary),
     ]);
+  };
+
+  const paymentModalText = () => {
+    const lines = String(document.body.innerText || "").split(/\r?\n/);
+    let start = -1;
+    lines.forEach((line, index) => {
+      if (/meios de pagamento para este produto|aproveite estas promo[cç][oõ]es/i.test(tools.clean(line))) start = index;
+    });
+    if (start < 0) return "";
+    const end = Math.min(lines.length, start + 120);
+    return lines.slice(start, end).join("\n");
   };
 
   const interestFreeOptions = (value) => {
@@ -119,7 +131,7 @@
       .filter(visible)
       .map((element) => tools.clean(element.textContent))
       .join(" ");
-    let promotions = paymentPromotions(document);
+    let promotions = [];
     let installments = price > 500 ? interestFreeOptions(pagePaymentText) : [];
     const control = visibleControl(/meios de pagamento|formas de pagamento|ver.*pagamento/i);
     if (control) {
@@ -127,9 +139,10 @@
       await tools.waitFor(() => (/meios de pagamento|cart[oõ]es de cr[eé]dito|aproveite estas promo[cç][oõ]es/i.test(document.body.innerText) ? true : ""), 8000);
       const dialog = visibleDialog(/meios de pagamento|cart[oõ]es de cr[eé]dito|aproveite estas promo[cç][oõ]es/i);
       const paymentRoot = dialog || document;
-      promotions = unique([...promotions, ...paymentPromotions(paymentRoot)]);
+      const paymentText = dialog?.innerText || paymentModalText();
+      promotions = unique([...promotions, ...paymentPromotions(paymentRoot, paymentText)]);
       if (price > 500) {
-        installments = unique([...installments, ...interestFreeOptions(paymentRoot.innerText || document.body.innerText)]);
+        installments = unique([...installments, ...interestFreeOptions(paymentText)]);
         if (!installments.length) {
           const details = [...paymentRoot.querySelectorAll("button, a, [role='button']")].find((element) => {
             const label = tools.clean(`${element.textContent || ""} ${element.getAttribute("aria-label") || ""}`);

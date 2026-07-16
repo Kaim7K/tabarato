@@ -46,7 +46,7 @@
       return visible(element) && patterns.some((pattern) => label.includes(pattern));
     });
 
-  const setEditableText = (element, value) => {
+  const setEditableText = async (element, value) => {
     element.focus();
     document.execCommand("selectAll", false, null);
     document.execCommand("delete", false, null);
@@ -60,6 +60,8 @@
       clipboardData: transfer,
     }));
 
+    await new Promise((resolve) => window.setTimeout(resolve, 120));
+
     const needsFallback = !clean(element.textContent)
       || (text.includes("\n") && !String(element.innerText || "").includes("\n"));
     if (!needsFallback) return;
@@ -70,6 +72,17 @@
       if (line) document.execCommand("insertText", false, line);
       if (index < lines.length - 1) document.execCommand("insertParagraph", false, null);
     });
+
+    await new Promise((resolve) => window.setTimeout(resolve, 80));
+    if (!text.includes("\n") || String(element.innerText || "").includes("\n")) return;
+
+    const content = document.createDocumentFragment();
+    text.split("\n").forEach((line, index) => {
+      if (index) content.appendChild(document.createElement("br"));
+      if (line) content.appendChild(document.createTextNode(line));
+    });
+    element.replaceChildren(content);
+    element.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertFromPaste", data: text }));
   };
 
   const searchBox = () => editableByLabel(["pesquisar", "search"])
@@ -125,7 +138,7 @@
 
     const search = await waitFor(searchBox, 12000);
     if (!search) throw new Error("Entre no WhatsApp Web antes de enviar a oferta.");
-    setEditableText(search, groupName);
+    await setEditableText(search, groupName);
     const group = await waitFor(() => exactGroup(groupName), 15000);
     if (!group) throw new Error(`Grupo "${groupName}" nao encontrado no WhatsApp.`);
     const groupRow = clickableGroupRow(group);
@@ -189,7 +202,7 @@
     if (!composer) throw new Error("O campo de mensagem do WhatsApp nao foi encontrado.");
     const messageCountBefore = outgoingMessages().length;
 
-    setEditableText(composer, caption);
+    await setEditableText(composer, caption);
     await copyImageToClipboard(file);
     pasteImageFromClipboard(composer, file);
 
@@ -200,7 +213,7 @@
       throw new Error("A imagem foi copiada, mas o WhatsApp nao abriu a previa de envio.");
     }
     await new Promise((resolve) => window.setTimeout(resolve, 700));
-    setEditableText(captionBox, caption);
+    await setEditableText(captionBox, caption);
     await new Promise((resolve) => window.setTimeout(resolve, 250));
 
     const send = await waitFor(() => actionByLabel(["enviar", "send"])
