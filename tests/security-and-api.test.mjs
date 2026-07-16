@@ -139,3 +139,28 @@ test("database prevents duplicate product and price pairs", () => {
   assert.match(offers, /23505/);
   assert.match(publisher, /\["PUBLICADO", "PUBLICANDO"\]/);
 });
+
+test("system stores publication history and refreshes published offer prices", () => {
+  const migration = readFileSync(join(root, "migrations", "001_create_telegram_offers.sql"), "utf8");
+  const publisher = readFileSync(join(root, "api", "_lib", "publisher.js"), "utf8");
+  const maintenance = readFileSync(join(root, "api", "_lib", "offerMaintenance.js"), "utf8");
+  const cron = readFileSync(join(root, "api", "cron", "publicar-agendadas.js"), "utf8");
+  assert.match(migration, /offer_publication_history/);
+  assert.match(migration, /last_checked_at/);
+  assert.match(publisher, /channel, status, external_message_id/);
+  assert.match(maintenance, /fetchProductPreview/);
+  assert.match(maintenance, /current_price=\$2/);
+  assert.match(maintenance, /status='EXPIRADO'/);
+  assert.match(cron, /refreshPublishedOffers/);
+});
+
+test("public search expands synonyms and public offers expose final coupon price", () => {
+  const search = readFileSync(join(root, "api", "_lib", "search.js"), "utf8");
+  const offersRoute = readFileSync(join(root, "api", "ofertas", "index.js"), "utf8");
+  const publicOffers = readFileSync(join(root, "api", "_lib", "publicOffers.js"), "utf8");
+  assert.match(search, /smartphone.*celular|celular.*smartphone/s);
+  assert.match(offersRoute, /searchGroups/);
+  assert.match(offersRoute, /unaccent/);
+  assert.match(publicOffers, /coupon_discount_percent/);
+  assert.match(publicOffers, /final_price/);
+});

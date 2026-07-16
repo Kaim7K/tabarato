@@ -1,4 +1,5 @@
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
+CREATE EXTENSION IF NOT EXISTS unaccent;
 
 CREATE TABLE IF NOT EXISTS telegram_offers (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -7,12 +8,16 @@ CREATE TABLE IF NOT EXISTS telegram_offers (
   current_price NUMERIC(12, 2) NOT NULL,
   previous_price NUMERIC(12, 2),
   coupon TEXT,
+  coupon_discount_percent NUMERIC(5, 2),
   category TEXT NOT NULL,
   image_url TEXT,
   affiliate_link TEXT NOT NULL,
   platform TEXT NOT NULL,
   source_product_id TEXT,
   product_key TEXT,
+  availability_status TEXT NOT NULL DEFAULT 'DESCONHECIDO',
+  last_checked_at TIMESTAMPTZ,
+  last_check_error TEXT,
   extra_text TEXT,
   status TEXT NOT NULL DEFAULT 'RASCUNHO',
   scheduled_at TIMESTAMPTZ,
@@ -34,6 +39,10 @@ ALTER TABLE telegram_offers ADD COLUMN IF NOT EXISTS shares INTEGER NOT NULL DEF
 ALTER TABLE telegram_offers ADD COLUMN IF NOT EXISTS favorites INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE telegram_offers ADD COLUMN IF NOT EXISTS source_product_id TEXT;
 ALTER TABLE telegram_offers ADD COLUMN IF NOT EXISTS product_key TEXT;
+ALTER TABLE telegram_offers ADD COLUMN IF NOT EXISTS coupon_discount_percent NUMERIC(5, 2);
+ALTER TABLE telegram_offers ADD COLUMN IF NOT EXISTS availability_status TEXT NOT NULL DEFAULT 'DESCONHECIDO';
+ALTER TABLE telegram_offers ADD COLUMN IF NOT EXISTS last_checked_at TIMESTAMPTZ;
+ALTER TABLE telegram_offers ADD COLUMN IF NOT EXISTS last_check_error TEXT;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_telegram_offers_unique_product_price
 ON telegram_offers (product_key, current_price)
 WHERE product_key IS NOT NULL;
@@ -64,6 +73,19 @@ CREATE TABLE IF NOT EXISTS offer_price_history (
 
 CREATE INDEX IF NOT EXISTS idx_offer_price_history_offer_date
 ON offer_price_history (offer_id, recorded_at DESC);
+
+CREATE TABLE IF NOT EXISTS offer_publication_history (
+  id BIGSERIAL PRIMARY KEY,
+  offer_id UUID NOT NULL REFERENCES telegram_offers(id) ON DELETE CASCADE,
+  channel TEXT NOT NULL,
+  status TEXT NOT NULL,
+  external_message_id TEXT,
+  error_message TEXT,
+  published_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_offer_publication_history_offer_date
+ON offer_publication_history (offer_id, published_at DESC);
 
 INSERT INTO offer_price_history (offer_id, price, recorded_at)
 SELECT id, current_price, COALESCE(published_at, created_at)

@@ -29,6 +29,7 @@ const emptyOffer = {
   currentPrice: "",
   previousPrice: "",
   coupon: "",
+  couponDiscountPercent: 0,
   category: "Tecnologia",
   imageUrl: "",
   affiliateLink: "",
@@ -255,6 +256,7 @@ export default function AdminOffers() {
     const totalClicks = offers.reduce((sum, offer) => sum + number(offer.clicks), 0);
     const totalShares = offers.reduce((sum, offer) => sum + number(offer.shares), 0);
     const totalFavorites = offers.reduce((sum, offer) => sum + number(offer.favorites), 0);
+    const publicationCount = offers.reduce((sum, offer) => sum + number(offer.publicationCount), 0);
     const totalValue = published.reduce((sum, offer) => sum + number(offer.currentPrice), 0);
     const discounts = offers.map((offer) => {
       const previous = number(offer.previousPrice);
@@ -273,6 +275,13 @@ export default function AdminOffers() {
       totalClicks,
       totalShares,
       totalFavorites,
+      publicationCount,
+      topOffers: [...offers].sort((a, b) => number(b.clicks) - number(a.clicks)).slice(0, 5),
+      byPlatform: [...new Set(offers.map((offer) => offer.platform).filter(Boolean))].map((name) => ({
+        name,
+        offers: offers.filter((offer) => offer.platform === name).length,
+        clicks: offers.filter((offer) => offer.platform === name).reduce((sum, offer) => sum + number(offer.clicks), 0),
+      })).sort((a, b) => b.clicks - a.clicks),
       averageDiscount: discounts.length ? Math.round(discounts.reduce((a, b) => a + b, 0) / discounts.length) : 0,
       averageTicket: published.length ? totalValue / published.length : 0,
       nextScheduled: scheduled
@@ -374,6 +383,7 @@ export default function AdminOffers() {
       currentPrice: offer.currentPrice || "",
       previousPrice: offer.previousPrice || "",
       coupon: offer.coupon || "",
+      couponDiscountPercent: offer.couponDiscountPercent || 0,
       category: offer.category || "Tecnologia",
       imageUrl: offer.imageUrl || "",
       affiliateLink: offer.affiliateLink || "",
@@ -403,6 +413,7 @@ export default function AdminOffers() {
         shortDescription: product.shortDescription || current.shortDescription,
         currentPrice: product.currentPrice ? normalizeFormPrice(product.currentPrice) : current.currentPrice,
         previousPrice: product.previousPrice ? normalizeFormPrice(product.previousPrice) : current.previousPrice,
+        couponDiscountPercent: product.couponDiscountPercent || current.couponDiscountPercent,
         imageUrl: product.imageUrl || current.imageUrl,
         affiliateLink: product.affiliateLink || current.affiliateLink,
         sourceProductId: product.sourceProductId || product.externalProductId || current.sourceProductId,
@@ -424,6 +435,7 @@ export default function AdminOffers() {
       shortDescription: product.shortDescription || current.shortDescription,
       currentPrice: product.currentPrice ? normalizeFormPrice(product.currentPrice) : current.currentPrice,
       previousPrice: product.previousPrice ? normalizeFormPrice(product.previousPrice) : current.previousPrice,
+      couponDiscountPercent: product.couponDiscountPercent || current.couponDiscountPercent,
       imageUrl: product.imageUrl || current.imageUrl,
       affiliateLink: product.affiliateLink || current.affiliateLink,
       sourceProductId: product.sourceProductId || product.externalProductId || current.sourceProductId,

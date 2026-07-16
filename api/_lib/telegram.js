@@ -28,6 +28,10 @@ export function formatTelegramMessage(offer) {
       ? `<b>${escapeHtml(offer.coupon)}</b>`
       : `Cupom: <b>${escapeHtml(offer.coupon)}</b>`);
   }
+  if (offer.couponDiscountPercent > 0) {
+    const finalPrice = Number(offer.currentPrice) * (1 - Number(offer.couponDiscountPercent) / 100);
+    lines.push(`Com cupom: <b>R$ ${finalPrice.toFixed(2).replace(".", ",")}</b>`);
+  }
   if (offer.category) lines.push("", `📦 ${escapeHtml(offer.category)}`);
   if (offer.extraText) lines.push("", escapeHtml(offer.extraText));
   lines.push("", "Preço e disponibilidade podem mudar.");

@@ -78,6 +78,7 @@ export default function OfferCard({ offer, rank = 0 }) {
           <p className="price-type text-[#111111] text-2xl leading-none">
             {formatPrice(offer.price)}
           </p>
+          {offer.final_price < offer.price && <p className="mt-2 text-sm font-semibold text-[#168A55]">Com cupom: {formatPrice(offer.final_price)}</p>}
           <div className="flex flex-wrap items-center gap-2 mt-2">
             {offer.coupon && <span className="px-2 py-1 rounded bg-[#FF6B35]/10 text-[#D95426] text-xs font-semibold">Cupom: {offer.coupon}</span>}
           {offer.published_date && (

@@ -27,10 +27,16 @@ export function mapOffer(row) {
     currentPrice: row.current_price == null ? "" : String(row.current_price),
     previousPrice: row.previous_price == null ? "" : String(row.previous_price),
     coupon: row.coupon || "",
+    couponDiscountPercent: Number(row.coupon_discount_percent || 0),
     category: row.category,
     imageUrl: row.image_url || "",
     affiliateLink: row.affiliate_link,
     sourceProductId: row.source_product_id || "",
+    availabilityStatus: row.availability_status || "DESCONHECIDO",
+    lastCheckedAt: row.last_checked_at || null,
+    lastCheckError: row.last_check_error || "",
+    publicationCount: Number(row.publication_count || 0),
+    lastPublishedAt: row.last_published_at || null,
     platform: row.platform,
     extraText: row.extra_text || "",
     status: row.status,
@@ -97,6 +103,11 @@ export function validateOffer(input, { requireSchedule = false } = {}) {
     if (!Number.isFinite(previousPrice) || previousPrice <= 0) errors.push("Preço anterior inválido.");
   }
 
+  if (input.couponDiscountPercent !== "" && input.couponDiscountPercent != null) {
+    const couponDiscount = Number(input.couponDiscountPercent);
+    if (!Number.isFinite(couponDiscount) || couponDiscount < 0 || couponDiscount > 100) errors.push("Desconto do cupom deve estar entre 0 e 100%.");
+  }
+
   URL_FIELDS.forEach((key) => {
     const error = validateHttpsUrl(input[key], key === "imageUrl" ? "URL da imagem" : "Link oficial de afiliado", key === "affiliateLink");
     if (error) errors.push(error);
@@ -116,6 +127,7 @@ export function toDbParams(input) {
     current_price: parsePrice(input.currentPrice),
     previous_price: input.previousPrice ? parsePrice(input.previousPrice) : null,
     coupon: input.coupon ? String(input.coupon).trim() : null,
+    coupon_discount_percent: Math.max(0, Math.min(100, Number(input.couponDiscountPercent) || 0)) || null,
     category: String(input.category || "").trim(),
     image_url: input.imageUrl ? String(input.imageUrl).trim() : null,
     affiliate_link: String(input.affiliateLink || "").trim(),
@@ -203,7 +215,10 @@ export async function listOffers({ search = "", status = "", category = "" } = {
     filters.push(`category = $${params.length}`);
   }
   const where = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
-  const result = await query(`SELECT * FROM telegram_offers ${where} ORDER BY created_at DESC LIMIT 500`, params);
+  const result = await query(`SELECT telegram_offers.*,
+    (SELECT COUNT(*) FROM offer_publication_history history WHERE history.offer_id=telegram_offers.id AND history.status='SUCESSO') AS publication_count,
+    (SELECT MAX(published_at) FROM offer_publication_history history WHERE history.offer_id=telegram_offers.id AND history.status='SUCESSO') AS last_published_at
+    FROM telegram_offers ${where} ORDER BY created_at DESC LIMIT 500`, params);
   return result.rows.map(mapOffer);
 }
 
@@ -221,13 +236,14 @@ export async function createOffer(input) {
   const result = await query(
     `INSERT INTO telegram_offers (
       product_name, short_description, current_price, previous_price, coupon, category, image_url,
-      affiliate_link, platform, extra_text, status, scheduled_at, clicks, source_product_id, product_key
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+      affiliate_link, platform, extra_text, status, scheduled_at, clicks, source_product_id, product_key,
+      coupon_discount_percent
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
     RETURNING *`,
     [
       data.product_name, data.short_description, data.current_price, data.previous_price, data.coupon, data.category,
       data.image_url, data.affiliate_link, data.platform, data.extra_text, data.status, data.scheduled_at, initialClicks,
-      data.source_product_id, productKey(data),
+      data.source_product_id, productKey(data), data.coupon_discount_percent,
     ]
   ).catch((error) => rethrowDuplicateConstraint(error, data.product_name));
   return mapOffer(result.rows[0]);
@@ -241,13 +257,14 @@ export async function updateOffer(id, input) {
     `UPDATE telegram_offers SET
       product_name=$1, short_description=$2, current_price=$3, previous_price=$4, coupon=$5,
       category=$6, image_url=$7, affiliate_link=$8, platform=$9, extra_text=$10, status=$11,
-      scheduled_at=$12, source_product_id=$13, product_key=$14, error_message=NULL
-    WHERE id=$15
+      scheduled_at=$12, source_product_id=$13, product_key=$14, coupon_discount_percent=$15,
+      error_message=NULL
+    WHERE id=$16
     RETURNING *`,
     [
       data.product_name, data.short_description, data.current_price, data.previous_price, data.coupon, data.category,
       data.image_url, data.affiliate_link, data.platform, data.extra_text, data.status, data.scheduled_at,
-      data.source_product_id, productKey(data), id,
+      data.source_product_id, productKey(data), data.coupon_discount_percent, id,
     ]
   ).catch((error) => rethrowDuplicateConstraint(error, data.product_name));
   return mapOffer(result.rows[0]);

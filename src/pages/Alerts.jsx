@@ -14,7 +14,15 @@ export default function Alerts() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    listPublicOffers({ limit: 100 }).then(setOffers).finally(() => setLoading(false));
+    let active = true;
+    const refresh = () => listPublicOffers({ limit: 100 })
+      .then((items) => { if (active) setOffers(items); })
+      .finally(() => { if (active) setLoading(false); });
+    refresh();
+    const interval = window.setInterval(refresh, 60_000);
+    const onVisibility = () => { if (document.visibilityState === "visible") refresh(); };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => { active = false; window.clearInterval(interval); document.removeEventListener("visibilitychange", onVisibility); };
   }, []);
 
   const rows = useMemo(() => alerts.map((alert) => ({ ...alert, offer: offers.find((item) => item.id === alert.offerId) })), [alerts, offers]);

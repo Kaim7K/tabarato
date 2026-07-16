@@ -138,18 +138,22 @@
 
   const couponConditions = (value) => {
     const text = tools.clean(value);
-    const discount = text.match(/\b\d{1,2}(?:[.,]\d+)?%\s*(?:OFF|DE\s+DESCONTO)\b/i)?.[0]?.toUpperCase();
     const minimum = text.match(/compra m[ií]nima(?:\s+de)?\s*R\$\s*[\d.,]+/i)?.[0];
     const limit = text.match(/limite(?:\s+de)?\s*R\$\s*[\d.,]+/i)?.[0];
     const expires = text.match(/(?:venc\.?|v[aá]lido at[eé])\s*\d{2}\/\d{2}\/\d{4}/i)?.[0];
-    const conditions = [discount, minimum, limit, expires].filter(Boolean);
+    const conditions = [minimum, limit, expires].filter(Boolean);
     return conditions.length ? `Condi\u00e7\u00f5es do cupom: ${conditions.join("; ")}.` : "";
   };
+
+  const couponDiscountPercent = (value) => Number(
+    tools.clean(value).match(/\b(\d{1,2}(?:[.,]\d+)?)%\s*(?:OFF|DE\s+DESCONTO)\b/i)?.[1]?.replace(",", ".") || 0
+  );
 
   const productCoupon = async () => {
     let inlineCoupon = "";
     let inlineConditions = "";
     let inlineStoreCoupon = "";
+    let inlineDiscountPercent = 0;
     const selectors = [
       ".ui-pdp-container [class*='coupon']",
       ".ui-pdp-container [data-testid*='coupon']",
@@ -162,6 +166,7 @@
       for (const element of document.querySelectorAll(selector)) {
         const elementText = couponElementText(element);
         inlineStoreCoupon ||= storeCouponLabel(elementText);
+        inlineDiscountPercent ||= couponDiscountPercent(elementText);
         const coupon = couponFromText(elementText);
         if (coupon) inlineCoupon ||= coupon;
         inlineConditions ||= couponConditions(elementText);
@@ -169,10 +174,10 @@
     }
 
     const control = interactiveControl(/(?:ver|aplicar|usar|conferir|copiar).{0,24}cupons?|cupons?\s+dispon[ií]ve(?:l|is)/i);
-    if (!control) return { label: inlineStoreCoupon || inlineCoupon, details: inlineConditions };
+    if (!control) return { label: inlineStoreCoupon || inlineCoupon, details: inlineConditions, discountPercent: inlineDiscountPercent };
     activateControl(control);
     const surface = await tools.waitFor(() => couponSurface() || (couponModalText() ? document : null), 7000);
-    if (!surface) return { label: inlineStoreCoupon || inlineCoupon, details: inlineConditions };
+    if (!surface) return { label: inlineStoreCoupon || inlineCoupon, details: inlineConditions, discountPercent: inlineDiscountPercent };
     const cards = [...surface.querySelectorAll("article, li, [class*='card'], div")]
       .filter((element) => visible(element)
         && /\d{1,2}(?:[.,]\d+)?%\s*OFF/i.test(element.textContent)
@@ -192,7 +197,7 @@
       || inlineStoreCoupon;
     const details = couponConditions(couponText) || inlineConditions;
     if (surface !== document) closeDialog(surface);
-    return { label: coupon, details };
+    return { label: coupon, details, discountPercent: couponDiscountPercent(couponText) || inlineDiscountPercent };
   };
 
   const promotionSummary = (value) => {
@@ -262,7 +267,7 @@
       .map((element) => tools.clean(element.textContent))
       .join(" ");
     let promotions = [];
-    let installments = price > 500 ? interestFreeOptions(pagePaymentText) : [];
+    let installments = interestFreeOptions(pagePaymentText);
     const control = visibleControl(/meios de pagamento|formas de pagamento|ver.*pagamento/i);
     if (control) {
       control.click();
@@ -346,14 +351,17 @@
       const sourceCategory = tools.text(".andes-breadcrumb__container", ".ui-pdp-breadcrumb");
       const currentPrice = tools.price(".ui-pdp-price__second-line .andes-money-amount", ".ui-pdp-price__main-container .andes-money-amount") || tools.productPrice(structured);
       let coupon = "";
+      let couponDiscountPercent = 0;
       let extraText = "";
       if (MELI_LINK_PATTERN.test(affiliateLink)) {
         await closeAffiliateDialog();
         const couponResult = await productCoupon();
         coupon = couponResult.label
           || tools.coupon(".ui-pdp-container [class*='coupon']", ".ui-pdp-container [data-testid*='coupon']", ".ui-pdp-container [class*='voucher']");
+        couponDiscountPercent = couponResult.discountPercent || 0;
         const paymentText = await paymentBenefits(Number(currentPrice));
-        extraText = [couponResult.details, paymentText].filter(Boolean).join(" ");
+        const shippingText = /frete gr[aá]tis/i.test(document.body.innerText) ? "Frete grátis." : "";
+        extraText = [couponResult.details, paymentText, shippingText].filter(Boolean).join(" ");
       }
       return {
         productName,
@@ -362,6 +370,7 @@
         currentPrice,
         previousPrice: tools.price(".ui-pdp-price__original-value .andes-money-amount", ".andes-money-amount--previous"),
         coupon,
+        couponDiscountPercent,
         extraText,
         imageUrl: tools.bestImage(".ui-pdp-gallery__figure img", ".ui-pdp-image", "img[src*='mlstatic']") || tools.productImage(structured),
         affiliateLink: affiliateLink || tools.affiliateLink(),

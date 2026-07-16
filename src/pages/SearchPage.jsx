@@ -4,7 +4,6 @@ import OfferCard from "@/components/OfferCard";
 import Footer from "@/components/Footer";
 import SmartSearch from "@/components/SmartSearch";
 import { BellPlus, Package } from "lucide-react";
-import { normalizeText } from "@/lib/catalog";
 import { listPublicOffersPage } from "@/lib/offersApi";
 import { EmptyState, FilterChip, LoadingState, OfferGrid, PageShell, SectionHeader } from "@/components/PublicUi";
 import { useDocumentMetadata } from "@/hooks/useDocumentMetadata";
@@ -36,10 +35,7 @@ export default function SearchPage() {
   }, [page, platformFilter, priceFilter, query, sort]);
 
   const platforms = ["Mercado Livre", "Shopee", "Amazon"];
-  const q = normalizeText(query);
-  let results = q
-    ? offers.filter((offer) => normalizeText(offer.name).includes(q) || normalizeText(offer.category).includes(q) || normalizeText(offer.description).includes(q) || normalizeText(offer.platform).includes(q))
-    : offers;
+  const results = offers;
 
 
   const priceFilters = [

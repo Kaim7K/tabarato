@@ -17,6 +17,7 @@
         currentPrice: tools.price("#corePrice_feature_div .a-price .a-offscreen", ".priceToPay .a-offscreen", ".a-price .a-offscreen") || tools.productPrice(structured),
         previousPrice: tools.price(".basisPrice .a-offscreen", ".a-text-price .a-offscreen"),
         coupon: tools.coupon("#couponText", "[id*='coupon']", "[class*='coupon']"),
+        extraText: tools.commerceBenefits(document.body.innerText),
         imageUrl: tools.bestImage("#landingImage", "#imgTagWrapperId img") || tools.productImage(structured),
         affiliateLink: tools.affiliateLink(),
         sourceUrl: tools.canonicalUrl(),

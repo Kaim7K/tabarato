@@ -46,6 +46,11 @@ export async function publishOfferById(id) {
        RETURNING *`,
       [id, result.messageId, JSON.stringify(result.response)]
     );
+    await query(
+      `INSERT INTO offer_publication_history (offer_id, channel, status, external_message_id)
+       VALUES ($1, 'TELEGRAM', 'SUCESSO', $2)`,
+      [id, result.messageId]
+    ).catch(() => {});
     return { ok: true, offer: mapOffer(updated.rows[0]) };
   } catch (error) {
     const message = error?.name === "AbortError" ? "Timeout ao enviar para o Telegram." : error.message || "Erro ao publicar no Telegram.";
@@ -53,6 +58,11 @@ export async function publishOfferById(id) {
       "UPDATE telegram_offers SET status='ERRO', error_message=$2 WHERE id=$1 RETURNING *",
       [id, message]
     );
+    await query(
+      `INSERT INTO offer_publication_history (offer_id, channel, status, error_message)
+       VALUES ($1, 'TELEGRAM', 'ERRO', $2)`,
+      [id, message]
+    ).catch(() => {});
     return { ok: false, status: 502, error: message, offer: mapOffer(updated.rows[0]) };
   }
 }

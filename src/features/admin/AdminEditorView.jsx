@@ -1,11 +1,13 @@
-import { CalendarClock, CheckCircle2, Clipboard, ExternalLink, Loader2, Plus, Save, Send, Sparkles, Tag } from "lucide-react";
+import { useState } from "react";
+import { AlertTriangle, CalendarClock, CheckCircle2, Clipboard, ExternalLink, Loader2, Plus, Save, Send, Sparkles, Tag } from "lucide-react";
 import { formatPrice } from "@/lib/catalog";
-import { StoreBadge, TelegramIcon } from "@/components/BrandIcons";
-import { formatTelegramPreview } from "@/lib/telegramOffersApi";
+import { StoreBadge, TelegramIcon, WhatsAppIcon } from "@/components/BrandIcons";
+import { formatTelegramPreview, formatWhatsAppPreview } from "@/lib/telegramOffersApi";
 import { Field, inputCls, Panel } from "@/features/admin/AdminUi";
 import { number } from "@/features/admin/adminOfferConfig";
 
 export function EditorView({ form, selected, categories, saving, autoFilling, set, startNew, autoFillFromLink, openBrowserCapture, importBrowserCapture, save, publishNow, schedule }) {
+  const [previewChannel, setPreviewChannel] = useState("site");
   const completion = [
     form.affiliateLink,
     form.productName,
@@ -14,6 +16,12 @@ export function EditorView({ form, selected, categories, saving, autoFilling, se
     form.imageUrl,
   ].filter(Boolean).length;
   const completionPct = Math.round((completion / 5) * 100);
+  const reviewItems = [
+    !form.imageUrl && "Adicione uma imagem válida.",
+    form.previousPrice && number(form.previousPrice) <= number(form.currentPrice) && "O preço anterior deve ser maior que o atual.",
+    form.platform === "Mercado Livre" && form.affiliateLink && !/^https:\/\/meli\.la\//i.test(form.affiliateLink) && "Confirme o link afiliado meli.la.",
+    form.coupon && /^(?:CUPONS?|\d+% OFF)$/i.test(form.coupon) && "Revise o código do cupom.",
+  ].filter(Boolean);
 
   return (
     <div className="grid xl:grid-cols-[minmax(0,1fr)_360px] gap-5">
@@ -69,6 +77,7 @@ export function EditorView({ form, selected, categories, saving, autoFilling, se
               </select>
             </Field>
             <Field label="Cupom"><input value={form.coupon} onChange={(e) => set("coupon", e.target.value)} className={inputCls} /></Field>
+            <Field label="Desconto do cupom (%)"><input type="number" min="0" max="100" step="0.01" value={form.couponDiscountPercent || ""} onChange={(e) => set("couponDiscountPercent", e.target.value)} className={inputCls} /></Field>
             <Field label="Preco atual *"><input type="number" step="0.01" value={form.currentPrice} onChange={(e) => set("currentPrice", e.target.value)} className={inputCls} /></Field>
             <Field label="Preco anterior"><input type="number" step="0.01" value={form.previousPrice} onChange={(e) => set("previousPrice", e.target.value)} className={inputCls} /></Field>
             <div className="md:col-span-2">
@@ -101,11 +110,15 @@ export function EditorView({ form, selected, categories, saving, autoFilling, se
           <div className="h-2 bg-white/10 rounded-full overflow-hidden">
             <div className="h-full bg-[#FF6B35]" style={{ width: `${completionPct}%` }} />
           </div>
-          <p className="text-xs text-white/35 mt-3">Link, nome, preco, categoria e imagem deixam a oferta mais forte. A descricao e opcional.</p>
+          {reviewItems.length > 0 && <div className="mt-4 space-y-2">{reviewItems.map((item) => <p key={item} className="flex items-start gap-2 text-xs text-amber-200"><AlertTriangle className="w-4 h-4 shrink-0" />{item}</p>)}</div>}
         </Panel>
-        <OfferPreview form={form} />
-        <Panel title="Previa Telegram" icon={TelegramIcon} iconClassName="text-[#229ED9]">
-          <pre className="text-xs text-white/70 whitespace-pre-wrap font-sans leading-relaxed">{formatTelegramPreview(form)}</pre>
+        <Panel title="Prévia por canal" icon={previewChannel === "telegram" ? TelegramIcon : previewChannel === "whatsapp" ? WhatsAppIcon : CheckCircle2}>
+          <div className="grid grid-cols-3 gap-1 p-1 bg-white/5 rounded-lg mb-4">
+            {[{ id: "site", label: "Site" }, { id: "telegram", label: "Telegram" }, { id: "whatsapp", label: "WhatsApp" }].map((channel) => <button key={channel.id} type="button" onClick={() => setPreviewChannel(channel.id)} className={`min-h-9 rounded-md text-xs font-semibold ${previewChannel === channel.id ? "bg-white text-[#111111]" : "text-white/55"}`}>{channel.label}</button>)}
+          </div>
+          {previewChannel === "site" && <OfferPreview form={form} />}
+          {previewChannel === "telegram" && <pre className="text-xs text-white/70 whitespace-pre-wrap font-sans leading-relaxed">{formatTelegramPreview(form)}</pre>}
+          {previewChannel === "whatsapp" && <pre className="text-xs text-white/70 whitespace-pre-wrap font-sans leading-relaxed">{formatWhatsAppPreview(form)}</pre>}
         </Panel>
       </div>
     </div>
@@ -113,6 +126,7 @@ export function EditorView({ form, selected, categories, saving, autoFilling, se
 }
 
 function OfferPreview({ form }) {
+  const finalPrice = form.couponDiscountPercent > 0 ? number(form.currentPrice) * (1 - number(form.couponDiscountPercent) / 100) : 0;
   return (
     <div className="bg-white text-[#111111] rounded-lg overflow-hidden">
       <div className="relative aspect-[4/3] bg-white">
@@ -127,6 +141,7 @@ function OfferPreview({ form }) {
           <p className="font-bold text-xl">{form.currentPrice ? formatPrice(number(form.currentPrice)) : "R$ 0,00"}</p>
           {form.previousPrice && <p className="text-sm text-[#111111]/35 line-through mb-0.5">{formatPrice(number(form.previousPrice))}</p>}
         </div>
+        {finalPrice > 0 && <p className="mt-2 text-sm font-semibold text-[#168A55]">Com cupom: {formatPrice(finalPrice)}</p>}
       </div>
     </div>
   );

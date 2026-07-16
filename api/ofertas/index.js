@@ -1,6 +1,7 @@
 import { query } from "../_lib/db.js";
 import { sendJson, methodNotAllowed, publicError } from "../_lib/http.js";
 import { mapPublicOffer, PUBLIC_OFFER_COLUMNS, setPublicCache } from "../_lib/publicOffers.js";
+import { searchGroups } from "../_lib/search.js";
 
 export default async function handler(req, res) {
   if (req.method !== "GET") return methodNotAllowed(res, ["GET"]);
@@ -20,8 +21,13 @@ export default async function handler(req, res) {
     const params = [];
 
     if (search) {
-      params.push(`%${search}%`);
-      filters.push(`(product_name ILIKE $${params.length} OR short_description ILIKE $${params.length} OR category ILIKE $${params.length} OR platform ILIKE $${params.length})`);
+      searchGroups(search).forEach((group) => {
+        const groupFilters = group.map((term) => {
+          params.push(`%${term}%`);
+          return `(unaccent(product_name) ILIKE unaccent($${params.length}::text) OR unaccent(COALESCE(short_description, '')) ILIKE unaccent($${params.length}::text) OR unaccent(category) ILIKE unaccent($${params.length}::text) OR unaccent(platform) ILIKE unaccent($${params.length}::text))`;
+        });
+        filters.push(`(${groupFilters.join(" OR ")})`);
+      });
     }
     if (category) {
       params.push(category);

@@ -1,3 +1,4 @@
+import { query } from "../../../_lib/db.js";
 import { handleExtensionCors, requireAdmin, requireUuid, sendJson, methodNotAllowed, publicError } from "../../../_lib/http.js";
 import { publishOfferById } from "../../../_lib/publisher.js";
 
@@ -8,6 +9,16 @@ export default async function handler(req, res) {
   if (!requireUuid(req.query.id, res)) return;
 
   try {
+    if (req.body?.action === "record-channel") {
+      const channel = String(req.body.channel || "").toUpperCase();
+      const status = String(req.body.status || "").toUpperCase();
+      if (channel !== "WHATSAPP" || !["SUCESSO", "ERRO"].includes(status)) return sendJson(res, 400, { error: "Histórico de publicação inválido." });
+      await query(
+        "INSERT INTO offer_publication_history (offer_id, channel, status, error_message) VALUES ($1,$2,$3,$4)",
+        [req.query.id, channel, status, String(req.body.errorMessage || "").slice(0, 300) || null]
+      );
+      return sendJson(res, 201, { ok: true });
+    }
     const result = await publishOfferById(req.query.id);
     if (!result.ok) return sendJson(res, result.status || 500, result);
     return sendJson(res, 200, result);

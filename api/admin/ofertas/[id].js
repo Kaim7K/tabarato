@@ -9,8 +9,11 @@ export default async function handler(req, res) {
 
   try {
     if (req.method === "GET") {
-      const offer = await getOffer(id);
-      return offer ? sendJson(res, 200, { offer }) : sendJson(res, 404, { error: "Oferta não encontrada." });
+      const [offer, history] = await Promise.all([
+        getOffer(id),
+        query("SELECT channel, status, external_message_id, error_message, published_at FROM offer_publication_history WHERE offer_id=$1 ORDER BY published_at DESC LIMIT 50", [id]),
+      ]);
+      return offer ? sendJson(res, 200, { offer, publicationHistory: history.rows }) : sendJson(res, 404, { error: "Oferta não encontrada." });
     }
 
     if (req.method === "PATCH") {

@@ -189,3 +189,16 @@ test("extension synchronizes site categories and classifies captured products", 
   assert.match(app, /product\.sourceCategory/);
   stores.forEach((source) => assert.match(source, /sourceCategory\s*[:,]/));
 });
+
+test("extension captures useful commerce benefits without using discount as coupon text", () => {
+  const shared = readFileSync(join(extensionRoot, "content", "shared.js"), "utf8");
+  const mercadoLivre = readFileSync(join(extensionRoot, "content", "stores", "mercado-livre.js"), "utf8");
+  const sidePanel = readFileSync(join(extensionRoot, "sidepanel", "app.js"), "utf8");
+  assert.match(shared, /commerceBenefits/);
+  assert.match(shared, /Frete grátis/);
+  assert.match(shared, /sem\\s\+juros/);
+  assert.match(mercadoLivre, /couponDiscountPercent/);
+  assert.match(mercadoLivre, /const conditions = \[minimum, limit, expires\]/);
+  assert.doesNotMatch(mercadoLivre, /const conditions = \[discount, minimum/);
+  assert.match(sidePanel, /captureQuality/);
+});

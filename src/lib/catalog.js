@@ -18,6 +18,22 @@ export const normalizeText = (value = "") =>
     .toLowerCase()
     .trim();
 
+const SEARCH_SYNONYMS = {
+  celular: ["smartphone", "telefone"], smartphone: ["celular", "telefone"],
+  tenis: ["sapato", "calcado"], tv: ["televisao", "smart tv"],
+  notebook: ["laptop", "computador"], fone: ["headset", "auricular"],
+  geladeira: ["refrigerador"], sofa: ["estofado"], roupa: ["moda", "vestuario"],
+};
+
+export const smartSearchTerms = (value = "") => (normalizeText(value).match(/[a-z0-9]{2,}/g) || [])
+  .flatMap((token) => [token, ...(SEARCH_SYNONYMS[token] || [])]);
+
+export const matchesSmartSearch = (offer, query) => {
+  const content = normalizeText(`${offer.name || ""} ${offer.category || ""} ${offer.description || ""} ${offer.platform || ""}`);
+  const terms = smartSearchTerms(query);
+  return terms.length > 0 && terms.some((term) => content.includes(term));
+};
+
 export const slugify = (value = "") =>
   normalizeText(value)
     .replace(/[^a-z0-9]+/g, "-")

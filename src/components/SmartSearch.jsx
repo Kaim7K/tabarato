@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Search, ArrowRight, Package, Tag } from "lucide-react";
-import { formatPrice, normalizeText } from "@/lib/catalog";
+import { formatPrice, matchesSmartSearch, normalizeText } from "@/lib/catalog";
 import { listPublicOffers } from "@/lib/offersApi";
 import { StoreBadge } from "@/components/BrandIcons";
 
@@ -39,7 +39,7 @@ export default function SmartSearch({ placeholder = "Buscar por nome, categoria.
     }
     const q = normalizeText(query);
     const matches = allOffers
-      .filter((offer) => normalizeText(offer.name).includes(q) || normalizeText(offer.category).includes(q))
+      .filter((offer) => matchesSmartSearch(offer, q))
       .slice(0, 6);
     setResults(matches);
     setActiveIndex(matches.length ? 0 : -1);

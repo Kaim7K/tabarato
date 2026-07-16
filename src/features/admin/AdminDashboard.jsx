@@ -1,4 +1,4 @@
-import { BarChart3, CalendarClock, CircleDollarSign, ClipboardList, Plus, RefreshCw, Send, Tag } from "lucide-react";
+import { BarChart3, CalendarClock, CircleDollarSign, ClipboardList, MousePointerClick, Plus, RefreshCw, Send, Tag } from "lucide-react";
 import { formatPrice } from "@/lib/catalog";
 import { EmptyBlock, LoadingBlock, Panel } from "@/features/admin/AdminUi";
 import { number, statusClasses, statusLabels } from "@/features/admin/adminOfferConfig";
@@ -25,6 +25,22 @@ export function Dashboard({ analytics, offers, loading, onNew, onEdit, onRefresh
         <Metric icon={Send} label="Publicadas" value={analytics.published} hint={`${analytics.totalClicks} cliques registrados`} />
         <Metric icon={CalendarClock} label="Agendadas" value={analytics.scheduled} hint={analytics.scheduled ? "Na fila de publicacao" : "Nenhuma pendente"} />
         <Metric icon={CircleDollarSign} label="Engajamento" value={analytics.totalShares + analytics.totalFavorites} hint={`${analytics.totalShares} compartilhamentos · ${analytics.totalFavorites} favoritos`} />
+      </div>
+
+      <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-4">
+        <Metric icon={CircleDollarSign} label="Ticket médio" value={formatPrice(analytics.averageTicket)} hint={`${analytics.averageDiscount}% de desconto médio`} />
+        <Metric icon={Send} label="Publicações realizadas" value={analytics.publicationCount} hint="Histórico confirmado por canal" />
+        <Metric icon={MousePointerClick} label="Média de cliques" value={analytics.published ? Math.round(analytics.totalClicks / analytics.published) : 0} hint="Por oferta publicada" />
+        <Metric icon={Tag} label="Plataformas ativas" value={analytics.byPlatform.length} hint="Origem das ofertas" />
+      </div>
+
+      <div className="grid xl:grid-cols-2 gap-4">
+        <Panel title="Mais clicadas" icon={MousePointerClick}>
+          <div className="space-y-2">{analytics.topOffers.length ? analytics.topOffers.map((offer) => <CompactOffer key={offer.id} offer={offer} onEdit={onEdit} />) : <EmptyBlock label="Sem cliques registrados." />}</div>
+        </Panel>
+        <Panel title="Desempenho por plataforma" icon={BarChart3}>
+          <div className="space-y-3">{analytics.byPlatform.length ? analytics.byPlatform.map((item) => <div key={item.name} className="flex items-center justify-between gap-3 border-b border-white/10 pb-3"><span className="text-sm text-white/65">{item.name}</span><span className="text-sm font-semibold">{item.clicks} cliques · {item.offers} ofertas</span></div>) : <EmptyBlock label="Sem dados por plataforma." />}</div>
+        </Panel>
       </div>
 
       <div className="grid xl:grid-cols-2 gap-4">

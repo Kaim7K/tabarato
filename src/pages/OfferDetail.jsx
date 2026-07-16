@@ -103,6 +103,7 @@ export default function OfferDetail() {
             <div className="mt-7 pb-7 border-b border-[#111111]/8">
               <p className="text-[#111111]/40 text-xs mb-1">Preço no momento da publicação</p>
               <p className="price-type text-3xl sm:text-4xl text-[#111111]">{formatPrice(offer.price)}</p>
+              {offer.final_price < offer.price && <p className="mt-2 text-lg font-semibold text-[#168A55]">Preço final com cupom: {formatPrice(offer.final_price)}</p>}
               {offer.previous_price > offer.price && <p className="text-sm text-[#111111]/40 mt-2"><span className="line-through">{formatPrice(offer.previous_price)}</span> <strong className="ml-2 text-[#168A55]">Economize {formatPrice(offer.savings)}</strong></p>}
               {offer.coupon && <span className="inline-flex mt-3 px-3 py-2 rounded-md bg-[#FF6B35]/10 text-[#D95426] text-sm font-semibold">Cupom: {offer.coupon}</span>}
             </div>

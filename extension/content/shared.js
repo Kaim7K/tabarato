@@ -113,6 +113,19 @@
     return "";
   };
 
+  const commerceBenefits = (value = "") => {
+    const text = clean(value);
+    const benefits = [];
+    if (/frete gr[aá]tis/i.test(text)) benefits.push("Frete grátis.");
+    const installments = [...text.matchAll(/(?:at[eé]\s+)?\d{1,2}x(?:\s+de\s+R\$\s*[\d.,]+)?\s+sem\s+juros/gi)]
+      .map((match) => clean(match[0]));
+    if (installments.length) {
+      const best = installments.sort((first, second) => Number(second.match(/\d+/)?.[0]) - Number(first.match(/\d+/)?.[0]))[0];
+      benefits.push(`${best.charAt(0).toUpperCase()}${best.slice(1)}.`);
+    }
+    return [...new Set(benefits)].join(" ");
+  };
+
   const candidateUrls = () => {
     const candidates = [location.href];
     document.querySelectorAll("input, textarea, a[href]").forEach((element) => {
@@ -147,6 +160,7 @@
     canonicalUrl,
     clean,
     coupon,
+    commerceBenefits,
     description,
     findAffiliateLink,
     firstParagraph,

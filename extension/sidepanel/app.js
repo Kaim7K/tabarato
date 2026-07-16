@@ -24,6 +24,7 @@ const elements = {
   whatsappButton: document.getElementById("whatsapp-button"),
   whatsappGroup: document.getElementById("whatsapp-group"),
   duplicateWarning: document.getElementById("duplicate-warning"),
+  captureQuality: document.getElementById("capture-quality"),
   affiliateWarning: document.getElementById("affiliate-warning"),
   toast: document.getElementById("toast"),
   previewImage: document.getElementById("preview-image"),
@@ -267,6 +268,14 @@ function fillForm(product) {
     extraText: product.extraText || "",
   };
   Object.entries(values).forEach(([key, value]) => { elements.fields[key].value = value; });
+  const reviewItems = [
+    !product.currentPrice && "preço",
+    !product.imageUrl && "imagem",
+    !product.externalProductId && "identificação do produto",
+    product.coupon && /^(?:CUPONS?|\d+% OFF)$/i.test(product.coupon) && "código do cupom",
+  ].filter(Boolean);
+  elements.captureQuality.classList.toggle("hidden", reviewItems.length === 0);
+  elements.captureQuality.textContent = reviewItems.length ? `Revise antes de publicar: ${reviewItems.join(", ")}.` : "";
   elements.captureSource.textContent = product.externalProductId
     ? `${product.platform} - ${product.externalProductId}`
     : product.platform || "Produto capturado";
@@ -295,6 +304,7 @@ function formPayload() {
     currentPrice: elements.fields.currentPrice.value,
     previousPrice: elements.fields.previousPrice.value,
     coupon: elements.fields.coupon.value.trim(),
+    couponDiscountPercent: activeProduct?.couponDiscountPercent || 0,
     category: elements.fields.category.value,
     imageUrl: elements.fields.imageUrl.value.trim(),
     affiliateLink: elements.fields.affiliateLink.value.trim(),
@@ -385,6 +395,9 @@ function whatsappMessage(payload) {
       ? `\u{1F3AB} *${payload.coupon}*`
       : `\u{1F3AB} Cupom: *${payload.coupon}*`;
     lines.push("", couponText);
+  }
+  if (payload.couponDiscountPercent > 0) {
+    lines.push(`Com cupom: *${formatPrice(Number(payload.currentPrice) * (1 - Number(payload.couponDiscountPercent) / 100))}*`);
   }
   if (payload.category) lines.push("", `\u{1F4E6} ${payload.category}`);
   if (payload.extraText) {
@@ -524,8 +537,10 @@ async function publishOffer() {
       await sendOfferToWhatsApp(payload, groupName, (label) => {
         elements.publishButton.textContent = label;
       });
+      await requestApi(`/api/admin/ofertas/${created.offer.id}/publicar`, { method: "POST", body: { action: "record-channel", channel: "WHATSAPP", status: "SUCESSO" } }).catch(() => {});
       showToast(`Oferta publicada no Telegram e enviada para ${groupName}.`, "success");
     } catch (whatsappError) {
+      await requestApi(`/api/admin/ofertas/${created.offer.id}/publicar`, { method: "POST", body: { action: "record-channel", channel: "WHATSAPP", status: "ERRO", errorMessage: whatsappError.message } }).catch(() => {});
       showToast(`Publicada no Telegram, mas o WhatsApp falhou: ${whatsappError.message}`, "error");
     }
   } catch (error) {

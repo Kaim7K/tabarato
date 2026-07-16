@@ -226,6 +226,10 @@ function extractProduct(html, finalUrl, originalLink) {
   const productImage = Array.isArray(product.image) ? product.image[0] : product.image;
   const productName = clean(product.name || title(html)).replace(/\s*\|\s*MercadoLivre.*$/i, "");
   const shortDescription = descriptionFromTitle(productName, product.description || description(html));
+  const structuredOffer = Array.isArray(product.offers) ? product.offers[0] : product.offers;
+  const availabilityStatus = /outofstock|soldout|indispon/i.test(String(structuredOffer?.availability || ""))
+    ? "INDISPONIVEL"
+    : "DISPONIVEL";
 
   return {
     productName,
@@ -234,6 +238,7 @@ function extractProduct(html, finalUrl, originalLink) {
     imageUrl: productImage ? new URL(productImage, finalUrl).toString() : image(html, finalUrl),
     affiliateLink: originalLink,
     sourceProductId: sourceProductIdFromLink(finalUrl || originalLink),
+    availabilityStatus,
     platform: platformFromUrl(finalUrl || originalLink),
   };
 }
@@ -300,6 +305,7 @@ async function mercadoLivreItemPreview(itemId, originalLink) {
     imageUrl: picture ? String(picture).replace(/^http:/, "https:") : "",
     affiliateLink: originalLink,
     sourceProductId: item.id,
+    availabilityStatus: item.status === "active" && Number(item.available_quantity) !== 0 ? "DISPONIVEL" : "INDISPONIVEL",
     platform: "Mercado Livre",
   };
 }

@@ -17,6 +17,7 @@
         currentPrice: tools.price("[data-testid='pdp-product-price']", "[class*='pqTWkA']", "main [class*='price']") || tools.productPrice(structured),
         previousPrice: tools.price("[data-testid='pdp-product-original-price']", "main [class*='original-price']"),
         coupon: tools.coupon("[data-testid*='voucher']", "[class*='voucher']", "[class*='coupon']"),
+        extraText: tools.commerceBenefits(document.body.innerText),
         imageUrl: tools.bestImage("main img[class*='product']", "main img") || tools.productImage(structured),
         affiliateLink: tools.affiliateLink(),
         sourceUrl: tools.canonicalUrl(),
