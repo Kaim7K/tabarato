@@ -99,7 +99,7 @@
         if (!ignoredLabels.test(match[1])) return match[1].toUpperCase();
       }
     }
-    return text.match(/\b\d{1,2}(?:[.,]\d+)?%\s*(?:OFF|DE\s+DESCONTO)\b/i)?.[0]?.toUpperCase() || "";
+    return "";
   };
 
   const couponElementText = (element) => [
@@ -119,12 +119,30 @@
       : "";
   };
 
+  const observedCouponCode = (context = "") => {
+    let candidates = [];
+    try {
+      candidates = JSON.parse(document.documentElement.getAttribute("data-tabarato-coupon-candidates") || "[]");
+    } catch { /* Ignore malformed page state. */ }
+
+    const contextWords = new Set(tools.clean(context).toLowerCase().match(/[a-zá-ú0-9]{4,}/g) || []);
+    return candidates
+      .filter((candidate) => /^CUPOM[A-Z0-9_-]{3,25}$/i.test(candidate?.code || ""))
+      .map((candidate) => {
+        const candidateWords = tools.clean(candidate.context).toLowerCase().match(/[a-zá-ú0-9]{4,}/g) || [];
+        const relevance = candidateWords.reduce((score, word) => score + (contextWords.has(word) ? 1 : 0), 0);
+        return { ...candidate, relevance };
+      })
+      .sort((first, second) => second.relevance - first.relevance || second.seenAt - first.seenAt)[0]?.code || "";
+  };
+
   const couponConditions = (value) => {
     const text = tools.clean(value);
+    const discount = text.match(/\b\d{1,2}(?:[.,]\d+)?%\s*(?:OFF|DE\s+DESCONTO)\b/i)?.[0]?.toUpperCase();
     const minimum = text.match(/compra m[ií]nima(?:\s+de)?\s*R\$\s*[\d.,]+/i)?.[0];
     const limit = text.match(/limite(?:\s+de)?\s*R\$\s*[\d.,]+/i)?.[0];
     const expires = text.match(/(?:venc\.?|v[aá]lido at[eé])\s*\d{2}\/\d{2}\/\d{4}/i)?.[0];
-    const conditions = [minimum, limit, expires].filter(Boolean);
+    const conditions = [discount, minimum, limit, expires].filter(Boolean);
     return conditions.length ? `Condi\u00e7\u00f5es do cupom: ${conditions.join("; ")}.` : "";
   };
 
@@ -167,7 +185,11 @@
     const couponText = [metadataText, cards[0]?.textContent, couponModalText(), surface.textContent]
       .filter(Boolean)
       .join(" ");
-    const coupon = storeCouponLabel(couponText) || inlineStoreCoupon || couponFromText(couponText) || inlineCoupon;
+    const coupon = observedCouponCode(couponText)
+      || couponFromText(couponText)
+      || inlineCoupon
+      || storeCouponLabel(couponText)
+      || inlineStoreCoupon;
     const details = couponConditions(couponText) || inlineConditions;
     if (surface !== document) closeDialog(surface);
     return { label: coupon, details };

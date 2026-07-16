@@ -59,6 +59,15 @@
       "matches": ["https://web.whatsapp.com/*"],
       "js": ["content/whatsapp.js"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://*.mercadolivre.com.br/*",
+        "https://*.mercadolibre.com/*"
+      ],
+      "js": ["content/stores/mercado-livre-coupon-observer.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
     }
   ],
   "content_security_policy": {

@@ -61,11 +61,14 @@ test("Mercado Livre captures product coupons, payment promotions and interest-fr
   const sidePanel = readFileSync(join(extensionRoot, "sidepanel", "app.js"), "utf8");
   assert.match(mercadoLivre, /productCoupon/);
   assert.match(mercadoLivre, /couponConditions/);
+  assert.match(mercadoLivre, /const discount = text\.match/);
   assert.match(mercadoLivre, /namedCode/);
   assert.match(mercadoLivre, /CUPOM\[A-Z0-9_/);
   assert.match(mercadoLivre, /CUPONS\|COUPON/);
   assert.match(mercadoLivre, /couponElementText/);
   assert.match(mercadoLivre, /storeCouponLabel/);
+  assert.match(mercadoLivre, /observedCouponCode/);
+  assert.match(mercadoLivre, /data-tabarato-coupon-candidates/);
   assert.match(mercadoLivre, /Use o cupom da loja/);
   assert.match(mercadoLivre, /cupom da loja|cupons\?/);
   assert.match(mercadoLivre, /data-clipboard-text/);
@@ -88,6 +91,12 @@ test("Mercado Livre captures product coupons, payment promotions and interest-fr
   assert.match(mercadoLivre, /if \(MELI_LINK_PATTERN\.test\(affiliateLink\)\)/);
   assert.match(mercadoLivre, /await closeAffiliateDialog\(\)/);
   assert.match(sidePanel, /extraText: product\.extraText \|\| ""/);
+  const observer = readFileSync(join(extensionRoot, "content", "stores", "mercado-livre-coupon-observer.js"), "utf8");
+  assert.match(observer, /ROUTE_PATTERN/);
+  assert.match(observer, /CUPOM\[A-Z0-9_/);
+  assert.match(observer, /response\.clone\(\)\.text/);
+  assert.match(observer, /XMLHttpRequest\.prototype/);
+  assert.match(observer, /data-tabarato-coupon-candidates/);
 });
 
 test("extension publishes through the protected existing publisher", () => {
