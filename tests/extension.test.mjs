@@ -87,11 +87,14 @@ test("extension creates an image and formatted text for WhatsApp sharing", () =>
   assert.match(html, /id="whatsapp-group"/);
   assert.match(html, /assets\/whatsapp\.svg/);
   assert.match(app, /createWhatsAppImage/);
+  assert.match(app, /controller\.abort\(\)/);
   assert.match(app, /TABARATO_SHARE_WHATSAPP/);
   assert.match(app, /Publicidade \| Link de afiliado/);
   assert.match(background, /chrome\.tabs\.query\(\{ url: "https:\/\/web\.whatsapp\.com\/\*" \}\)/);
   assert.match(background, /chrome\.tabs\.update\(tab\.id, \{ active: true \}\)/);
+  assert.match(background, /withTimeout/);
   assert.match(whatsapp, /exactGroup/);
+  assert.match(whatsapp, /currentGroupIs/);
   assert.match(whatsapp, /DataTransfer/);
   assert.match(whatsapp, /TABARATO_WHATSAPP_SEND/);
   assert.ok(manifest.host_permissions.some((permission) => permission.includes("mlstatic.com")));

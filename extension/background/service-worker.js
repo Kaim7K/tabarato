@@ -25,6 +25,22 @@ function waitForTab(tabId, timeout = 60000) {
   });
 }
 
+function withTimeout(promise, timeout, message) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), timeout);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
 async function whatsappTab() {
   const tabs = await chrome.tabs.query({ url: "https://web.whatsapp.com/*" });
   if (tabs.length) return tabs.sort((a, b) => (b.lastAccessed || 0) - (a.lastAccessed || 0))[0];
@@ -47,10 +63,20 @@ async function sendToWhatsApp(message) {
   };
 
   try {
-    return await chrome.tabs.sendMessage(tab.id, payload);
-  } catch {
+    return await withTimeout(
+      chrome.tabs.sendMessage(tab.id, payload),
+      65000,
+      "O WhatsApp nao respondeu. Confirme se o grupo esta aberto e tente novamente.",
+    );
+  } catch (error) {
+    const missingReceiver = /receiving end does not exist|could not establish connection/i.test(error?.message || "");
+    if (!missingReceiver) throw error;
     await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["content/whatsapp.js"] });
-    return chrome.tabs.sendMessage(tab.id, payload);
+    return withTimeout(
+      chrome.tabs.sendMessage(tab.id, payload),
+      65000,
+      "O WhatsApp nao respondeu. Confirme se o grupo esta aberto e tente novamente.",
+    );
   }
 }
 

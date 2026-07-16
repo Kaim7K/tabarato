@@ -281,12 +281,16 @@ function wrapCanvasText(context, value, x, y, maxWidth, lineHeight, maxLines = 3
 
 async function loadShareImage(url) {
   if (!url) return null;
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 10000);
   try {
-    const response = await fetch(url);
+    const response = await fetch(url, { signal: controller.signal });
     if (!response.ok) return null;
     return createImageBitmap(await response.blob());
   } catch {
     return null;
+  } finally {
+    window.clearTimeout(timeout);
   }
 }
 
@@ -514,6 +518,7 @@ async function shareOnWhatsApp() {
   try {
     const file = await prepareWhatsAppImage(payload);
     const text = whatsappMessage(payload);
+    elements.whatsappButton.textContent = "Abrindo WhatsApp...";
     const result = await chrome.runtime.sendMessage({
       type: "TABARATO_SHARE_WHATSAPP",
       groupName,

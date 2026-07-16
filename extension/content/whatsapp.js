@@ -35,10 +35,18 @@
   };
 
   const searchBox = () => editableByLabel(["pesquisar", "search"])
-    || [...document.querySelectorAll('#side [contenteditable="true"], #pane-side [contenteditable="true"]')].find(visible);
+    || [...document.querySelectorAll('#side [role="textbox"], #side [contenteditable="true"], #pane-side [contenteditable="true"]')]
+      .find(visible);
 
-  const exactGroup = (groupName) => [...document.querySelectorAll("#pane-side span[title]")]
-    .find((element) => visible(element) && normalized(element.getAttribute("title")) === normalized(groupName));
+  const currentGroupIs = (groupName) => [...document.querySelectorAll('#main header [title], #main header span[dir="auto"], header [data-testid="conversation-info-header-chat-title"]')]
+    .some((element) => visible(element)
+      && normalized(element.getAttribute("title") || element.textContent) === normalized(groupName));
+
+  const exactGroup = (groupName) => [...document.querySelectorAll("#pane-side span[title], #pane-side [data-testid='cell-frame-title']")]
+    .find((element) => {
+      const title = element.getAttribute("title") || element.textContent;
+      return visible(element) && normalized(title) === normalized(groupName);
+    });
 
   const actionByLabel = (patterns) => [...document.querySelectorAll("button, [role='button']")]
     .find((element) => {
@@ -52,19 +60,27 @@
   };
 
   async function selectGroup(groupName) {
-    const search = await waitFor(searchBox, 45000);
+    if (currentGroupIs(groupName)) return;
+
+    const search = await waitFor(searchBox, 12000);
     if (!search) throw new Error("Entre no WhatsApp Web antes de enviar a oferta.");
     setEditableText(search, groupName);
     const group = await waitFor(() => exactGroup(groupName), 15000);
     if (!group) throw new Error(`Grupo "${groupName}" nao encontrado no WhatsApp.`);
-    (group.closest("[role='listitem'], [role='row']") || group).click();
+    (group.closest("[role='listitem'], [role='row'], [data-testid='cell-frame-container']") || group).click();
+    const selected = await waitFor(() => currentGroupIs(groupName), 10000);
+    if (!selected) throw new Error(`Nao foi possivel abrir o grupo "${groupName}".`);
   }
 
   async function attachImage(file, caption) {
     let input = [...document.querySelectorAll('input[type="file"]')]
       .find((element) => /image/i.test(element.accept || ""));
     if (!input) {
-      actionByLabel(["anexar", "attach"])?.click();
+      const attach = actionByLabel(["anexar", "attach"])
+        || [...document.querySelectorAll('[data-icon="plus-rounded"], [data-icon="clip"]')]
+          .map((element) => element.closest("button, [role='button']"))
+          .find(visible);
+      attach?.click();
       input = await waitFor(() => [...document.querySelectorAll('input[type="file"]')]
         .find((element) => /image/i.test(element.accept || "")), 8000);
     }
