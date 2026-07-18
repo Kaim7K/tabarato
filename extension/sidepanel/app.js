@@ -14,6 +14,7 @@ const {
   messageBenefits,
   normalizeText,
   parsePrice,
+  previousPriceFor,
 } = globalThis.TaBaratoProductUtils;
 const REQUEST_TIMEOUT = 22000;
 const CAPTURE_TIMEOUT = 38000;
@@ -297,12 +298,16 @@ function suggestCategory(product) {
 
 function productFormValues(product) {
   const currentPrice = product.currentPrice || "";
+  const previousPrice = previousPriceFor(currentPrice, product.previousPrice, product.regularPrice || currentPrice);
+  const affiliateLink = product.platform === "Mercado Livre"
+    ? product.affiliateLink || ""
+    : product.affiliateLink || product.sourceUrl || "";
   return {
-    affiliateLink: product.affiliateLink || product.sourceUrl || "",
+    affiliateLink,
     productName: product.productName || "",
     messageHeadline: product.messageHeadline || "",
     currentPrice,
-    previousPrice: product.previousPrice || product.regularPrice || currentPrice,
+    previousPrice,
     platform: product.platform || "Loja conectada",
     category: suggestCategory(product),
     coupon: product.coupon || "",
@@ -362,12 +367,17 @@ function restoreProductDraft(draft) {
 
 function formPayload(status = "RASCUNHO") {
   const currentPrice = elements.fields.currentPrice.value;
+  const previousPrice = previousPriceFor(
+    currentPrice,
+    elements.fields.previousPrice.value,
+    activeProduct?.regularPrice || currentPrice,
+  );
   return {
     productName: elements.fields.productName.value.trim(),
     messageHeadline: elements.fields.messageHeadline.value.trim(),
     shortDescription: elements.fields.shortDescription.value.trim(),
     currentPrice,
-    previousPrice: elements.fields.previousPrice.value || activeProduct?.regularPrice || currentPrice,
+    previousPrice,
     coupon: elements.fields.coupon.value.trim(),
     couponDiscountPercent: 0,
     category: elements.fields.category.value,
@@ -658,7 +668,7 @@ async function prepareShareImage(payload) {
 function whatsappMessage(payload) {
   const benefits = messageBenefits(payload.extraText);
   const headline = String(payload.messageHeadline || "").trim().replace(/^\s*\u{1F525}\s*/u, "") || "T\u00C1 BARATO!";
-  const previousPrice = payload.previousPrice || payload.currentPrice;
+  const previousPrice = previousPriceFor(payload.currentPrice, payload.previousPrice, activeProduct?.regularPrice || payload.currentPrice);
   const pixLabel = activeProduct?.pricePaymentMethod === "Pix" || benefits.pix ? " (no Pix)" : "";
   const lines = [
     `\u{1F525} *${headline}*`,
@@ -666,9 +676,8 @@ function whatsappMessage(payload) {
     `*${payload.productName}*`,
     "",
     `\u{1F4B0} *${formatPrice(payload.currentPrice)}*${pixLabel}   |   \u{274C} ~${formatPrice(previousPrice)}~`,
-    "",
-    `\u{1F39F}\u{FE0F} Cupom:${payload.coupon ? ` *${payload.coupon}*` : ""}`,
   ];
+  if (payload.coupon) lines.push("", `\u{1F39F}\u{FE0F} Cupom: *${payload.coupon}*`);
   if (benefits.lines.length) lines.push(...benefits.lines.map((line) => line.replace(/\.$/, "")));
   lines.push("", "\u{1F447} *Compre aqui:*", payload.affiliateLink);
   return lines.join("\n");
@@ -994,7 +1003,11 @@ elements.activateCouponsButton.addEventListener("click", async () => {
   try {
     const result = await chrome.runtime.sendMessage({ type: "TABARATO_ACTIVATE_ML_COUPONS", limit: Number(elements.couponLimit.value) || 5 });
     if (!result?.ok) throw new Error(result?.error || "Nao foi possivel ativar os cupons.");
-    showToast(`${result.activated} cupons ativados.`, result.activated ? "success" : "neutral");
+    if (result.activated) {
+      showToast(`${result.activated} cupons ativados.`, "success");
+    } else {
+      showToast("Nenhum cupom com o botao Aplicar foi encontrado.", "neutral");
+    }
   } catch (error) {
     showToast(runtime.errorMessage(error), "error");
   } finally {
@@ -1011,6 +1024,15 @@ elements.logoutButton.addEventListener("click", async () => {
   renderAuth();
 });
 Object.values(elements.fields).forEach((field) => field.addEventListener("input", () => {
+  updatePreview();
+  persistProductDraft().catch(() => {});
+}));
+[elements.fields.currentPrice, elements.fields.previousPrice].forEach((field) => field.addEventListener("change", () => {
+  elements.fields.previousPrice.value = previousPriceFor(
+    elements.fields.currentPrice.value,
+    elements.fields.previousPrice.value,
+    activeProduct?.regularPrice || elements.fields.currentPrice.value,
+  );
   updatePreview();
   persistProductDraft().catch(() => {});
 }));

@@ -59,7 +59,7 @@
       border: "1px solid rgba(17,17,17,.14)",
       borderRadius: "50%",
       background: "#ffffff",
-      backgroundImage: `url("${chrome.runtime.getURL("assets/icon.png")}")`,
+      backgroundImage: `url("${chrome.runtime.getURL("assets/icon-128.png")}")`,
       backgroundPosition: "center",
       backgroundRepeat: "no-repeat",
       backgroundSize: "34px 34px",

@@ -47,18 +47,32 @@ const previewBenefits = (value = "") => {
   const source = String(value || "").replace(/\s+/g, " ").trim();
   const pix = /\b(?:no|via|pelo|preco principal no)\s+pix\b/i.test(source.normalize("NFD").replace(/[\u0300-\u036f]/g, ""));
   const lines = [];
+  let hasInstallments = false;
+  let hasShipping = false;
   source.split(/(?<=[.!?])\s+/).forEach((sentence) => {
+    const containedDiscount = /\b\d{1,3}(?:[.,]\d+)?%\s*(?:off|de desconto)\b/i.test(sentence);
     const clean = sentence.replace(/promo[cç][aã]o\s*:[^.!?]*/gi, "").replace(/\b\d{1,3}(?:[.,]\d+)?%\s*(?:off|de desconto)\b/gi, "").replace(/\s+/g, " ").trim();
     if (!clean || !/[\p{L}\p{N}]/u.test(clean) || /pre[cç]o principal no pix/i.test(clean)) return;
-    if (/frete gr[aá]tis/i.test(clean)) lines.push("🚚 Frete grátis.");
-    else if (/sem juros|parcel(?:a|e|amento)|\b\d{1,2}x\b/i.test(clean)) lines.push(`💳 ${clean.replace(/^no cart[aã]o\s*:?\s*/i, "")}`);
-    else if (!/promo[cç][aã]o|\boff\b/i.test(clean)) lines.push(clean);
+    if (containedDiscount && /^(?:com|no|via|pelo)?\s*pix\.?$/i.test(clean)) return;
+    if (/frete gr[aá]tis/i.test(clean)) {
+      if (!hasShipping) lines.push("🚚 Frete grátis.");
+      hasShipping = true;
+      return;
+    }
+    if (/sem juros|parcel(?:a|e|amento)|\b\d{1,2}x\b/i.test(clean)) {
+      if (!hasInstallments) lines.push(`💳 ${clean.replace(/^no cart[aã]o\s*:?\s*/i, "")}`);
+      hasInstallments = true;
+      return;
+    }
+    if (!/promo[cç][aã]o|\boff\b/i.test(clean)) lines.push(clean);
   });
   return { pix, lines: [...new Set(lines)] };
 };
 
 export function formatTelegramPreview(offer) {
   const benefits = previewBenefits(offer.extraText);
+  const currentPrice = Number(offer.currentPrice);
+  const previousPrice = Number(offer.previousPrice) > currentPrice ? Number(offer.previousPrice) : currentPrice;
   const lines = [
     "🔥 TÁ BARATO!",
     "",
@@ -66,7 +80,7 @@ export function formatTelegramPreview(offer) {
     "",
     `💰 Agora: ${offer.currentPrice ? `R$ ${Number(offer.currentPrice).toFixed(2).replace(".", ",")}` : "[PRECO ATUAL]"}${benefits.pix ? " (no Pix)" : ""}`,
   ];
-  if (offer.previousPrice) lines.push(`Antes: R$ ${Number(offer.previousPrice).toFixed(2).replace(".", ",")}`);
+  if (currentPrice > 0) lines.push(`Antes: R$ ${previousPrice.toFixed(2).replace(".", ",")}`);
   if (offer.coupon) lines.push(`Cupom: ${offer.coupon}`);
   if (offer.category) lines.push("", `📦 ${offer.category}`);
   if (benefits.lines.length) lines.push("", ...benefits.lines);
@@ -76,9 +90,11 @@ export function formatTelegramPreview(offer) {
 
 export function formatWhatsAppPreview(offer) {
   const benefits = previewBenefits(offer.extraText);
-  const price = offer.currentPrice ? `R$ ${Number(offer.currentPrice).toFixed(2).replace(".", ",")}` : "[PREÇO ATUAL]";
+  const currentPrice = Number(offer.currentPrice);
+  const previousPrice = Number(offer.previousPrice) > currentPrice ? Number(offer.previousPrice) : currentPrice;
+  const price = offer.currentPrice ? `R$ ${currentPrice.toFixed(2).replace(".", ",")}` : "[PREÇO ATUAL]";
   const lines = ["🔥 *TÁ BARATO!*", "", `*${offer.productName || "[NOME DO PRODUTO]"}*`, "", `💰 Agora: *${price}*${benefits.pix ? " *(no Pix)*" : ""}`];
-  if (offer.previousPrice) lines.push(`Antes: ~R$ ${Number(offer.previousPrice).toFixed(2).replace(".", ",")}~`);
+  if (currentPrice > 0) lines.push(`Antes: ~R$ ${previousPrice.toFixed(2).replace(".", ",")}~`);
   if (offer.coupon) lines.push("", `🎟️ Cupom: *${offer.coupon}*`);
   if (benefits.lines.length) lines.push("", ...benefits.lines);
   lines.push("", "🛒 *Comprar:*", offer.affiliateLink || "[LINK DA OFERTA]");

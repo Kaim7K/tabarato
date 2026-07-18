@@ -16,7 +16,10 @@ export function formatOfferBenefits(value = "") {
   const normalizedSource = source.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   const pix = /\b(?:no|via|pelo|preco principal no)\s+pix\b/i.test(normalizedSource);
   const lines = [];
+  let hasInstallments = false;
+  let hasShipping = false;
   source.split(/(?<=[.!?])\s+/).forEach((sentence) => {
+    const containedDiscount = /\b\d{1,3}(?:[.,]\d+)?%\s*(?:off|de desconto)\b/i.test(sentence);
     const clean = sentence
       .replace(/promo[cç][aã]o\s*:[^.!?]*/gi, "")
       .replace(/\b\d{1,3}(?:[.,]\d+)?%\s*(?:off|de desconto)\b/gi, "")
@@ -24,12 +27,15 @@ export function formatOfferBenefits(value = "") {
       .replace(/^[,;:\s-]+|[,;:\s-]+$/g, "")
       .trim();
     if (!clean || !/[\p{L}\p{N}]/u.test(clean) || /pre[cç]o principal no pix/i.test(clean)) return;
+    if (containedDiscount && /^(?:com|no|via|pelo)?\s*pix\.?$/i.test(clean)) return;
     if (/frete gr[aá]tis/i.test(clean)) {
-      if (!lines.includes("🚚 Frete grátis.")) lines.push("🚚 Frete grátis.");
+      if (!hasShipping) lines.push("🚚 Frete grátis.");
+      hasShipping = true;
       return;
     }
     if (/sem juros|parcel(?:a|e|amento)|\b\d{1,2}x\b/i.test(clean)) {
-      lines.push(`💳 ${clean.replace(/^no cart[aã]o\s*:?\s*/i, "")}`);
+      if (!hasInstallments) lines.push(`💳 ${clean.replace(/^no cart[aã]o\s*:?\s*/i, "")}`);
+      hasInstallments = true;
       return;
     }
     if (!/promo[cç][aã]o|\boff\b/i.test(clean)) lines.push(clean);
@@ -41,7 +47,10 @@ export function formatTelegramMessage(offer) {
   const benefits = formatOfferBenefits(offer.extraText);
   const headline = String(offer.messageHeadline || "").trim().replace(/^\s*\u{1F525}\s*/u, "") || "T\u00C1 BARATO!";
   const currentPrice = Number(offer.currentPrice);
-  const previousPrice = Number(offer.previousPrice || offer.currentPrice);
+  const capturedPreviousPrice = Number(offer.previousPrice);
+  const previousPrice = Number.isFinite(capturedPreviousPrice) && capturedPreviousPrice > currentPrice
+    ? capturedPreviousPrice
+    : currentPrice;
   const money = (value) => `R$ ${Number(value).toFixed(2).replace(".", ",")}`;
   const lines = [
     `<b>\u{1F525} ${escapeHtml(headline)}</b>`,
@@ -49,9 +58,8 @@ export function formatTelegramMessage(offer) {
     `<b>${escapeHtml(offer.productName)}</b>`,
     "",
     `\u{1F4B0} <b>${money(currentPrice)}</b>${benefits.pix ? " (no Pix)" : ""}   |   \u{274C} <s>${money(previousPrice)}</s>`,
-    "",
-    `\u{1F39F}\u{FE0F} Cupom:${offer.coupon ? ` <b>${escapeHtml(offer.coupon)}</b>` : ""}`,
   ];
+  if (offer.coupon) lines.push("", `\u{1F39F}\u{FE0F} Cupom: <b>${escapeHtml(offer.coupon)}</b>`);
   if (benefits.lines.length) lines.push(...benefits.lines.map((line) => escapeHtml(line.replace(/\.$/, ""))));
   lines.push("", "\u{1F447} <b>Compre aqui:</b>", escapeHtml(offer.affiliateLink || ""));
 

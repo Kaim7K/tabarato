@@ -17,13 +17,14 @@
       const priceInfo = tools.priceDetails("[data-testid='pdp-product-price']", "[class*='pqTWkA']", "main [class*='price']");
       const basePrice = priceInfo.value || tools.productPrice(structured);
       const couponPrice = tools.couponPriceDetails(basePrice);
-      const coupon = tools.couponCandidates()[0]?.value || "Cupom disponivel no anuncio. Ative antes de comprar.";
+      const coupon = tools.couponCandidates()[0]?.value || "";
       const product = {
         productName: tools.text("[data-testid='pdp-product-title']", "main h1", "h1") || tools.clean(structured.name) || tools.meta("og:title"),
         shortDescription: tools.description("[data-testid='pdp-product-description']", "[class*='product-detail']") || tools.firstUsefulParagraph(structured.description) || tools.firstUsefulParagraph(tools.meta("og:description")),
         sourceCategory: tools.text("[data-testid='pdp-breadcrumbs']", "nav[aria-label*='breadcrumb' i]"),
         currentPrice: couponPrice.value || basePrice,
         previousPrice: tools.price("[data-testid='pdp-product-original-price']", "main [class*='original-price']"),
+        regularPrice: basePrice,
         coupon,
         extraText: tools.commerceBenefits(document.body.innerText),
         imageUrl: "",

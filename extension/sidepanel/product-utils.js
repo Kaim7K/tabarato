@@ -24,6 +24,16 @@
       : "Preco nao identificado";
   };
 
+  const previousPriceFor = (currentValue, previousValue, regularValue) => {
+    const current = parsePrice(currentValue);
+    if (!Number.isFinite(current) || current <= 0) return "";
+    const previous = parsePrice(previousValue);
+    if (Number.isFinite(previous) && previous > current) return String(previous);
+    const regular = parsePrice(regularValue);
+    if (Number.isFinite(regular) && regular >= current) return String(regular);
+    return String(current);
+  };
+
   const comparableUrl = (value) => {
     try {
       const url = new URL(value);
@@ -48,7 +58,10 @@
     const source = String(value || "").replace(/\s+/g, " ").trim();
     const pix = /\b(?:no|via|pelo|preco principal no)\s+pix\b/i.test(normalizeText(source));
     const lines = [];
+    let hasInstallments = false;
+    let hasShipping = false;
     source.split(/(?<=[.!?])\s+/).forEach((sentence) => {
+      const containedDiscount = /\b\d{1,3}(?:[.,]\d+)?%\s*(?:off|de desconto)\b/i.test(sentence);
       const clean = sentence
         .replace(/promo[cç][aã]o\s*:[^.!?]*/gi, "")
         .replace(/\b\d{1,3}(?:[.,]\d+)?%\s*(?:off|de desconto)\b/gi, "")
@@ -56,9 +69,18 @@
         .replace(/^[,;:\s-]+|[,;:\s-]+$/g, "")
         .trim();
       if (!clean || !/[\p{L}\p{N}]/u.test(clean) || /pre[cç]o principal no pix/i.test(clean)) return;
-      if (/frete gr[aá]tis/i.test(clean)) lines.push("🚚 Frete grátis.");
-      else if (/sem juros|parcel(?:a|e|amento)|\b\d{1,2}x\b/i.test(clean)) lines.push(`💳 ${clean.replace(/^no cart[aã]o\s*:?\s*/i, "")}`);
-      else if (!/promo[cç][aã]o|\boff\b/i.test(clean)) lines.push(clean);
+      if (containedDiscount && /^(?:com|no|via|pelo)?\s*pix\.?$/i.test(clean)) return;
+      if (/frete gr[aá]tis/i.test(clean)) {
+        if (!hasShipping) lines.push("🚚 Frete grátis.");
+        hasShipping = true;
+        return;
+      }
+      if (/sem juros|parcel(?:a|e|amento)|\b\d{1,2}x\b/i.test(clean)) {
+        if (!hasInstallments) lines.push(`💳 ${clean.replace(/^no cart[aã]o\s*:?\s*/i, "")}`);
+        hasInstallments = true;
+        return;
+      }
+      if (!/promo[cç][aã]o|\boff\b/i.test(clean)) lines.push(clean);
     });
     return { pix, lines: [...new Set(lines)] };
   };
@@ -70,5 +92,6 @@
     messageBenefits,
     normalizeText,
     parsePrice,
+    previousPriceFor,
   };
 })();

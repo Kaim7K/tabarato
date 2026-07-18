@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 import { TelegramIcon, WhatsAppIcon } from "@/components/BrandIcons";
 import { SITE_NAME } from "@/lib/catalog";
 import { TELEGRAM_CHANNEL_URL, WHATSAPP_GROUP_URL } from "@/lib/publicLinks";
-import { BRAND_LOGO } from "@/lib/brand";
+import { BRAND_LOGO_DARK } from "@/lib/brand";
 
 export default function Footer() {
   return (
@@ -38,7 +38,7 @@ export default function Footer() {
           <div className="grid sm:grid-cols-[minmax(0,1.6fr)_1fr_1fr] gap-8 pb-8">
             <div>
               <Link to="/" className="inline-flex items-center mb-3">
-                <img src={BRAND_LOGO} alt={SITE_NAME} className="h-12 w-auto object-contain" />
+                <img src={BRAND_LOGO_DARK} alt={SITE_NAME} className="h-12 w-auto object-contain" />
               </Link>
               <p className="text-white/50 text-sm max-w-sm leading-relaxed">
                 Um catálogo editorial de ofertas realmente úteis. Filtramos o melhor para você encontrar com facilidade.

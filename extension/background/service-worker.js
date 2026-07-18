@@ -198,6 +198,7 @@ async function stopWhatsAppSend() {
 
 async function activateMercadoLivreCoupons(limit) {
   const couponUrl = "https://www.mercadolivre.com.br/cupons";
+  const requestedLimit = Math.max(1, Math.min(100, Number(limit) || 5));
   const tabs = await chrome.tabs.query({});
   let tab = tabs
     .filter((item) => {
@@ -221,11 +222,23 @@ async function activateMercadoLivreCoupons(limit) {
   }
   await runtime.delay(450);
   await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["content/coupons.js"] });
-  return runtime.withTimeout(
-    chrome.tabs.sendMessage(tab.id, { type: "TABARATO_ACTIVATE_COUPONS", limit }),
-    Math.max(45000, Number(limit) * 4000),
+  const execution = chrome.scripting.executeScript({
+    target: { tabId: tab.id },
+    func: (couponLimit) => {
+      const automation = globalThis.__TABARATO_COUPON_AUTOMATION__;
+      if (!automation?.activate) throw new Error("O automatizador de cupons nao foi carregado.");
+      return automation.activate(couponLimit);
+    },
+    args: [requestedLimit],
+  });
+  const results = await runtime.withTimeout(
+    execution,
+    Math.max(45000, requestedLimit * 6000),
     "A ativacao de cupons demorou demais.",
   );
+  const result = results?.[0]?.result;
+  if (!result) throw new Error("A pagina de cupons nao retornou o resultado da ativacao.");
+  return result;
 }
 
 chrome.action.disable().catch(() => {});

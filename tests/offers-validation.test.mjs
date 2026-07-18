@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { normalizeProductIdentity, validateOffer } from "../api/_lib/offers.js";
+import { normalizeProductIdentity, toDbParams, validateOffer } from "../api/_lib/offers.js";
 import { readFileSync } from "node:fs";
 
 const validOffer = {
@@ -33,4 +33,10 @@ test("new offers start with zero real clicks", () => {
 
 test("product identity ignores accents, punctuation and casing", () => {
   assert.equal(normalizeProductIdentity("  Tênis Redley! Preto  "), "tenis redley preto");
+});
+
+test("database params never keep a previous price below the current price", () => {
+  const params = toDbParams({ ...validOffer, currentPrice: "79.92", previousPrice: "78.99" });
+  assert.equal(params.current_price, 79.92);
+  assert.equal(params.previous_price, 79.92);
 });

@@ -27,7 +27,7 @@
     listProducts,
     extract: async () => {
       const structured = tools.jsonProduct();
-      const coupon = tools.couponCandidates()[0]?.value || "Cupom disponivel no anuncio. Ative antes de comprar.";
+      const coupon = tools.couponCandidates()[0]?.value || "";
       const priceInfo = tools.priceDetails("[itemprop='price']", "[class*='price']", "[data-price]");
       const basePrice = priceInfo.value || tools.productPrice(structured);
       const couponPrice = tools.couponPriceDetails(basePrice);
@@ -38,6 +38,7 @@
         sourceCategory: tools.text("nav[aria-label*='breadcrumb' i]", "[class*='breadcrumb']"),
         currentPrice: couponPrice.value || basePrice,
         previousPrice: tools.price("[class*='old-price']", "[class*='original']", "del"),
+        regularPrice: basePrice,
         coupon,
         extraText: tools.commerceBenefits(document.body.innerText),
         imageUrl: "",

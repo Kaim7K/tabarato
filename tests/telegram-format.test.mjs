@@ -23,13 +23,23 @@ test("Telegram message displays the coupon in the requested format", () => {
   assert.match(message, /🎟️ Cupom: <b>MELIMODA<\/b>/u);
 });
 
-test("Telegram message falls back to the current price when there is no previous price", () => {
+test("Telegram message omits the coupon line when there is no coupon", () => {
   const message = formatTelegramMessage({
     productName: "Produto",
     currentPrice: 50,
-    coupon: "Disponível no anúncio. Ative antes de comprar.",
   });
   assert.match(message, /❌ <s>R\$ 50,00<\/s>/u);
+  assert.doesNotMatch(message, /Cupom:/u);
+});
+
+test("Telegram message never shows a previous price below the current price", () => {
+  const message = formatTelegramMessage({
+    productName: "Produto",
+    currentPrice: 79.92,
+    previousPrice: 78.99,
+  });
+  assert.match(message, /❌ <s>R\$ 79,92<\/s>/u);
+  assert.doesNotMatch(message, /78,99/u);
 });
 
 test("Telegram message uses the custom headline", () => {
@@ -64,4 +74,19 @@ test("Telegram message keeps benefits concise and places Pix beside the price", 
   assert.match(message, /🚚 Frete grátis/u);
   assert.doesNotMatch(message, /Promo(?:ção|cao)|43%|OFF/i);
   assert.doesNotMatch(message, /^\.$/m);
+});
+
+test("Telegram removes discount copy and deduplicates payment and shipping benefits", () => {
+  const message = formatTelegramMessage({
+    productName: "Produto",
+    currentPrice: 577.91,
+    previousPrice: 799,
+    extraText: "Preco principal no Pix. 20% OFF com Pix. R$ 739,90 em 10x sem juros. 10x sem juros. Frete gratis. Frete gratis.",
+  });
+
+  assert.match(message, /R\$ 577,91<\/b> \(no Pix\)/);
+  assert.match(message, /R\$ 739,90 em 10x sem juros/);
+  assert.doesNotMatch(message, /20%|OFF|com Pix/i);
+  assert.equal((message.match(/sem juros/g) || []).length, 1);
+  assert.equal((message.match(/Frete grátis/g) || []).length, 1);
 });

@@ -121,11 +121,16 @@ export function validateOffer(input, { requireSchedule = false } = {}) {
 }
 
 export function toDbParams(input) {
+  const currentPrice = parsePrice(input.currentPrice);
+  const capturedPreviousPrice = parsePrice(input.previousPrice);
+  const previousPrice = Number.isFinite(capturedPreviousPrice) && capturedPreviousPrice > currentPrice
+    ? capturedPreviousPrice
+    : currentPrice;
   return {
     product_name: String(input.productName || "").trim(),
     short_description: String(input.shortDescription || "").trim(),
-    current_price: parsePrice(input.currentPrice),
-    previous_price: input.previousPrice ? parsePrice(input.previousPrice) : null,
+    current_price: currentPrice,
+    previous_price: previousPrice,
     coupon: input.coupon ? String(input.coupon).trim() : null,
     coupon_discount_percent: input.coupon ? Math.max(0, Math.min(100, Number(input.couponDiscountPercent) || 0)) || null : null,
     category: String(input.category || "").trim(),

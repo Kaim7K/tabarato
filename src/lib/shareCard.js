@@ -1,5 +1,5 @@
 import { formatPrice } from "@/lib/catalog";
-import { BRAND_LOGO } from "@/lib/brand";
+import { BRAND_LOGO_CARD } from "@/lib/brand";
 
 const loadImage = (src, crossOrigin = false) => new Promise((resolve, reject) => {
   const image = new Image();
@@ -146,7 +146,7 @@ export async function shareOfferCard(offer) {
   context.stroke();
 
   const [brand, store] = await Promise.all([
-    loadImage(BRAND_LOGO).catch(() => null),
+    loadImage(BRAND_LOGO_CARD).catch(() => null),
     storeLogo(offer.platform) ? loadImage(storeLogo(offer.platform)).catch(() => null) : null,
   ]);
   drawContained(context, store, { x: 650, y: 878, width: 62, height: 76 });

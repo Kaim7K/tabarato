@@ -57,7 +57,7 @@ test("extension action and launcher stay hidden outside allowed pages", () => {
   assert.doesNotMatch(background, /setOptions\(\{ tabId, path:/);
   assert.match(content, /TABARATO_IS_ALLOWED_PAGE/);
   assert.match(content, /existing\?\.(?:remove|remove\(\))/);
-  assert.match(content, /assets\/icon\.png/);
+  assert.match(content, /assets\/icon-128\.png/);
   assert.doesNotMatch(content, /Enviar produto/);
 });
 
@@ -65,6 +65,34 @@ test("all extension JavaScript files have valid syntax", () => {
   listFiles(extensionRoot, ".js").forEach((path) => {
     assert.doesNotThrow(() => new vm.Script(readFileSync(path, "utf8"), { filename: path }));
   });
+});
+
+test("new brand identity uses the correct logo contrast in each surface", () => {
+  const brand = readFileSync(join(root, "src", "lib", "brand.js"), "utf8");
+  const footer = readFileSync(join(root, "src", "components", "Footer.jsx"), "utf8");
+  const admin = readFileSync(join(root, "src", "features", "admin", "AdminUi.jsx"), "utf8");
+  const shareCard = readFileSync(join(root, "src", "lib", "shareCard.js"), "utf8");
+  const social = readFileSync(join(root, "src", "features", "social", "SocialPagePreview.jsx"), "utf8");
+  const requiredAssets = [
+    "public/brand/logo.png",
+    "public/brand/logo-dark.png",
+    "public/brand/logo-card.png",
+    "public/brand/logo-card-dark.png",
+    "public/brand/mascot.png",
+    "public/brand/favicon.png",
+    "extension/assets/tabarato-logo.png",
+    "extension/assets/icon-128.png",
+  ];
+
+  assert.ok(requiredAssets.every((path) => existsSync(join(root, path))));
+  assert.match(brand, /BRAND_LOGO_DARK/);
+  assert.match(brand, /BRAND_LOGO_CARD/);
+  assert.match(brand, /BRAND_MASCOT/);
+  assert.match(footer, /BRAND_LOGO_DARK/);
+  assert.match(admin, /BRAND_LOGO_DARK/);
+  assert.match(shareCard, /BRAND_LOGO_CARD/);
+  assert.match(social, /BRAND_LOGO_CARD/);
+  assert.match(social, /BRAND_MASCOT/);
 });
 
 test("every side panel selector references an existing element", () => {
@@ -88,10 +116,14 @@ test("capture extracts requested product fields and closes store popups", () => 
   const shopee = readFileSync(join(extensionRoot, "content", "stores", "shopee.js"), "utf8");
   assert.match(shared, /firstUsefulParagraph/);
   assert.match(shared, /couponCandidates/);
+  assert.match(shared, /couponCandidates = \(root = document\)/);
+  assert.doesNotMatch(shared, /Cupom disponivel no anuncio\. Ative antes de comprar\./);
   assert.match(shared, /couponPriceDetails/);
   assert.match(shared, /com\\s\+\(\?:o\\s\+\)\?cupom/);
   assert.match(shared, /priceDetails/);
   assert.match(shared, /commerceBenefits/);
+  assert.match(shared, /installmentSummary/);
+  assert.match(shared, /hasExplicitFreeShipping/);
   assert.match(shared, /imageCandidates/);
   assert.match(shared, /closeTransientDialogs/);
   assert.match(meli, /captureAffiliateLink/);
@@ -99,11 +131,67 @@ test("capture extracts requested product fields and closes store popups", () => 
   assert.match(meli, /pricePaymentMethod/);
   assert.match(meli, /couponPrice\.value \|\| basePrice/);
   assert.match(meli, /captureCoupon/);
+  assert.match(meli, /usefulCoupon\(couponDialog\(\) \|\| dialog\)/);
   assert.match(meli, /regularPrice: basePrice/);
+  assert.match(meli, /Number\(basePrice\) >= Number\(currentPrice\)/);
+  assert.match(meli, /priceInfo\.method === "Pix"/);
+  assert.match(meli, /affiliateLinkType: affiliateLink \? "mercado-livre-generated" : "missing"/);
+  assert.doesNotMatch(meli, /affiliateLink: affiliateLink \|\| tools\.affiliateLink\(\)/);
+  assert.doesNotMatch(meli, /promotionSummary/);
   assert.match(shared, /\(\?:Com\|COM\)/);
   assert.match(meli, /await tools\.closeTransientDialogs/);
   assert.match(shopee, /couponCandidates/);
   assert.match(shopee, /confidence/);
+  assert.match(shopee, /regularPrice: basePrice/);
+});
+
+test("coupon parser reads explicit Com CODE labels and never invents a coupon", () => {
+  const source = readFileSync(join(extensionRoot, "content", "shared.js"), "utf8");
+  const document = { body: { innerText: "Cupons do Mercado Livre Com MELIMODA 20% OFF" }, querySelectorAll: () => [] };
+  const context = {
+    Array, Date, Intl, JSON, Math, Number, Object, Promise, RegExp, Set, String, URL,
+    document,
+    getComputedStyle: () => ({ visibility: "visible", display: "block" }),
+    location: { href: "https://produto.mercadolivre.com.br/MLB-123", hostname: "produto.mercadolivre.com.br" },
+  };
+  context.globalThis = context;
+  vm.runInNewContext(source, context, { filename: "shared.js" });
+  assert.equal(context.TaBaratoCapture.couponCandidates()[0]?.value, "MELIMODA");
+  document.body.innerText = "Ver cupons disponiveis. Preco com cupom R$ 79,92.";
+  assert.equal(context.TaBaratoCapture.couponCandidates().length, 0);
+});
+
+test("Mercado Livre pricing reads the installment total and only explicit free shipping", () => {
+  const source = readFileSync(join(extensionRoot, "content", "shared.js"), "utf8");
+  const document = { body: { innerText: "" }, querySelectorAll: () => [] };
+  const context = {
+    Array, Date, Intl, JSON, Math, Number, Object, Promise, RegExp, Set, String, URL,
+    document,
+    getComputedStyle: () => ({ visibility: "visible", display: "block" }),
+    location: { href: "https://produto.mercadolivre.com.br/MLB-123", hostname: "produto.mercadolivre.com.br" },
+  };
+  context.globalThis = context;
+  vm.runInNewContext(source, context, { filename: "shared.js" });
+
+  assert.equal(
+    context.TaBaratoCapture.installmentSummary("R$ 637,91 20% OFF no Pix ou R$ 739,90 em 10x R$ 73,99 sem juros"),
+    "R$ 739,90 em 10x sem juros.",
+  );
+
+  const shippingElement = (textContent) => ({
+    textContent,
+    getBoundingClientRect: () => ({ width: 120, height: 24 }),
+    querySelectorAll: () => [],
+  });
+  assert.equal(context.TaBaratoCapture.hasExplicitFreeShipping({ querySelectorAll: () => [shippingElement("Frete gratis acima de R$ 19")] }), false);
+  assert.equal(context.TaBaratoCapture.hasExplicitFreeShipping({ querySelectorAll: () => [shippingElement("Chegara gratis segunda-feira")] }), true);
+});
+
+test("WhatsApp and Telegram omit coupon rows when the code is empty", () => {
+  const app = readFileSync(join(extensionRoot, "sidepanel", "app.js"), "utf8");
+  const telegram = readFileSync(join(root, "api", "_lib", "telegram.js"), "utf8");
+  assert.match(app, /if \(payload\.coupon\) lines\.push/);
+  assert.match(telegram, /if \(offer\.coupon\) lines\.push/);
 });
 
 test("side panel provides groups, admin, modes, batch and custom messages", () => {
@@ -213,6 +301,11 @@ test("extension offers coupon activation and compact icon actions", () => {
   assert.match(coupons, /applyInactiveFilter/);
   assert.match(coupons, /filtrar\(\?: e ordenar\)/);
   assert.match(coupons, /nao ativados/);
+  assert.match(coupons, /inactiveFilterChipVisible/);
+  assert.match(coupons, /activationControls/);
+  assert.match(coupons, /\^\(ativar\|aplicar\|resgatar\)/);
+  assert.match(background, /globalThis\.__TABARATO_COUPON_AUTOMATION__/);
+  assert.match(background, /automation\.activate\(couponLimit\)/);
   assert.match(background, /chrome\.action\.onClicked/);
   assert.match(background, /chrome\.tabs\.query\(\{\}\)/);
   assert.match(sidePanelApp, /Capturando o novo produto/);
@@ -239,10 +332,12 @@ test("side panel product utilities normalize prices and message benefits", () =>
   context.globalThis = context;
   vm.runInNewContext(source, context, { filename: "product-utils.js" });
   assert.equal(context.TaBaratoProductUtils.parsePrice("R$ 1.234,56"), 1234.56);
+  assert.equal(context.TaBaratoProductUtils.previousPriceFor("79,92", "78,99", "99,90"), "99.9");
+  assert.equal(context.TaBaratoProductUtils.previousPriceFor("79,92", "129,90", "99,90"), "129.9");
   assert.equal(context.TaBaratoProductUtils.firstUsefulParagraph("Muito curto.\nEste segundo paragrafo possui palavras suficientes para ser utilizado na oferta."), "Este segundo paragrafo possui palavras suficientes para ser utilizado na oferta.");
-  const benefits = context.TaBaratoProductUtils.messageBenefits("Promocao: 43% OFF. Preco principal no Pix. 10x sem juros. Frete gratis.");
+  const benefits = context.TaBaratoProductUtils.messageBenefits("Promocao: 43% OFF. 20% OFF com Pix. Preco principal no Pix. R$ 739,90 em 10x sem juros. 10x sem juros. Frete gratis. Frete gratis.");
   assert.equal(benefits.pix, true);
-  assert.deepEqual([...benefits.lines], ["💳 10x sem juros.", "🚚 Frete grátis."]);
+  assert.deepEqual([...benefits.lines], ["💳 R$ 739,90 em 10x sem juros.", "🚚 Frete grátis."]);
 });
 
 test("extension runtime releases timed out operations", async () => {

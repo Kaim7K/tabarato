@@ -96,9 +96,9 @@
     .filter(affiliateShareContext)
     .sort((left, right) => (right.getBoundingClientRect().top < 180 ? 20 : 0) - (left.getBoundingClientRect().top < 180 ? 20 : 0))[0];
 
-  const prepareAffiliateLink = () => {
+  const prepareAffiliateLink = (force = false) => {
     if (affiliateDialog()) return true;
-    if (Date.now() - affiliateRequestStartedAt < 8000) return true;
+    if (!force && Date.now() - affiliateRequestStartedAt < 8000) return true;
     const control = shareControl();
     if (!control) return false;
     affiliateRequestStartedAt = Date.now();
@@ -113,46 +113,28 @@
     if (capturedAffiliatePage !== location.href) affiliateRequestStartedAt = 0;
     capturedAffiliatePage = location.href;
     capturedAffiliateLink = "";
-    prepareAffiliateLink();
-    const dialog = await tools.waitFor(affiliateDialog, 10000);
-    if (!dialog) return "";
-    const link = await tools.waitFor(() => readProductLink(dialog), 10000);
-    if (!MELI_LINK_PATTERN.test(link)) return "";
-    await copyProductLink(dialog, link);
-    capturedAffiliateLink = link;
-    return link;
-  };
-
-  const promotionSummary = (value) => {
-    const source = tools.clean(value);
-    const discount = source.match(/\b\d{1,2}(?:[.,]\d+)?%\s*OFF\b/i)?.[0];
-    if (!discount) return "";
-    const method = source.match(/saldo no Mercado Pago|Pix|Mercado Pago/i)?.[0];
-    const minimum = source.match(/pagamento m[ií]nimo:\s*R\$\s*[\d.,]+/i)?.[0];
-    const limit = source.match(/limite:\s*R\$\s*[\d.,]+/i)?.[0];
-    const validity = source.match(/v[aá]lido at[eé]\s*\d{2}\/\d{2}\/\d{4}/i)?.[0];
-    const details = [minimum, limit, validity].filter(Boolean);
-    if (!method && !details.length) return "";
-    return `${discount}${method ? ` com ${method}` : ""}${details.length ? ` (${details.join("; ")})` : ""}`;
-  };
-
-  const interestFreeOptions = (value) => {
-    const source = tools.clean(value);
-    const options = [];
-    for (const match of source.matchAll(/at[eé]\s+\d{1,2}x\s+sem\s+juros(?:\s+com\s+(?:cart[aã]o Mercado Pago|todos os cart[oõ]es|estes cart[oõ]es))?/gi)) {
-      options.push(match[0]);
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      prepareAffiliateLink(attempt > 0);
+      const dialog = await tools.waitFor(affiliateDialog, 10000);
+      if (!dialog) continue;
+      const link = await tools.waitFor(() => readProductLink(dialog), 10000);
+      if (MELI_LINK_PATTERN.test(link)) {
+        await copyProductLink(dialog, link);
+        capturedAffiliateLink = link;
+        return link;
+      }
+      closeDialog(dialog);
+      await tools.closeTransientDialogs();
+      affiliateRequestStartedAt = 0;
     }
-    const installment = source.match(/\b\d{1,2}x(?:\s+de\s+R\$\s*[\d.,]+)?\s+sem\s+juros\b/i)?.[0];
-    if (installment) options.push(installment);
-    return [...new Set(options.map((item) => `${item.charAt(0).toUpperCase()}${item.slice(1)}.`))];
+    return "";
   };
 
   const couponDialog = () => visibleDialog(/cupons do mercado livre|cupom dispon[ií]vel|conferir produtos|com\s+[A-Z][A-Z0-9_-]{3,24}/i);
 
-  const usefulCoupon = () => tools.couponCandidates()
-    .find((item) => !/cupom disponivel no anuncio/i.test(item.value))?.value || "";
+  const usefulCoupon = (root = document) => tools.couponCandidates(root)[0]?.value || "";
 
-  const captureCoupon = async (hasCouponPrice) => {
+  const captureCoupon = async () => {
     const existing = usefulCoupon();
     if (existing) return existing;
     const control = visibleControl(/ver cupons dispon[ií]veis|ver.*cupons?|cupons? dispon[ií]veis/i);
@@ -162,42 +144,32 @@
       dialog = await tools.waitFor(couponDialog, 6000);
     }
     try {
-      const explicit = usefulCoupon();
-      if (explicit) return explicit;
-      const context = tools.clean(`${control?.textContent || ""} ${dialog?.textContent || ""}`);
-      return hasCouponPrice || /cupom/i.test(context)
-        ? "Dispon\u00EDvel no an\u00FAncio. Ative antes de comprar."
-        : "";
+      if (!dialog) return "";
+      return await tools.waitFor(() => usefulCoupon(couponDialog() || dialog), 4500) || "";
     } finally {
       if (dialog && tools.visible(dialog)) closeDialog(dialog);
       await tools.closeTransientDialogs();
     }
   };
 
-  const paymentBenefits = async (priceMethod) => {
+  const paymentBenefits = async () => {
     const pagePaymentText = [...document.querySelectorAll(".ui-pdp-payment, [class*='installment'], [class*='payment'], [class*='price']")]
       .filter(tools.visible)
       .map((element) => tools.clean(element.textContent))
       .join(" ");
     const benefits = [];
-    const control = visibleControl(/meios de pagamento|formas de pagamento|ver.*pagamento/i);
-    if (control) {
+    let installment = tools.installmentSummary(pagePaymentText);
+    const control = !installment && visibleControl(/meios de pagamento|formas de pagamento|ver.*pagamento/i);
+    if (!installment && control) {
       control.click();
       await tools.waitFor(() => (/meios de pagamento|cart[oõ]es de cr[eé]dito|aproveite estas promo[cç][oõ]es/i.test(document.body.innerText) ? true : ""), 8000);
       const dialog = visibleDialog(/meios de pagamento|cart[oõ]es de cr[eé]dito|aproveite estas promo[cç][oõ]es/i);
-      const sourceText = `${pagePaymentText} ${dialog?.innerText || document.body.innerText}`;
-      [...sourceText.split(/\r?\n/).map(promotionSummary).filter(Boolean)].forEach((item) => benefits.push(`Promocao: ${item}.`));
-      interestFreeOptions(sourceText).forEach((item) => benefits.push(item));
+      installment = tools.installmentSummary(`${pagePaymentText} ${dialog?.innerText || ""}`);
       if (dialog && tools.visible(dialog)) closeDialog(dialog);
-    } else {
-      interestFreeOptions(pagePaymentText).forEach((item) => benefits.push(item));
     }
-    if (priceMethod === "Pix") {
-      const noInterest = pagePaymentText.match(/R\$\s*[\d.,]+(?:\s+em\s+)?(?:\d{1,2}x\s+)?sem\s+juros/i)?.[0];
-      if (noInterest) benefits.push(`No cartao sem juros: ${tools.clean(noInterest)}.`);
-    }
-    if (/frete gr[aá]tis/i.test(document.body.innerText)) benefits.push("Frete gratis.");
-    return [...new Set(benefits)].join(" ");
+    if (installment) benefits.push(installment);
+    if (tools.hasExplicitFreeShipping()) benefits.push("Frete gratis.");
+    return benefits.join(" ");
   };
 
   const listProducts = (limit = 20) => tools.productLinks([/\/MLB-?\d{6,}/i, /\bMLB\d{6,}/i]).slice(0, limit);
@@ -223,13 +195,19 @@
       const priceInfo = tools.priceDetails(".ui-pdp-price__second-line .andes-money-amount", ".ui-pdp-price__main-container .andes-money-amount");
       const basePrice = priceInfo.value || tools.productPrice(structured);
       const couponPrice = tools.couponPriceDetails(basePrice);
-      const coupon = await captureCoupon(Boolean(couponPrice.value));
-      const previousPrice = tools.price(".ui-pdp-price__original-value .andes-money-amount", ".andes-money-amount--previous") || basePrice;
+      const coupon = await captureCoupon();
+      const currentPrice = couponPrice.value || basePrice;
+      const capturedPreviousPrice = tools.price(".ui-pdp-price__original-value .andes-money-amount", ".andes-money-amount--previous");
+      const previousPrice = Number(capturedPreviousPrice) > Number(currentPrice)
+        ? capturedPreviousPrice
+        : Number(basePrice) >= Number(currentPrice)
+          ? basePrice
+          : currentPrice;
       const product = {
         productName: tools.text(".ui-pdp-title", "h1") || tools.clean(structured.name) || tools.meta("og:title"),
         shortDescription: tools.description(".ui-pdp-description__content", ".ui-pdp-description") || tools.firstUsefulParagraph(structured.description) || tools.firstUsefulParagraph(tools.meta("og:description")),
         sourceCategory: tools.text(".andes-breadcrumb__container", ".ui-pdp-breadcrumb"),
-        currentPrice: couponPrice.value || basePrice,
+        currentPrice,
         previousPrice,
         regularPrice: basePrice,
         coupon,
@@ -238,16 +216,16 @@
           ...tools.imageCandidates(".ui-pdp-gallery__figure img", ".ui-pdp-image", "img[src*='mlstatic']"),
           ...tools.productImages(structured).map((url) => ({ url, score: 60, reason: "structured" })),
         ],
-        affiliateLink: affiliateLink || tools.affiliateLink(),
-        affiliateLinkType: affiliateLink ? "mercado-livre-generated" : "page-fallback",
+        affiliateLink,
+        affiliateLinkType: affiliateLink ? "mercado-livre-generated" : "missing",
         sourceUrl: tools.canonicalUrl(),
         externalProductId: productId,
         platform: "Mercado Livre",
-        pricePaymentMethod: couponPrice.value ? "Cupom" : priceInfo.method,
+        pricePaymentMethod: priceInfo.method === "Pix" ? "Pix" : couponPrice.value ? "Cupom" : "",
         confidence: 0,
       };
       product.imageUrl = product.imageCandidates[0]?.url || "";
-      product.extraText = await paymentBenefits(product.pricePaymentMethod);
+      product.extraText = await paymentBenefits();
       const required = [product.productName, product.currentPrice, product.imageUrl, product.externalProductId, MELI_LINK_PATTERN.test(product.affiliateLink)];
       product.confidence = required.filter(Boolean).length / required.length;
       return product;

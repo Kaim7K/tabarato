@@ -212,10 +212,41 @@
     return [...new Set(benefits)].join(" ");
   };
 
-  const couponCandidates = () => {
-    const pageText = document.body.innerText || "";
+  const installmentSummary = (value = "") => {
+    const source = clean(value);
+    const total = source.match(/(?:^|\bou\s+)R\$\s*([\d.]+(?:,\d{2})?)\s+em\s+(\d{1,2})x(?:\s+(?:de\s+)?R\$\s*[\d.,]+)?\s+sem\s+juros\b/i);
+    if (total) return `R$ ${total[1]} em ${total[2]}x sem juros.`;
+    const installments = source.match(/\b(\d{1,2})x(?:\s+(?:de\s+)?R\$\s*[\d.,]+)?\s+sem\s+juros\b/i);
+    return installments ? `${installments[1]}x sem juros.` : "";
+  };
+
+  const hasExplicitFreeShipping = (root = document) => {
+    const selectors = [
+      ".ui-pdp-shipping",
+      ".ui-pdp-media__title",
+      ".ui-pdp-media__text",
+      "[data-testid*='shipping' i]",
+      "[data-testid*='delivery' i]",
+      "[class*='shipping' i]",
+      "[class*='delivery' i]",
+    ].join(", ");
+    const candidates = [...root.querySelectorAll(selectors)]
+      .filter(visible)
+      .flatMap((element) => [element, ...element.querySelectorAll("span, p, strong")])
+      .map((element) => clean(element.textContent))
+      .filter((textValue) => textValue && textValue.length <= 220);
+    return candidates.some((textValue) => {
+      if (!/(?:frete|envio)\s+gr[aá]tis|chegar[aá]\s+gr[aá]tis/i.test(textValue)) return false;
+      return !/acima\s+de|a\s+partir\s+de|adicione|em\s+compras|consulte|sujeito\s+a/i.test(textValue);
+    });
+  };
+
+  const couponCandidates = (root = document) => {
+    const pageText = root === document
+      ? document.body.innerText || ""
+      : root.innerText || root.textContent || "";
     const candidates = [];
-    const ignoredCodes = new Set(["CUPOM", "DESCONTO", "FRETE", "GRATIS", "JUROS", "MERCADO", "PRODUTOS", "CARTAO", "PAGAMENTO", "PARCELAMENTO"]);
+    const ignoredCodes = new Set(["CUPOM", "CUPONS", "DESCONTO", "FRETE", "GRATIS", "JUROS", "MERCADO", "PRODUTOS", "CARTAO", "PAGAMENTO", "PARCELAMENTO", "PIX", "OFF"]);
     const push = (value, confidence = 0.7) => {
       const coupon = clean(value).replace(/^cupom[:\s-]*/i, "").replace(/["']/g, "");
       if (!coupon || coupon.length > 40) return;
@@ -228,7 +259,7 @@
     [...pageText.matchAll(/\b(?:Com|COM)\s+([A-Z][A-Z0-9_-]{3,24})\b/g)]
       .filter((match) => !ignoredCodes.has(match[1]))
       .forEach((match) => push(match[1], 0.99));
-    [...document.querySelectorAll("button, [role='button'], input, textarea, [class*='coupon'], [class*='cupom']")]
+    [...root.querySelectorAll("button, [role='button'], input, textarea, [class*='coupon'], [class*='cupom']")]
       .filter(visible)
       .forEach((element) => {
         const value = element.value || element.textContent || element.getAttribute("aria-label") || "";
@@ -236,9 +267,6 @@
         const code = clean(value).match(/\b[A-Z0-9][A-Z0-9_-]{3,24}\b/)?.[0];
         if (/cupom|coupon|voucher|aplicar|ativar/i.test(value) && code && !/^\d+$/.test(code)) push(code, 0.9);
       });
-    if (/cupom|coupon|voucher/i.test(pageText) && !candidates.length) {
-      push("Cupom disponivel no anuncio. Ative antes de comprar.", 0.55);
-    }
     return candidates.sort((left, right) => right.confidence - left.confidence);
   };
 
@@ -307,7 +335,9 @@
     couponPriceDetails,
     description,
     firstUsefulParagraph,
+    hasExplicitFreeShipping,
     imageCandidates,
+    installmentSummary,
     jsonProduct,
     meta,
     price,

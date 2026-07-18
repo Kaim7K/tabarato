@@ -29,7 +29,7 @@ function Header() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-[auto_1fr_auto] items-center gap-3 md:gap-6 py-3">
           <Link to="/" className="flex items-center shrink-0" aria-label="Ir para a página inicial">
-            <img src={BRAND_LOGO} alt="Tá Barato" className="h-10 sm:h-12 w-auto object-contain" />
+            <img src={BRAND_LOGO} alt="Tá Barato" className="h-9 sm:h-10 w-auto object-contain" />
           </Link>
 
           <div className="hidden md:block w-full max-w-2xl justify-self-center">

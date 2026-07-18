@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 import { ArrowLeft, Loader2, LogOut } from "lucide-react";
 import { logoutAdmin } from "@/lib/adminAuth";
 import { SITE_NAME } from "@/lib/catalog";
-import { BRAND_LOGO } from "@/lib/brand";
+import { BRAND_LOGO_DARK } from "@/lib/brand";
 import { TelegramIcon } from "@/components/BrandIcons";
 
 export function AdminHeader({ testTelegram, saving }) {
@@ -10,8 +10,8 @@ export function AdminHeader({ testTelegram, saving }) {
     <div className="border-b border-white/10 sticky top-0 z-40 bg-[#0D0D0D]/90 backdrop-blur-md">
       <div className="max-w-[1500px] mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <img src={BRAND_LOGO} alt={SITE_NAME} className="h-11 w-auto object-contain" />
-          <span className="font-bold text-lg">{SITE_NAME} <span className="text-white/40 font-normal hidden sm:inline">/ Admin</span></span>
+          <img src={BRAND_LOGO_DARK} alt={SITE_NAME} className="h-10 w-auto object-contain" />
+          <span className="text-white/40 font-normal hidden sm:inline">/ Admin</span>
         </div>
         <div className="flex items-center gap-3">
           <button onClick={testTelegram} disabled={saving} className="hidden sm:flex px-4 py-2 bg-[#229ED9] hover:bg-[#187FAF] rounded-lg text-sm font-semibold disabled:opacity-50 items-center gap-2 transition-colors">
