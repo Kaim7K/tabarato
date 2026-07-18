@@ -2,7 +2,7 @@
   const panel = globalThis.TaBaratoPanel;
   if (!panel || panel.publishing) return;
 
-  const { elements, groupNames, lockActions, showToast, state, unlockActions } = panel;
+  const { elements, groupNames, lockActions, showToast, unlockActions } = panel;
   const runtime = globalThis.TaBaratoRuntime;
   const { formatPrice, parsePrice } = globalThis.TaBaratoProductUtils;
 
@@ -11,9 +11,10 @@
       forceRepublish = false,
       notifyWhatsApp = true,
       tolerateWhatsAppFailure = false,
+      preparedShare: suppliedShare = null,
     } = options;
-    const shareFile = await panel.media.shareImage(payload);
-    const shareImageDataUrl = await panel.media.fileToDataUrl(shareFile);
+    const preparedShare = suppliedShare || await panel.media.prepareShare(payload);
+    const shareImageDataUrl = preparedShare.imageDataUrl;
     const publication = await panel.api.request(`/api/admin/ofertas/${id}/publicar`, {
       method: "POST",
       body: { shareImageDataUrl, forceRepublish, messageHeadline: payload.messageHeadline || "" },
@@ -23,7 +24,7 @@
 
     if (notifyWhatsApp && groupNames().length) {
       try {
-        await panel.media.sendOfferToWhatsApp(payload);
+        await panel.media.sendOfferToWhatsApp(payload, () => {}, preparedShare);
         await panel.api.request(`/api/admin/ofertas/${id}/publicar`, {
           method: "POST",
           body: { action: "record-channel", channel: "WHATSAPP", status: "SUCESSO" },
@@ -59,13 +60,18 @@
       elements.duplicateWarning.textContent = `Ja cadastrado por ${formatPrice(oldPrice)}. Preco melhor detectado; atualizando e republicando.`;
       elements.duplicateWarning.classList.remove("hidden");
       const payload = panel.product.toPayload(product, "APROVADO");
-      await panel.api.request(`/api/admin/ofertas/${existing.id}`, { method: "PATCH", body: payload });
+      const [, preparedShare] = await Promise.all([
+        panel.api.request(`/api/admin/ofertas/${existing.id}`, { method: "PATCH", body: payload }),
+        panel.media.prepareShare(payload),
+      ]);
       const publication = await publishOfferId(existing.id, payload, {
         forceRepublish: true,
         notifyWhatsApp,
         tolerateWhatsAppFailure: !notifyUser,
+        preparedShare,
       });
-      Object.assign(existing, payload);
+      Object.assign(existing, payload, { status: "PUBLICADO", publishedAt: new Date().toISOString() });
+      panel.catalog.addOffer(existing);
       if (refreshCatalog) await panel.catalog.synchronize();
       if (notifyUser) showToast("Preco melhor publicado novamente.", "success");
       return { action: "updated", existing, publication };
@@ -75,7 +81,7 @@
       elements.duplicateWarning.textContent = `Preco pior detectado: ${formatPrice(nextPrice)}. Oferta removida do site.`;
       elements.duplicateWarning.classList.remove("hidden");
       await panel.api.request(`/api/admin/ofertas/${existing.id}`, { method: "DELETE" });
-      state.synchronizedOffers = state.synchronizedOffers.filter((offer) => offer.id !== existing.id);
+      panel.catalog.removeOffer(existing.id);
       if (refreshCatalog) await panel.catalog.synchronize();
       if (notifyUser) showToast("Oferta removida porque o preco piorou.", "success");
       return { action: "deleted", existing };
@@ -92,8 +98,8 @@
     lockActions(owner, elements.saveButton, "Salvando...");
     try {
       const data = await panel.api.request("/api/admin/ofertas", { method: "POST", body: panel.product.payload("RASCUNHO") });
+      panel.catalog.addOffer(data.offer);
       showToast(`Rascunho salvo: ${data.offer.productName}`, "success");
-      await panel.catalog.synchronize();
     } catch (error) {
       runtime.reportError("save-offer", error);
       showToast(runtime.errorMessage(error), "error");
@@ -109,9 +115,18 @@
     let createdOffer = null;
     lockActions(owner, elements.publishButton, "Publicando...");
     try {
-      const created = await panel.api.request("/api/admin/ofertas", { method: "POST", body: payload });
+      const [created, preparedShare] = await Promise.all([
+        panel.api.request("/api/admin/ofertas", { method: "POST", body: payload }),
+        panel.media.prepareShare(payload),
+      ]);
       createdOffer = created.offer;
-      await publishOfferId(created.offer.id, payload, { notifyWhatsApp: true });
+      await publishOfferId(created.offer.id, payload, { notifyWhatsApp: true, preparedShare });
+      panel.catalog.addOffer({
+        ...created.offer,
+        ...payload,
+        status: "PUBLICADO",
+        publishedAt: new Date().toISOString(),
+      });
       showToast(
         groupNames().length ? "Oferta publicada no site, Telegram e WhatsApp." : "Oferta publicada no site e Telegram.",
         "success",
@@ -120,7 +135,7 @@
       runtime.reportError("publish-offer", error);
       showToast(runtime.errorMessage(error), "error");
     } finally {
-      if (createdOffer) await panel.catalog.synchronize().catch((error) => runtime.reportError("sync-after-publish", error));
+      if (createdOffer && !panel.catalog.findExisting(createdOffer)) panel.catalog.addOffer(createdOffer);
       unlockActions(owner, elements.publishButton);
     }
   }

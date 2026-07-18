@@ -6,6 +6,7 @@
   const runtime = globalThis.TaBaratoRuntime;
   const artwork = globalThis.TaBaratoArtwork;
   const { formatPrice, messageBenefits, normalizeText, previousPriceFor } = globalThis.TaBaratoProductUtils;
+  const extensionAssetCache = new Map();
 
   async function evaluateImageCandidate(source) {
     const response = await runtime.fetchWithTimeout(source, {}, 8000, "A imagem demorou para carregar.");
@@ -41,9 +42,18 @@
   }
 
   async function extensionAssetBlob(path) {
-    const response = await runtime.fetchWithTimeout(chrome.runtime.getURL(path), {}, 8000, "Nao foi possivel carregar as logos.");
-    if (!response.ok) throw new Error("Nao foi possivel carregar as logos.");
-    return response.blob();
+    if (extensionAssetCache.has(path)) return extensionAssetCache.get(path);
+    const request = runtime.fetchWithTimeout(chrome.runtime.getURL(path), {}, 8000, "Nao foi possivel carregar as logos.")
+      .then((response) => {
+        if (!response.ok) throw new Error("Nao foi possivel carregar as logos.");
+        return response.blob();
+      })
+      .catch((error) => {
+        extensionAssetCache.delete(path);
+        throw error;
+      });
+    extensionAssetCache.set(path, request);
+    return request;
   }
 
   function storeLogoPath(platform) {
@@ -65,7 +75,7 @@
   async function copyImageToClipboard(file) {
     if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined") return false;
     const sourceBlob = file.type === "image/png"
-      ? new Blob([await file.arrayBuffer()], { type: "image/png" })
+      ? file
       : await (async () => {
         const bitmap = await createImageBitmap(file);
         try {
@@ -127,6 +137,25 @@
     return state.shareImagePromise;
   }
 
+  async function prepareShare(payload) {
+    const filePromise = shareImage(payload);
+    const key = state.shareImageKey;
+    if (key === state.sharePackageKey && state.sharePackagePromise) return state.sharePackagePromise;
+    state.sharePackageKey = key;
+    state.sharePackagePromise = filePromise.then(async (file) => ({
+      file,
+      imageDataUrl: await fileToDataUrl(file),
+      imageCacheKey: key,
+    }));
+    state.sharePackagePromise.catch(() => {
+      if (state.sharePackageKey === key) {
+        state.sharePackagePromise = null;
+        state.sharePackageKey = "";
+      }
+    });
+    return state.sharePackagePromise;
+  }
+
   function whatsappMessage(payload, product = state.activeProduct) {
     const benefits = messageBenefits(payload.extraText);
     const headline = String(payload.messageHeadline || "").trim().replace(/^\s*\u{1F525}\s*/u, "") || "TA BARATO!";
@@ -145,21 +174,21 @@
     return lines.join("\n");
   }
 
-  async function sendOfferToWhatsApp(payload, onProgress = () => {}) {
+  async function sendOfferToWhatsApp(payload, onProgress = () => {}, preparedShare = null) {
     const groups = groupNames();
     if (!groups.length) throw new Error("Registre pelo menos um grupo do WhatsApp.");
     onProgress("Gerando arte...");
-    const file = await shareImage(payload);
-    const imageDataUrl = await fileToDataUrl(file);
-    const clipboardPrepared = await copyImageToClipboard(file).catch(() => false);
+    const prepared = preparedShare || await prepareShare(payload);
+    const clipboardPrepared = await copyImageToClipboard(prepared.file).catch(() => false);
     onProgress("Abrindo WhatsApp...");
     const result = await runtime.withTimeout(
       chrome.runtime.sendMessage({
         type: "TABARATO_SHARE_WHATSAPP",
         groupNames: groups,
         text: whatsappMessage(payload),
-        imageDataUrl,
-        fileName: file.name,
+        imageDataUrl: prepared.imageDataUrl,
+        imageCacheKey: prepared.imageCacheKey,
+        fileName: prepared.file.name,
         clipboardPrepared,
       }),
       panel.LIMITS.whatsappTimeout + groups.length * 70000,
@@ -173,6 +202,7 @@
     copyDataUrlToClipboard,
     copyImageToClipboard,
     fileToDataUrl,
+    prepareShare,
     sendOfferToWhatsApp,
     shareImage,
     whatsappMessage,

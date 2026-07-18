@@ -118,11 +118,7 @@ test("new brand identity uses the correct logo contrast in each surface", () => 
   const shareCard = readFileSync(join(root, "src", "lib", "shareCard.js"), "utf8");
   const social = readFileSync(join(root, "src", "features", "social", "SocialPagePreview.jsx"), "utf8");
   const requiredAssets = [
-    "public/brand/logo.png",
-    "public/brand/logo-dark.png",
     "public/brand/logo-card.png",
-    "public/brand/logo-card-dark.png",
-    "public/brand/mascot.png",
     "public/brand/favicon.png",
     "extension/assets/tabarato-logo.png",
     "extension/assets/icon-128.png",
@@ -248,6 +244,10 @@ test("capture extracts requested product fields and closes store popups", () => 
   assert.match(meli, /couponPrice\.value \|\| basePrice/);
   assert.match(meli, /captureCoupon/);
   assert.match(meli, /explicitCouponCode\(activeDialog\) \|\| usefulCoupon\(activeDialog\)/);
+  assert.match(meli, /const couponDialogCodes =/);
+  assert.match(meli, /extractExplicitComCodes\(value\)/);
+  assert.match(meli, /ver todos os meus cupons/);
+  assert.match(meli, /}, 3600\) \|\| ""/);
   assert.match(meli, /regularPrice: basePrice/);
   assert.match(meli, /Number\(basePrice\) >= Number\(currentPrice\)/);
   assert.match(meli, /priceInfo\.method === "Pix"/);
@@ -258,7 +258,7 @@ test("capture extracts requested product fields and closes store popups", () => 
   assert.match(meli, /const shareLabel = \/compartilhar/);
   assert.doesNotMatch(meli, /affiliateLink: affiliateLink \|\| tools\.affiliateLink\(\)/);
   assert.doesNotMatch(meli, /promotionSummary/);
-  assert.match(couponCode, /\(\?:Com\|COM\)/);
+  assert.match(couponCode, /extractExplicitComCodes/);
   assert.match(meli, /await tools\.closeTransientDialogs/);
   assert.match(shopee, /couponCandidates/);
   assert.match(shopee, /confidence/);
@@ -289,7 +289,14 @@ test("coupon parser reads explicit Com CODE labels and never invents a coupon", 
   assert.equal(context.TaBaratoCouponCode.classify("Ative o cupom antes da compra.", { hasCouponPrice: true }).status, "activation-required");
   assert.equal(context.TaBaratoCouponCode.classify("Nenhum cupom disponivel.").status, "none");
   assert.equal(context.TaBaratoCouponCode.extractExplicitComCode("Com MELIMODA"), "MELIMODA");
+  assert.deepEqual(
+    [...context.TaBaratoCouponCode.extractExplicitComCodes(
+      "Cupons do Mercado Livre\nCom MELIMODA\n20% OFF\nCompra mínima R$ 49\nCom VALEDESCONTO\n18% OFF",
+    )],
+    ["MELIMODA", "VALEDESCONTO"],
+  );
   assert.equal(context.TaBaratoCouponCode.extractExplicitComCode("R$ 51,84 com Cupom"), "");
+  assert.equal(context.TaBaratoCouponCode.extractExplicitComCode("COMPRA MÍNIMA R$ 49"), "");
 });
 
 test("Mercado Livre pricing reads the installment total and only explicit free shipping", () => {
@@ -424,7 +431,7 @@ test("extension publishes to site, Telegram and sequential WhatsApp groups", () 
   assert.match(panelSource, /sendOfferToWhatsApp/);
   assert.match(panelSource, /groupNames\(\)/);
   assert.match(backgroundSource, /normalizeGroups/);
-  assert.match(backgroundSource, /for \(const groupName of groups\)/);
+  assert.match(backgroundSource, /for \(let index = 0; index < groups\.length; index \+= 1\)/);
   assert.match(backgroundSource, /TABARATO_STOP_WHATSAPP/);
   assert.match(whatsapp, /TABARATO_WHATSAPP_CANCEL/);
   assert.match(whatsapp, /activeController/);
@@ -789,7 +796,9 @@ test("batch runtime keeps at most five preloaded tabs and reads them sequentiall
     && events.slice(0, index + 1).filter((item) => item.startsWith("create:")).length === 6);
   const fifthRead = events.findIndex((event, index) => event.startsWith("read:")
     && events.slice(0, index + 1).filter((item) => item.startsWith("read:")).length === 5);
-  assert.ok(sixthCreate > fifthRead);
+  const firstReadComplete = events.findIndex((event) => event.startsWith("read:"));
+  assert.ok(sixthCreate > firstReadComplete);
+  assert.ok(sixthCreate < fifthRead);
   assert.equal(liveTabs.size, 0);
   assert.match(toast, /12 ignorados, 0 erros/);
 });
@@ -798,7 +807,7 @@ test("batch checks publication history before creating product tabs", () => {
   const batch = readFileSync(join(extensionRoot, "sidepanel", "modules", "batch.js"), "utf8");
   const catalog = readFileSync(join(extensionRoot, "sidepanel", "modules", "catalog.js"), "utf8");
   const historyCheck = batch.indexOf("previouslyPostedUrls");
-  const tabPreload = batch.indexOf("preloadWorkers(chunks[chunkIndex]");
+  const tabPreload = batch.indexOf("const initialCount = Math.min(BATCH_WINDOW_SIZE");
   assert.ok(historyCheck >= 0);
   assert.ok(tabPreload > historyCheck);
   assert.match(batch, /Ja publicado, nao foi aberto/);

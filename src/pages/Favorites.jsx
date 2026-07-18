@@ -4,7 +4,7 @@ import OfferCard from "@/components/OfferCard";
 import Footer from "@/components/Footer";
 import { useFavorites } from "@/lib/FavoritesContext";
 import { Download, Heart, Upload } from "lucide-react";
-import { listPublicOffers } from "@/lib/offersApi";
+import { listPublicOffersByIds } from "@/lib/offersApi";
 import { EmptyState, LoadingState, OfferGrid, PageShell, SectionHeader } from "@/components/PublicUi";
 import { useDocumentMetadata } from "@/hooks/useDocumentMetadata";
 
@@ -17,12 +17,16 @@ export default function Favorites() {
   const [error, setError] = useState("");
 
   useEffect(() => {
+    const controller = new AbortController();
     setLoading(true);
     setError("");
-    listPublicOffers({ limit: 200 })
-      .then((data) => setOffers(data.filter((offer) => favorites.includes(offer.id))))
-      .catch((err) => setError(err.message || "Não foi possível carregar favoritos."))
-      .finally(() => setLoading(false));
+    listPublicOffersByIds(favorites, { signal: controller.signal })
+      .then(setOffers)
+      .catch((err) => {
+        if (err?.name !== "AbortError") setError(err.message || "Não foi possível carregar favoritos.");
+      })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
   }, [favorites]);
 
   return (
