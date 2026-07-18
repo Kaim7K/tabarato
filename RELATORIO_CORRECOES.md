@@ -43,3 +43,9 @@ Links afiliados, cupons autenticados, publicacao real, Telegram e grupos de What
 - Itens repetidos nao carregam pagina, nao geram link novamente e nao sao reenviados.
 - Leitura de cupom reforcada para `Com CODIGO`, preco com cupom, cupom selecionavel e cupom aplicado sem codigo.
 - Na ausencia de codigo visivel, o texto padrao passa a ser `disponível no anúncio. Ative antes de comprar.`.
+
+## 3.1.5
+
+- Corrigida a leitura de códigos explícitos dentro do modal de cupons do Mercado Livre.
+- O extrator agora reconhece vários rótulos `Com CÓDIGO` mesmo em cartões sem seletores semânticos.
+- A espera pela renderização dos cartões do modal foi ampliada para 3,6 segundos.

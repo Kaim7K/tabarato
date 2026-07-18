@@ -1,5 +1,3 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
-
 export function sendJson(res, status, body) {
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   return res.status(status).json(body);
@@ -15,15 +13,11 @@ export async function readJson(req) {
     }
   }
   const chunks = [];
-  let size = 0;
-  for await (const chunk of req) {
-    size += chunk.length;
-    if (size > 1_000_000) {
-      throw Object.assign(new Error("Corpo da requisicao muito grande."), { statusCode: 413 });
-    }
-    chunks.push(chunk);
-  }
+  for await (const chunk of req) chunks.push(chunk);
   const raw = Buffer.concat(chunks).toString("utf8");
+  if (Buffer.byteLength(raw, "utf8") > 1_000_000) {
+    throw Object.assign(new Error("Corpo da requisicao muito grande."), { statusCode: 413 });
+  }
   try {
     return raw ? JSON.parse(raw) : {};
   } catch {
@@ -166,3 +160,4 @@ export function publicError(res, error, fallback = "Erro interno.") {
   const status = Number(error?.statusCode) || 500;
   return sendJson(res, status, { error: status < 500 ? error.message : fallback });
 }
+import { createHmac, timingSafeEqual } from "node:crypto";

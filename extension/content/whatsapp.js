@@ -4,8 +4,6 @@
   const runtime = globalThis.TaBaratoRuntime;
   let activeSend = null;
   let activeController = null;
-  const imageFileCache = new Map();
-  const IMAGE_CACHE_LIMIT = 3;
 
   const clean = (value = "") => String(value).replace(/\s+/g, " ").trim();
   const normalized = (value = "") => clean(value)
@@ -27,68 +25,18 @@
     if (signal?.aborted) throw new Error("O envio anterior foi cancelado.");
   };
 
-  const waitFor = (read, timeout = 30000, signal) => new Promise((resolve, reject) => {
-    let settled = false;
-    let inspectQueued = false;
-    let observer = null;
-    let fallback = null;
-    let timer = null;
-
-    const cleanup = () => {
-      observer?.disconnect();
-      if (fallback) window.clearInterval(fallback);
-      if (timer) window.clearTimeout(timer);
-      signal?.removeEventListener?.("abort", onAbort);
-    };
-    const finish = (value) => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      resolve(value || null);
-    };
-    const fail = (error) => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      reject(error);
-    };
-    const inspect = () => {
-      inspectQueued = false;
-      try {
-        aborted(signal);
-        const value = read();
-        if (value) finish(value);
-      } catch (error) {
-        fail(error);
-      }
-    };
-    const queueInspect = () => {
-      if (settled || inspectQueued) return;
-      inspectQueued = true;
-      queueMicrotask(inspect);
-    };
-    const onAbort = () => fail(new Error("O envio anterior foi cancelado."));
-
-    try {
+  const waitFor = async (read, timeout = 30000, signal) => {
+    const startedAt = Date.now();
+    aborted(signal);
+    let value = read();
+    while (!value && Date.now() - startedAt < timeout) {
       aborted(signal);
-      observer = new MutationObserver(queueInspect);
-      observer.observe(document.documentElement, {
-        childList: true,
-        subtree: true,
-        attributes: true,
-        characterData: true,
-        attributeFilter: ["class", "style", "aria-label", "aria-placeholder", "title", "data-testid"],
-      });
-      // Fallback leve para estados que mudam sem mutacao observavel.
-      fallback = window.setInterval(inspect, 500);
-      timer = window.setTimeout(() => finish(null), timeout);
-      signal?.addEventListener?.("abort", onAbort, { once: true });
-      inspect();
-    } catch (error) {
-      fail(error);
+      await new Promise((resolve) => window.setTimeout(resolve, 120));
+      value = read();
     }
-  });
-
+    aborted(signal);
+    return value || null;
+  };
 
   const visible = (element) => {
     if (!element) return false;
@@ -121,7 +69,7 @@
       clipboardData: transfer,
     }));
 
-    await waitFor(() => clean(element.textContent) || clean(element.innerText), 500).catch(() => null);
+    await new Promise((resolve) => window.setTimeout(resolve, 70));
 
     const needsFallback = !clean(element.textContent)
       || (text.includes("\n") && !String(element.innerText || "").includes("\n"));
@@ -134,7 +82,7 @@
       if (index < lines.length - 1) document.execCommand("insertParagraph", false, null);
     });
 
-    await waitFor(() => !text.includes("\n") || String(element.innerText || "").includes("\n"), 400).catch(() => null);
+    await new Promise((resolve) => window.setTimeout(resolve, 60));
     if (!text.includes("\n") || String(element.innerText || "").includes("\n")) return;
 
     const content = document.createDocumentFragment();
@@ -192,32 +140,6 @@
     } finally {
       bitmap.close();
     }
-  };
-
-  const imageCacheKey = (message) => clean(message.imageCacheKey)
-    || (message.imageDataUrl ? `${message.imageDataUrl.length}:${message.fileName || "oferta.png"}` : "");
-
-  const rememberImageFile = (key, file) => {
-    if (!key || !file) return file;
-    imageFileCache.delete(key);
-    imageFileCache.set(key, file);
-    while (imageFileCache.size > IMAGE_CACHE_LIMIT) {
-      imageFileCache.delete(imageFileCache.keys().next().value);
-    }
-    return file;
-  };
-
-  const imageFileForMessage = async (message) => {
-    const key = imageCacheKey(message);
-    if (key && imageFileCache.has(key)) {
-      const file = imageFileCache.get(key);
-      imageFileCache.delete(key);
-      imageFileCache.set(key, file);
-      return file;
-    }
-    if (!message.imageDataUrl) throw new Error("A imagem preparada nao esta mais disponivel no WhatsApp.");
-    const file = await dataUrlFile(message.imageDataUrl, message.fileName);
-    return rememberImageFile(key, file);
   };
 
   const clickableGroupRow = (group) => {
@@ -295,9 +217,7 @@
     if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined") return false;
     try {
       window.focus();
-      const pngBlob = file.type === "image/png"
-        ? file
-        : new Blob([await file.arrayBuffer()], { type: "image/png" });
+      const pngBlob = new Blob([await file.arrayBuffer()], { type: "image/png" });
       await navigator.clipboard.write([new ClipboardItem({ "image/png": pngBlob })]);
       return true;
     } catch (error) {
@@ -326,7 +246,9 @@
     if (!captionBox) {
       throw new Error("O WhatsApp bloqueou a colagem da imagem. Mantenha a aba aberta e tente novamente.");
     }
+    await new Promise((resolve) => window.setTimeout(resolve, 260));
     await setEditableText(captionBox, caption);
+    await new Promise((resolve) => window.setTimeout(resolve, 110));
 
     const send = await waitFor(() => actionByLabel(["enviar", "send"])
       || [...document.querySelectorAll('[data-icon="send"]')].map((element) => element.closest("button, [role='button']")).find(visible), 10000, signal);
@@ -355,10 +277,11 @@
     if (!clean(message.groupName)) throw new Error("Informe o nome do grupo do WhatsApp.");
     if (!clean(message.text)) throw new Error("A mensagem do WhatsApp esta vazia.");
     await selectGroup(message.groupName, signal);
-    if (message.hasImage || message.imageDataUrl || message.imageCacheKey) {
-      const file = await imageFileForMessage(message);
+    if (message.imageDataUrl) {
+      const file = await dataUrlFile(message.imageDataUrl, message.fileName);
       await pasteOffer(file, message.text, signal, Boolean(message.clipboardPrepared));
-    } else await sendTextMessage(message.text, signal);
+    }
+    else await sendTextMessage(message.text, signal);
     return { ok: true };
   };
 

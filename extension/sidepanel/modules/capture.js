@@ -116,6 +116,7 @@
     await chrome.tabs.reload(tabId);
     await waitForProductDom(tabId, expectedUrl, signal, 32000);
     if (signal?.aborted) throw new Error("Envio interrompido.");
+    await runtime.delay(350);
 
     const refreshed = await requestAffiliateLink(tabId).catch(() => null);
     return isMeliAffiliateLink(refreshed?.affiliateLink)
@@ -197,8 +198,6 @@
         panel.product.updatePreview();
         await panel.product.persistDraft();
       }
-      panel.media?.prepareShare(panel.product.payload())
-        .catch((error) => runtime.reportError("prewarm-share-image", error));
       if (reconcile) {
         await panel.publishing?.reconcile(product).catch((error) => runtime.reportError("reconcile-product", error));
       }
@@ -231,10 +230,11 @@
     if (signal?.aborted) throw new Error("Envio interrompido.");
   }
 
-  async function focusWorker(tabId) {
-    // Ativar a aba e suficiente para componentes do marketplace que carregam
-    // sob demanda. Nao roube o foco da janela do usuario a cada produto.
-    return chrome.tabs.update(tabId, { active: true });
+  async function focusWorker(tabId, windowId = null) {
+    const tab = await chrome.tabs.update(tabId, { active: true });
+    const targetWindowId = windowId || tab.windowId;
+    if (targetWindowId) await chrome.windows.update(targetWindowId, { focused: true }).catch(() => {});
+    return tab;
   }
 
   function coreProductIsComplete(product) {
@@ -252,6 +252,7 @@
     await chrome.tabs.reload(tabId);
     await waitForProductDom(tabId, expectedUrl || tab.url, signal, timeout);
     assertBatchActive(signal);
+    await runtime.delay(250);
     return chrome.tabs.get(tabId);
   }
 
@@ -293,23 +294,20 @@
 
   async function waitForAffiliateSurface(tabId, expectedUrl, signal, timeout = 7000) {
     if (!/mercadolivre|mercadolibre/i.test(expectedUrl || "")) return true;
-    assertBatchActive(signal);
-    const execution = chrome.scripting.executeScript({
-      target: { tabId },
-      func: async (timeoutMs) => new Promise((resolve) => {
-        const visible = (element) => {
-          if (!element) return false;
-          const style = getComputedStyle(element);
-          const rect = element.getBoundingClientRect();
-          return style.display !== "none"
-            && style.visibility !== "hidden"
-            && rect.width > 0
-            && rect.height > 0
-            && rect.top < Math.max(1200, innerHeight * 1.25);
-        };
-        const read = () => [...document.querySelectorAll("button, [role='button'], a")]
-          .filter(visible)
-          .some((element) => {
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < timeout) {
+      assertBatchActive(signal);
+      const ready = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: () => {
+          const visible = (element) => {
+            if (!element) return false;
+            const style = getComputedStyle(element);
+            const rect = element.getBoundingClientRect();
+            return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
+          };
+          const controls = [...document.querySelectorAll("button, [role='button'], a")].filter(visible);
+          return controls.some((element) => {
             const label = [
               element.textContent,
               element.getAttribute("aria-label"),
@@ -323,47 +321,22 @@
             }
             return /afiliad|gerar\s+link/i.test(label);
           });
-
-        let done = false;
-        const finish = (value) => {
-          if (done) return;
-          done = true;
-          observer.disconnect();
-          clearTimeout(timer);
-          clearInterval(fallback);
-          resolve(value);
-        };
-        const inspect = () => { if (read()) finish(true); };
-        const observer = new MutationObserver(inspect);
-        observer.observe(document.documentElement, {
-          childList: true,
-          subtree: true,
-          attributes: true,
-          attributeFilter: ["class", "style", "aria-label", "title", "data-testid"],
-        });
-        const fallback = setInterval(inspect, 400);
-        const timer = setTimeout(() => finish(false), timeoutMs);
-        inspect();
-      }),
-      args: [timeout],
-    });
-    const result = await runtime.withTimeout(
-      execution,
-      timeout + 1500,
-      "O componente de afiliados demorou para carregar.",
-    ).catch(() => []);
-    assertBatchActive(signal);
-    return Boolean(result[0]?.result);
+        },
+      }).then((results) => Boolean(results[0]?.result)).catch(() => false);
+      if (ready) return true;
+      await runtime.delay(200);
+    }
+    return false;
   }
 
-  async function loadedWorker(tabId, url, signal, _windowId = null, { reloadOnIncomplete = true } = {}) {
-    void _windowId;
+  async function loadedWorker(tabId, url, signal, windowId = null, { reloadOnIncomplete = true } = {}) {
     assertBatchActive(signal);
-    await focusWorker(tabId);
+    await focusWorker(tabId, windowId);
     await waitForProductDom(tabId, url, signal, 45000);
     await pinWorkerToTop(tabId, url, signal);
     await waitForAffiliateSurface(tabId, url, signal);
     assertBatchActive(signal);
+    await runtime.delay(180);
 
     let tab = await chrome.tabs.get(tabId);
     let result = await extractFromTab(tab);
@@ -388,46 +361,50 @@
   }
 
   async function waitForProductDom(tabId, expectedUrl, signal, timeout = 45000) {
-    assertBatchActive(signal);
-    const execution = chrome.scripting.executeScript({
-      target: { tabId },
-      func: async (targetUrl, timeoutMs) => new Promise((resolve) => {
-        const productKey = (value) => {
-          const mercadoLivre = String(value).match(/\bMLB-?(\d{6,})\b/i);
-          if (mercadoLivre) return `mlb:${mercadoLivre[1]}`;
-          const shopee = String(value).match(/(?:i\.|\/product\/)(\d+)[./](\d+)/i);
-          if (shopee) return `shopee:${shopee[1]}:${shopee[2]}`;
-          try {
-            const parsed = new URL(value);
-            return `${parsed.origin}${parsed.pathname.replace(/\/$/, "")}`;
-          } catch {
+    const startedAt = Date.now();
+    let stableSignature = "";
+    let stableSamples = 0;
+    while (Date.now() - startedAt < timeout) {
+      assertBatchActive(signal);
+      const snapshot = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: (targetUrl) => {
+          const productKey = (value) => {
+            const mercadoLivre = String(value).match(/\bMLB-?(\d{6,})\b/i);
+            if (mercadoLivre) return `mlb:${mercadoLivre[1]}`;
+            const shopee = String(value).match(/(?:i\.|\/product\/)(\d+)[./](\d+)/i);
+            if (shopee) return `shopee:${shopee[1]}:${shopee[2]}`;
+            try {
+              const parsed = new URL(value);
+              return `${parsed.origin}${parsed.pathname.replace(/\/$/, "")}`;
+            } catch {
+              return "";
+            }
+          };
+          const visible = (element) => {
+            if (!element) return false;
+            const style = getComputedStyle(element);
+            const rect = element.getBoundingClientRect();
+            return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
+          };
+          const textFrom = (selectors) => {
+            for (const selector of selectors) {
+              const element = [...document.querySelectorAll(selector)].find(visible);
+              const text = String(element?.textContent || "").replace(/\s+/g, " ").trim();
+              if (text) return text;
+            }
             return "";
-          }
-        };
-        const visible = (element) => {
-          if (!element) return false;
-          const style = getComputedStyle(element);
-          const rect = element.getBoundingClientRect();
-          return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
-        };
-        const textFrom = (selectors) => {
-          for (const selector of selectors) {
-            const element = [...document.querySelectorAll(selector)].find(visible);
-            const text = String(element?.textContent || "").replace(/\s+/g, " ").trim();
-            if (text) return text;
-          }
-          return "";
-        };
-        const imageFrom = (selectors) => {
-          for (const selector of selectors) {
-            const image = [...document.querySelectorAll(selector)].find((element) => visible(element)
-              && Boolean(element.currentSrc || element.src || element.getAttribute("data-src")));
-            const source = image?.currentSrc || image?.src || image?.getAttribute("data-src") || "";
-            if (source) return source;
-          }
-          return document.querySelector('meta[property="og:image"]')?.content || "";
-        };
-        const snapshot = () => {
+          };
+          const imageFrom = (selectors) => {
+            for (const selector of selectors) {
+              const image = [...document.querySelectorAll(selector)].find((element) => visible(element)
+                && Boolean(element.currentSrc || element.src || element.getAttribute("data-src")));
+              const source = image?.currentSrc || image?.src || image?.getAttribute("data-src") || "";
+              if (source) return source;
+            }
+            return document.querySelector('meta[property="og:image"]')?.content || "";
+          };
+
           const title = textFrom([
             "h1.ui-pdp-title",
             ".ui-pdp-container h1",
@@ -460,67 +437,23 @@
             ready,
             signature: ready ? `${productKey(location.href)}|${title}|${price}|${image}` : "",
           };
-        };
+        },
+        args: [expectedUrl],
+      }).then((results) => results[0]?.result || { ready: false, signature: "" }).catch(() => ({ ready: false, signature: "" }));
 
-        let stableSignature = "";
-        let stableSamples = 0;
-        let lastStableAt = 0;
-        let done = false;
-        let inspectQueued = false;
-        const finish = (value) => {
-          if (done) return;
-          done = true;
-          observer.disconnect();
-          clearTimeout(timer);
-          clearInterval(stabilityClock);
-          resolve(value);
-        };
-        const inspect = () => {
-          inspectQueued = false;
-          const current = snapshot();
-          if (!current.ready) {
-            stableSignature = "";
-            stableSamples = 0;
-            lastStableAt = 0;
-            return;
-          }
-          const now = Date.now();
-          if (current.signature !== stableSignature) {
-            stableSignature = current.signature;
-            stableSamples = 1;
-            lastStableAt = now;
-          } else if (now - lastStableAt >= 120) {
-            stableSamples += 1;
-            lastStableAt = now;
-          }
-          if (stableSamples >= 3) finish(true);
-        };
-        const queueInspect = () => {
-          if (inspectQueued || done) return;
-          inspectQueued = true;
-          queueMicrotask(inspect);
-        };
-        const observer = new MutationObserver(queueInspect);
-        observer.observe(document.documentElement, {
-          childList: true,
-          subtree: true,
-          attributes: true,
-          characterData: true,
-          attributeFilter: ["src", "srcset", "content", "class", "style"],
-        });
-        const stabilityClock = setInterval(inspect, 150);
-        const timer = setTimeout(() => finish(false), timeoutMs);
-        inspect();
-      }),
-      args: [expectedUrl, timeout],
-    });
-    const result = await runtime.withTimeout(
-      execution,
-      timeout + 2000,
-      "O produto demorou para carregar.",
-    ).catch(() => []);
-    assertBatchActive(signal);
-    if (result[0]?.result) return;
+      if (snapshot.ready) {
+        if (snapshot.signature === stableSignature) stableSamples += 1;
+        else {
+          stableSignature = snapshot.signature;
+          stableSamples = 1;
+        }
+        if (stableSamples >= 3) return;
+      } else {
+        stableSignature = "";
+        stableSamples = 0;
+      }
+      await runtime.delay(180);
+    }
     throw new Error("O produto nao terminou de carregar nome, preco e imagem dentro do tempo esperado.");
   }
 
@@ -539,7 +472,7 @@
     state.navigationCaptureTimer = window.setTimeout(async () => {
       const selected = await activeTab().catch(() => null);
       if (selected?.id === tab.id && comparableUrl(selected?.url) === nextUrl) current();
-    }, 250);
+    }, 550);
   }
 
   panel.capture = {

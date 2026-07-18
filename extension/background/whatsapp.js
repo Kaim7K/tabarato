@@ -50,6 +50,7 @@
     await chrome.windows.update(tab.windowId, { focused: true });
     await chrome.tabs.update(tab.id, { active: true });
     await runtime.waitForTabComplete(tab.id, 30000, "O WhatsApp Web demorou para carregar.");
+    await runtime.delay(140);
     let clipboardPrepared = Boolean(message.clipboardPrepared);
     if (!clipboardPrepared && message.imageDataUrl) {
       clipboardPrepared = await clipboard.writeImage(message.imageDataUrl).catch((error) => {
@@ -59,35 +60,22 @@
     }
 
     const results = [];
-    const hasImage = Boolean(message.imageDataUrl);
-    const imageCacheKey = message.imageCacheKey
-      || (hasImage ? `${Date.now()}:${message.imageDataUrl.length}:${message.fileName || "oferta.png"}` : "");
-    for (let index = 0; index < groups.length; index += 1) {
-      const groupName = groups[index];
+    for (const groupName of groups) {
       if (operation.cancelled) {
         results.push({ groupName, ok: false, stopped: true, error: "Envio interrompido." });
         break;
       }
-      const payload = {
+      const result = await sendToContent(tab, {
         type: "TABARATO_WHATSAPP_SEND",
         groupName,
         text: message.text,
-        // Transfere a string Base64 pesada apenas uma vez. O content script
-        // reutiliza o arquivo em memoria nos demais grupos do mesmo lote.
-        imageDataUrl: index === 0 ? message.imageDataUrl || "" : "",
-        imageCacheKey,
-        hasImage,
+        imageDataUrl: message.imageDataUrl || "",
         fileName: message.fileName || "oferta.png",
         clipboardPrepared,
-      };
-      let result = await sendToContent(tab, payload);
-      if (!result?.ok && index > 0 && hasImage && /imagem preparada nao esta mais disponivel/i.test(result?.error || "")) {
-        // Se o WhatsApp recarregou entre grupos, restaura o cache sem repetir
-        // tentativas incertas de mensagens que talvez ja tenham sido enviadas.
-        result = await sendToContent(tab, { ...payload, imageDataUrl: message.imageDataUrl });
-      }
+      });
       if (!result?.ok) throw new Error(result?.error || `Nao foi possivel enviar para ${groupName}.`);
       results.push({ groupName, ok: true });
+      await runtime.delay(240);
     }
     return { ok: true, results, stopped: operation.cancelled };
   }

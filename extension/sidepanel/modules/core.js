@@ -103,8 +103,6 @@
     capturedPageUrl: "",
     shareImagePromise: null,
     shareImageKey: "",
-    sharePackagePromise: null,
-    sharePackageKey: "",
     batchController: null,
     batchWorkerTabId: null,
     batchWorkerTabIds: [],

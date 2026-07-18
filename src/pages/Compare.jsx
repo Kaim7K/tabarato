@@ -6,7 +6,7 @@ import { StoreBadge } from "@/components/BrandIcons";
 import { EmptyState, LoadingState, PageShell, SectionHeader } from "@/components/PublicUi";
 import { formatPrice } from "@/lib/catalog";
 import { useOfferTools } from "@/lib/OfferToolsContext";
-import { listPublicOffersByIds } from "@/lib/offersApi";
+import { listPublicOffers } from "@/lib/offersApi";
 import { useDocumentMetadata } from "@/hooks/useDocumentMetadata";
 
 export default function Compare() {
@@ -16,13 +16,7 @@ export default function Compare() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const controller = new AbortController();
-    setLoading(true);
-    listPublicOffersByIds(compareIds, { signal: controller.signal })
-      .then(setOffers)
-      .catch(() => {})
-      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
-    return () => controller.abort();
+    listPublicOffers({ limit: 100 }).then((items) => setOffers(items.filter((item) => compareIds.includes(item.id)))).finally(() => setLoading(false));
   }, [compareIds]);
 
   const removeOffer = (id) => {

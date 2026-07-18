@@ -29,17 +29,15 @@ export default async function handler(req, res) {
         if (isAdminAuthorized(req)) return sendJson(res, 200, { clicks: 0, counted: false, reason: "admin" });
         const visitorId = String(req.body?.visitorId || "");
         if (!/^[0-9a-f-]{36}$/i.test(visitorId)) return sendJson(res, 400, { error: "Visitante invalido." });
+        await query(
+          `INSERT INTO site_visitors (visitor_id) VALUES ($1)
+           ON CONFLICT (visitor_id) DO UPDATE SET last_seen_at=NOW()`,
+          [visitorId]
+        );
         const event = await query(
-          `WITH visitor AS (
-             INSERT INTO site_visitors (visitor_id)
-             VALUES ($2)
-             ON CONFLICT (visitor_id) DO UPDATE SET last_seen_at=NOW()
-             RETURNING visitor_id
-           )
-           INSERT INTO site_analytics_events (event_type, offer_id, visitor_id)
-           SELECT 'click', $1, visitor_id FROM visitor
-           ON CONFLICT (event_type, offer_id, visitor_id, event_day) DO NOTHING
-           RETURNING id`,
+          `INSERT INTO site_analytics_events (event_type, offer_id, visitor_id)
+           VALUES ('click', $1, $2)
+           ON CONFLICT (event_type, offer_id, visitor_id, event_day) DO NOTHING RETURNING id`,
           [req.query.id, visitorId]
         );
         if (!event.rowCount) return sendJson(res, 200, { counted: false, reason: "duplicate" });

@@ -68,8 +68,6 @@
   function invalidateShareImage() {
     state.shareImagePromise = null;
     state.shareImageKey = "";
-    state.sharePackagePromise = null;
-    state.sharePackageKey = "";
   }
 
   function updatePreview() {

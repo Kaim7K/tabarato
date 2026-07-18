@@ -216,7 +216,10 @@
   const activateAffiliateOutput = async (dialog) => {
     const controls = affiliateOutputControls(dialog);
     const productLinkTab = controls.find((element) => /^(?:link\s+do\s+produto|produto)$/i.test(controlLabel(element)));
-    if (productLinkTab) productLinkTab.click();
+    if (productLinkTab) {
+      productLinkTab.click();
+      await new Promise((resolve) => window.setTimeout(resolve, 180));
+    }
     const generateControl = affiliateOutputControls(dialog)
       .find((element) => /^(?:gerar|gerar\s+link|criar\s+link)$/i.test(controlLabel(element)));
     generateControl?.click();
@@ -250,7 +253,10 @@
 
     for (let attempt = 0; attempt < 3; attempt += 1) {
       await stabilizePageTop();
-      if (attempt > 0) await closeAffiliateDialog().catch(() => {});
+      if (attempt > 0) {
+        await closeAffiliateDialog().catch(() => {});
+        await new Promise((resolve) => window.setTimeout(resolve, 350 * attempt));
+      }
       const dialog = await openAffiliateDialog(attempt);
       if (!dialog) continue;
       let link = readProductLink(dialog);

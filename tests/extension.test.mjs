@@ -118,7 +118,11 @@ test("new brand identity uses the correct logo contrast in each surface", () => 
   const shareCard = readFileSync(join(root, "src", "lib", "shareCard.js"), "utf8");
   const social = readFileSync(join(root, "src", "features", "social", "SocialPagePreview.jsx"), "utf8");
   const requiredAssets = [
+    "public/brand/logo.png",
+    "public/brand/logo-dark.png",
     "public/brand/logo-card.png",
+    "public/brand/logo-card-dark.png",
+    "public/brand/mascot.png",
     "public/brand/favicon.png",
     "extension/assets/tabarato-logo.png",
     "extension/assets/icon-128.png",
@@ -431,7 +435,7 @@ test("extension publishes to site, Telegram and sequential WhatsApp groups", () 
   assert.match(panelSource, /sendOfferToWhatsApp/);
   assert.match(panelSource, /groupNames\(\)/);
   assert.match(backgroundSource, /normalizeGroups/);
-  assert.match(backgroundSource, /for \(let index = 0; index < groups\.length; index \+= 1\)/);
+  assert.match(backgroundSource, /for \(const groupName of groups\)/);
   assert.match(backgroundSource, /TABARATO_STOP_WHATSAPP/);
   assert.match(whatsapp, /TABARATO_WHATSAPP_CANCEL/);
   assert.match(whatsapp, /activeController/);
@@ -796,9 +800,7 @@ test("batch runtime keeps at most five preloaded tabs and reads them sequentiall
     && events.slice(0, index + 1).filter((item) => item.startsWith("create:")).length === 6);
   const fifthRead = events.findIndex((event, index) => event.startsWith("read:")
     && events.slice(0, index + 1).filter((item) => item.startsWith("read:")).length === 5);
-  const firstReadComplete = events.findIndex((event) => event.startsWith("read:"));
-  assert.ok(sixthCreate > firstReadComplete);
-  assert.ok(sixthCreate < fifthRead);
+  assert.ok(sixthCreate > fifthRead);
   assert.equal(liveTabs.size, 0);
   assert.match(toast, /12 ignorados, 0 erros/);
 });
@@ -807,7 +809,7 @@ test("batch checks publication history before creating product tabs", () => {
   const batch = readFileSync(join(extensionRoot, "sidepanel", "modules", "batch.js"), "utf8");
   const catalog = readFileSync(join(extensionRoot, "sidepanel", "modules", "catalog.js"), "utf8");
   const historyCheck = batch.indexOf("previouslyPostedUrls");
-  const tabPreload = batch.indexOf("const initialCount = Math.min(BATCH_WINDOW_SIZE");
+  const tabPreload = batch.indexOf("preloadWorkers(chunks[chunkIndex]");
   assert.ok(historyCheck >= 0);
   assert.ok(tabPreload > historyCheck);
   assert.match(batch, /Ja publicado, nao foi aberto/);

@@ -320,46 +320,15 @@
     return findAffiliateLink(affiliatePattern) || location.href;
   };
 
-  const waitFor = (read, timeout = 7000) => new Promise((resolve) => {
-    let settled = false;
-    let queued = false;
-    let observer = null;
-    let fallback = null;
-    let timer = null;
-    const finish = (value) => {
-      if (settled) return;
-      settled = true;
-      observer?.disconnect();
-      if (fallback) window.clearInterval(fallback);
-      if (timer) window.clearTimeout(timer);
-      resolve(value || "");
-    };
-    const inspect = () => {
-      queued = false;
-      try {
-        const value = read();
-        if (value) finish(value);
-      } catch {
-        /* A pagina pode estar substituindo o no enquanto a leitura ocorre. */
-      }
-    };
-    const queueInspect = () => {
-      if (settled || queued) return;
-      queued = true;
-      queueMicrotask(inspect);
-    };
-    observer = new MutationObserver(queueInspect);
-    observer.observe(document.documentElement, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      characterData: true,
-      attributeFilter: ["class", "style", "value", "aria-label", "title", "data-testid"],
-    });
-    fallback = window.setInterval(inspect, 250);
-    timer = window.setTimeout(() => finish(""), timeout);
-    inspect();
-  });
+  const waitFor = async (read, timeout = 7000) => {
+    const startedAt = Date.now();
+    let value = read();
+    while (!value && Date.now() - startedAt < timeout) {
+      await new Promise((resolve) => window.setTimeout(resolve, 150));
+      value = read();
+    }
+    return value || "";
+  };
 
   const canonicalUrl = () => attribute("href", 'link[rel="canonical"]') || location.href;
 
@@ -373,11 +342,8 @@
       controls.slice(0, 10).forEach((element) => element.click());
       document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true }));
       document.dispatchEvent(new KeyboardEvent("keyup", { key: "Escape", code: "Escape", bubbles: true }));
-      const closed = await waitFor(
-        () => ![...document.querySelectorAll("[role='dialog'], [aria-modal='true'], .andes-modal")].some(visible),
-        800,
-      );
-      if (closed) break;
+      await new Promise((resolve) => window.setTimeout(resolve, 260));
+      if (![...document.querySelectorAll("[role='dialog'], [aria-modal='true'], .andes-modal")].some(visible)) break;
     }
   };
 
