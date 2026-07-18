@@ -15,17 +15,25 @@ function listFiles(dir, extension) {
   });
 }
 
+const backgroundSource = listFiles(join(extensionRoot, "background"), ".js")
+  .map((path) => readFileSync(path, "utf8"))
+  .join("\n");
+const panelSource = [
+  readFileSync(join(extensionRoot, "sidepanel", "app.js"), "utf8"),
+  ...listFiles(join(extensionRoot, "sidepanel", "modules"), ".js").map((path) => readFileSync(path, "utf8")),
+].join("\n");
+
 test("extension manifest is Manifest V3 and references existing files", () => {
   const manifest = JSON.parse(readFileSync(join(extensionRoot, "manifest.json"), "utf8"));
   assert.equal(manifest.manifest_version, 3);
   assert.equal(manifest.background.service_worker, "background/service-worker.js");
   assert.equal(manifest.side_panel.default_path, "sidepanel/index.html");
-  assert.equal(manifest.minimum_chrome_version, "116");
+  assert.equal(manifest.minimum_chrome_version, "141");
   assert.ok(manifest.permissions.includes("sidePanel"));
   assert.ok(manifest.permissions.includes("clipboardRead"));
   assert.ok(manifest.permissions.includes("clipboardWrite"));
   assert.ok(manifest.permissions.includes("debugger"));
-  assert.ok(manifest.permissions.includes("offscreen"));
+  assert.ok(!manifest.permissions.includes("offscreen"));
   assert.ok(manifest.host_permissions.includes("https://*/*"));
   assert.ok(manifest.content_scripts.some((entry) => entry.js.includes("content/stores/generic.js")));
   assert.ok(manifest.content_scripts.some((entry) => entry.matches.includes("https://web.whatsapp.com/*")));
@@ -40,37 +48,34 @@ test("extension manifest is Manifest V3 and references existing files", () => {
     ...manifest.content_scripts.flatMap((entry) => entry.js),
   ];
   assert.ok(referencedFiles.every((path) => existsSync(join(extensionRoot, path))));
+  assert.match(backgroundSource, /access\.js/);
+  assert.match(backgroundSource, /chrome\.sidePanel\.close/);
   assert.match(readFileSync(join(extensionRoot, "sidepanel", "index.html"), "utf8"), /product-utils\.js/);
 });
 
 test("extension uses the official domain and migrates the former Vercel address", () => {
   const config = readFileSync(join(extensionRoot, "shared", "config.js"), "utf8");
-  const background = readFileSync(join(extensionRoot, "background", "service-worker.js"), "utf8");
-  const panel = readFileSync(join(extensionRoot, "sidepanel", "app.js"), "utf8");
   assert.match(config, /https:\/\/www\.tabaratoofertas\.shop/);
   assert.match(config, /https:\/\/tabaratoofertas\.vercel\.app/);
-  assert.match(background, /migrateStoredBaseUrl/);
-  assert.match(panel, /brandConfig\.migrateBaseUrl/);
+  assert.match(backgroundSource, /migrateStoredBaseUrl/);
+  assert.match(panelSource, /brandConfig\.migrateBaseUrl/);
 });
 
 test("extension action and launcher stay hidden outside allowed pages", () => {
-  const background = readFileSync(join(extensionRoot, "background", "service-worker.js"), "utf8");
   const content = readFileSync(join(extensionRoot, "content", "index.js"), "utf8");
-  assert.match(background, /builtInAllowedHost/);
-  assert.match(background, /tabarato_connected_store_hosts/);
-  assert.match(background, /configuredOrigin/);
-  assert.match(background, /registerContentScripts/);
-  assert.match(background, /tabarato-connected-stores/);
-  assert.match(background, /scheduleExtensionInitialization/);
-  assert.match(background, /Promise\.allSettled/);
-  assert.match(background, /chrome\.action\.disable/);
-  assert.match(background, /chrome\.sidePanel\.setOptions/);
-  assert.match(background, /typeof chrome\.sidePanel\.close === "function"/);
-  assert.match(background, /chrome\.sidePanel\.close\(\{ windowId: tab\.windowId \}\)/);
-  assert.match(background, /chrome\.sidePanel\.open\(\{ windowId: sender\.tab\.windowId \}\)/);
-  assert.match(background, /openPanelOnActionClick: false/);
-  assert.match(background, /chrome\.action\.onClicked/);
-  assert.doesNotMatch(background, /setOptions\(\{ tabId, path:/);
+  assert.match(backgroundSource, /builtInAllowedHost/);
+  assert.match(backgroundSource, /tabarato_connected_store_hosts/);
+  assert.match(backgroundSource, /configuredOrigin/);
+  assert.match(backgroundSource, /registerContentScripts/);
+  assert.match(backgroundSource, /tabarato-connected-stores/);
+  assert.match(backgroundSource, /scheduleInitialization/);
+  assert.match(backgroundSource, /Promise\.allSettled/);
+  assert.match(backgroundSource, /chrome\.action\.disable/);
+  assert.match(backgroundSource, /chrome\.sidePanel\.setOptions/);
+  assert.match(backgroundSource, /chrome\.sidePanel\.close\(\{ windowId: tab\.windowId \}\)/);
+  assert.match(backgroundSource, /chrome\.sidePanel\.open\(\{ windowId: sender\.tab\.windowId \}\)/);
+  assert.match(backgroundSource, /openPanelOnActionClick: false/);
+  assert.match(backgroundSource, /chrome\.action\.onClicked/);
   assert.match(content, /TABARATO_IS_ALLOWED_PAGE/);
   assert.match(content, /existing\?\.(?:remove|remove\(\))/);
   assert.match(content, /assets\/icon-128\.png/);
@@ -81,6 +86,24 @@ test("all extension JavaScript files have valid syntax", () => {
   listFiles(extensionRoot, ".js").forEach((path) => {
     assert.doesNotThrow(() => new vm.Script(readFileSync(path, "utf8"), { filename: path }));
   });
+});
+
+test("extension entry points delegate work to focused modules", () => {
+  const panelEntry = readFileSync(join(extensionRoot, "sidepanel", "app.js"), "utf8");
+  const workerEntry = readFileSync(join(extensionRoot, "background", "service-worker.js"), "utf8");
+  assert.ok(panelEntry.split(/\r?\n/).length < 220);
+  assert.ok(workerEntry.split(/\r?\n/).length < 140);
+  ["api", "batch", "capture", "catalog", "core", "media", "product", "publishing"].forEach((module) => {
+    assert.ok(existsSync(join(extensionRoot, "sidepanel", "modules", `${module}.js`)));
+  });
+  ["access", "coupons", "whatsapp"].forEach((module) => {
+    assert.ok(existsSync(join(extensionRoot, "background", `${module}.js`)));
+  });
+});
+
+test("production extension contains no development console logging", () => {
+  const source = listFiles(extensionRoot, ".js").map((path) => readFileSync(path, "utf8")).join("\n");
+  assert.doesNotMatch(source, /console\.(?:log|debug|warn)\s*\(/);
 });
 
 test("new brand identity uses the correct logo contrast in each surface", () => {
@@ -113,9 +136,8 @@ test("new brand identity uses the correct logo contrast in each surface", () => 
 
 test("every side panel selector references an existing element", () => {
   const html = readFileSync(join(extensionRoot, "sidepanel", "index.html"), "utf8");
-  const app = readFileSync(join(extensionRoot, "sidepanel", "app.js"), "utf8");
   const ids = new Set([...html.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]));
-  const requested = [...app.matchAll(/getElementById\("([^"]+)"\)/g)].map((match) => match[1]);
+  const requested = [...panelSource.matchAll(/(?:getElementById|byId)\("([^"]+)"\)/g)].map((match) => match[1]);
   assert.deepEqual(requested.filter((id) => !ids.has(id)), []);
 });
 
@@ -127,10 +149,12 @@ test("extension never embeds admin secrets or captured HTML", () => {
 });
 
 test("capture extracts requested product fields and closes store popups", () => {
+  const couponCode = readFileSync(join(extensionRoot, "shared", "coupon-code.js"), "utf8");
   const shared = readFileSync(join(extensionRoot, "content", "shared.js"), "utf8");
   const meli = readFileSync(join(extensionRoot, "content", "stores", "mercado-livre.js"), "utf8");
   const shopee = readFileSync(join(extensionRoot, "content", "stores", "shopee.js"), "utf8");
   assert.match(shared, /firstUsefulParagraph/);
+  assert.match(shared, /meaningfulParagraph/);
   assert.match(shared, /couponCandidates/);
   assert.match(shared, /couponCandidates = \(root = document\)/);
   assert.doesNotMatch(shared, /Cupom disponivel no anuncio\. Ative antes de comprar\./);
@@ -154,7 +178,7 @@ test("capture extracts requested product fields and closes store popups", () => 
   assert.match(meli, /affiliateLinkType: affiliateLink \? "mercado-livre-generated" : "missing"/);
   assert.doesNotMatch(meli, /affiliateLink: affiliateLink \|\| tools\.affiliateLink\(\)/);
   assert.doesNotMatch(meli, /promotionSummary/);
-  assert.match(shared, /\(\?:Com\|COM\)/);
+  assert.match(couponCode, /\(\?:Com\|COM\)/);
   assert.match(meli, /await tools\.closeTransientDialogs/);
   assert.match(shopee, /couponCandidates/);
   assert.match(shopee, /confidence/);
@@ -162,6 +186,7 @@ test("capture extracts requested product fields and closes store popups", () => 
 });
 
 test("coupon parser reads explicit Com CODE labels and never invents a coupon", () => {
+  const couponCodeSource = readFileSync(join(extensionRoot, "shared", "coupon-code.js"), "utf8");
   const source = readFileSync(join(extensionRoot, "content", "shared.js"), "utf8");
   const document = { body: { innerText: "Cupons do Mercado Livre Com MELIMODA 20% OFF" }, querySelectorAll: () => [] };
   const context = {
@@ -171,13 +196,19 @@ test("coupon parser reads explicit Com CODE labels and never invents a coupon", 
     location: { href: "https://produto.mercadolivre.com.br/MLB-123", hostname: "produto.mercadolivre.com.br" },
   };
   context.globalThis = context;
+  vm.runInNewContext(couponCodeSource, context, { filename: "coupon-code.js" });
   vm.runInNewContext(source, context, { filename: "shared.js" });
   assert.equal(context.TaBaratoCapture.couponCandidates()[0]?.value, "MELIMODA");
+  document.body.innerText = "Cupom Fralda Roupa Intima Descartavel";
+  assert.equal(context.TaBaratoCapture.couponCandidates().length, 0);
+  document.body.innerText = "Cupom: FRALDA10 20% OFF";
+  assert.equal(context.TaBaratoCapture.couponCandidates()[0]?.value, "FRALDA10");
   document.body.innerText = "Ver cupons disponiveis. Preco com cupom R$ 79,92.";
   assert.equal(context.TaBaratoCapture.couponCandidates().length, 0);
 });
 
 test("Mercado Livre pricing reads the installment total and only explicit free shipping", () => {
+  const couponCodeSource = readFileSync(join(extensionRoot, "shared", "coupon-code.js"), "utf8");
   const source = readFileSync(join(extensionRoot, "content", "shared.js"), "utf8");
   const document = { body: { innerText: "" }, querySelectorAll: () => [] };
   const context = {
@@ -187,6 +218,7 @@ test("Mercado Livre pricing reads the installment total and only explicit free s
     location: { href: "https://produto.mercadolivre.com.br/MLB-123", hostname: "produto.mercadolivre.com.br" },
   };
   context.globalThis = context;
+  vm.runInNewContext(couponCodeSource, context, { filename: "coupon-code.js" });
   vm.runInNewContext(source, context, { filename: "shared.js" });
 
   assert.equal(
@@ -204,32 +236,29 @@ test("Mercado Livre pricing reads the installment total and only explicit free s
 });
 
 test("WhatsApp and Telegram omit coupon rows when the code is empty", () => {
-  const app = readFileSync(join(extensionRoot, "sidepanel", "app.js"), "utf8");
   const telegram = readFileSync(join(root, "api", "_lib", "telegram.js"), "utf8");
-  assert.match(app, /if \(payload\.coupon\) lines\.push/);
+  assert.match(panelSource, /if \(payload\.coupon\) lines\.push/);
   assert.match(telegram, /if \(offer\.coupon\) lines\.push/);
 });
 
 test("side panel provides groups, admin, modes, batch and custom messages", () => {
   const html = readFileSync(join(extensionRoot, "sidepanel", "index.html"), "utf8");
-  const app = readFileSync(join(extensionRoot, "sidepanel", "app.js"), "utf8");
   assert.match(html, /id="groups-toggle"/);
   assert.match(html, /id="admin-panel-button"/);
   assert.match(html, /id="mode-single"/);
   assert.match(html, /id="mode-batch"/);
   assert.match(html, /id="batch-limit"/);
   assert.match(html, /id="custom-message"/);
-  assert.match(app, /function groupNames/);
-  assert.match(app, /function setMode/);
-  assert.match(app, /async function startBatch/);
-  assert.match(app, /async function sendCustomMessage/);
-  assert.match(app, /action=send-custom/);
+  assert.match(panelSource, /function groupNames/);
+  assert.match(panelSource, /function setMode/);
+  assert.match(panelSource, /async function start\(/);
+  assert.match(panelSource, /async function sendCustomMessage/);
+  assert.match(panelSource, /action=send-custom/);
 });
 
 test("batch mode canonicalizes product routes and reuses one worker tab", () => {
   const html = readFileSync(join(extensionRoot, "sidepanel", "index.html"), "utf8");
   const batchSource = readFileSync(join(extensionRoot, "sidepanel", "batch-utils.js"), "utf8");
-  const app = readFileSync(join(extensionRoot, "sidepanel", "app.js"), "utf8");
   const content = readFileSync(join(extensionRoot, "content", "index.js"), "utf8");
   const context = { URL };
   context.globalThis = context;
@@ -261,37 +290,34 @@ test("batch mode canonicalizes product routes and reuses one worker tab", () => 
     [],
   );
   assert.match(html, /src="batch-utils\.js"/);
-  assert.match(app, /captureUrlInBatchTab/);
-  assert.match(app, /batchWorkerTabId/);
-  assert.match(app, /url: "about:blank"/);
-  assert.match(app, /normalizeProductUrls/);
-  assert.match(app, /reviewProduct/);
-  assert.doesNotMatch(app, /captureUrlInTempTab/);
+  assert.match(panelSource, /urlInWorker/);
+  assert.match(panelSource, /batchWorkerTabId/);
+  assert.match(panelSource, /url: "about:blank"/);
+  assert.match(panelSource, /normalizeProductUrls/);
+  assert.match(panelSource, /reviewProduct/);
+  assert.doesNotMatch(panelSource, /captureUrlInTempTab/);
   assert.match(content, /storeId: adapter\?\.id/);
 });
 
 test("extension publishes to site, Telegram and sequential WhatsApp groups", () => {
-  const app = readFileSync(join(extensionRoot, "sidepanel", "app.js"), "utf8");
-  const background = readFileSync(join(extensionRoot, "background", "service-worker.js"), "utf8");
   const whatsapp = readFileSync(join(extensionRoot, "content", "whatsapp.js"), "utf8");
-  assert.match(app, /\/api\/admin\/ofertas/);
-  assert.match(app, /\/publicar/);
-  assert.match(app, /sendOfferToWhatsApp/);
-  assert.match(app, /groupNames\(\)/);
-  assert.match(background, /normalizeGroups/);
-  assert.match(background, /for \(const groupName of groups\)/);
-  assert.match(background, /TABARATO_STOP_WHATSAPP/);
+  assert.match(panelSource, /\/api\/admin\/ofertas/);
+  assert.match(panelSource, /\/publicar/);
+  assert.match(panelSource, /sendOfferToWhatsApp/);
+  assert.match(panelSource, /groupNames\(\)/);
+  assert.match(backgroundSource, /normalizeGroups/);
+  assert.match(backgroundSource, /for \(const groupName of groups\)/);
+  assert.match(backgroundSource, /TABARATO_STOP_WHATSAPP/);
   assert.match(whatsapp, /TABARATO_WHATSAPP_CANCEL/);
   assert.match(whatsapp, /activeController/);
 });
 
 test("offer artwork matches the requested premium share card", () => {
-  const app = readFileSync(join(extensionRoot, "sidepanel", "app.js"), "utf8");
   const artwork = readFileSync(join(extensionRoot, "sidepanel", "artwork.js"), "utf8");
-  assert.match(app, /imageSceneScore/);
-  assert.match(app, /assets\/tabarato-logo\.png/);
-  assert.match(app, /assets\/mercado-livre\.png/);
-  assert.match(app, /assets\/shopee\.svg/);
+  assert.match(panelSource, /imageSceneScore/);
+  assert.match(panelSource, /assets\/tabarato-logo\.png/);
+  assert.match(panelSource, /assets\/mercado-livre\.png/);
+  assert.match(panelSource, /assets\/shopee\.svg/);
   assert.match(artwork, /createOfferArtwork/);
   assert.match(artwork, /discountPercent/);
   assert.match(artwork, /subjectBounds/);
@@ -305,31 +331,28 @@ test("offer artwork matches the requested premium share card", () => {
 });
 
 test("WhatsApp artwork is copied and pasted without file attachment inputs", () => {
-  const background = readFileSync(join(extensionRoot, "background", "service-worker.js"), "utf8");
-  const offscreen = readFileSync(join(extensionRoot, "offscreen", "clipboard.js"), "utf8");
+  const media = readFileSync(join(extensionRoot, "sidepanel", "modules", "media.js"), "utf8");
   const whatsapp = readFileSync(join(extensionRoot, "content", "whatsapp.js"), "utf8");
-  assert.ok(existsSync(join(extensionRoot, "offscreen", "index.html")));
-  assert.match(background, /chrome\.offscreen\.createDocument/);
-  assert.match(background, /prepareWhatsAppClipboard/);
-  assert.match(offscreen, /navigator\.clipboard\.write/);
-  assert.match(offscreen, /ClipboardItem/);
-  assert.match(whatsapp, /dispatchImagePaste/);
+  assert.match(media, /navigator\.clipboard\.write/);
+  assert.match(media, /ClipboardItem/);
+  assert.match(media, /copyImageToClipboard/);
+  assert.doesNotMatch(backgroundSource, /chrome\.offscreen/);
   assert.match(whatsapp, /clipboardPrepared/);
   assert.match(whatsapp, /execCommand\("paste"\)/);
-  assert.doesNotMatch(whatsapp, /Nao foi possivel copiar a imagem para o clipboard/);
+  assert.match(whatsapp, /Nao foi possivel copiar a imagem para o clipboard/);
+  assert.doesNotMatch(whatsapp, /transfer\.items\.add\(file\)|dispatchImagePaste/);
   assert.doesNotMatch(whatsapp, /input\[type=["']file["']\]/);
 });
 
 test("duplicate products are reconciled automatically by price movement", () => {
-  const app = readFileSync(join(extensionRoot, "sidepanel", "app.js"), "utf8");
   const itemRoute = readFileSync(join(root, "api", "admin", "ofertas", "[id].js"), "utf8");
   const publishRoute = readFileSync(join(root, "api", "admin", "ofertas", "[id]", "publicar.js"), "utf8");
   const publisher = readFileSync(join(root, "api", "_lib", "publisher.js"), "utf8");
-  assert.match(app, /reconcileExistingOffer/);
-  assert.match(app, /nextPrice < oldPrice/);
-  assert.match(app, /method: "PATCH"/);
-  assert.match(app, /method: "DELETE"/);
-  assert.match(app, /forceRepublish: true/);
+  assert.match(panelSource, /async function reconcile/);
+  assert.match(panelSource, /nextPrice < oldPrice/);
+  assert.match(panelSource, /method: "PATCH"/);
+  assert.match(panelSource, /method: "DELETE"/);
+  assert.match(panelSource, /forceRepublish: true/);
   assert.match(itemRoute, /allowExtension: true/);
   assert.match(itemRoute, /handleExtensionCors/);
   assert.match(publishRoute, /forceRepublish/);
@@ -337,59 +360,59 @@ test("duplicate products are reconciled automatically by price movement", () => 
 });
 
 test("extension synchronizes categories and connected store hosts from the site", () => {
-  const app = readFileSync(join(extensionRoot, "sidepanel", "app.js"), "utf8");
   const generic = readFileSync(join(extensionRoot, "content", "stores", "generic.js"), "utf8");
   const listRoute = readFileSync(join(root, "api", "admin", "ofertas", "index.js"), "utf8");
-  assert.match(app, /synchronizeCatalog/);
-  assert.match(app, /CONNECTED_HOSTS_KEY/);
-  assert.match(app, /connectedStoreHosts/);
+  assert.match(panelSource, /async function synchronize/);
+  assert.match(panelSource, /connectedHosts/);
+  assert.match(panelSource, /connectedStoreHosts/);
   assert.match(generic, /matchesConnectedStore/);
   assert.match(generic, /tabarato_connected_store_hosts/);
   assert.match(listRoute, /connectedStoreHostsFromOffers/);
 });
 
 test("extension persists the active product and exposes admin mode to the site", () => {
-  const sidePanelApp = readFileSync(join(extensionRoot, "sidepanel", "app.js"), "utf8");
   const contentIndex = readFileSync(join(extensionRoot, "content", "index.js"), "utf8");
-  assert.match(sidePanelApp, /tabarato_product_draft/);
-  assert.match(sidePanelApp, /persistProductDraft/);
+  assert.match(panelSource, /tabarato_product_draft/);
+  assert.match(panelSource, /persistDraft/);
   assert.match(contentIndex, /tabaratoExtensionAdmin/);
   assert.match(contentIndex, /tabarato:admin-extension/);
 });
 
-test("extension offers coupon activation and compact icon actions", () => {
-  const background = readFileSync(join(extensionRoot, "background", "service-worker.js"), "utf8");
+test("coupon activation uses confirmed filters and trusted Chrome input", () => {
   const sidePanelHtml = readFileSync(join(extensionRoot, "sidepanel", "index.html"), "utf8");
-  const sidePanelApp = readFileSync(join(extensionRoot, "sidepanel", "app.js"), "utf8");
   const sidePanelStyles = readFileSync(join(extensionRoot, "sidepanel", "styles.css"), "utf8");
   const coupons = readFileSync(join(root, "extension", "content", "coupons.js"), "utf8");
   assert.match(sidePanelHtml, /activate-coupons-button/);
   assert.match(sidePanelHtml, /id="message-headline"/);
   assert.match(sidePanelHtml, /action-icon-button/);
-  assert.match(coupons, /TABARATO_ACTIVATE_COUPONS/);
-  assert.match(coupons, /applyInactiveFilter/);
-  assert.match(coupons, /filtrar\(\?: e ordenar\)/);
+  assert.match(coupons, /TABARATO_START_COUPONS/);
+  assert.match(coupons, /TABARATO_STOP_COUPONS/);
+  assert.match(coupons, /ensureCouponFilters/);
+  assert.match(coupons, /filtrar e ordenar/);
   assert.match(coupons, /nao ativados/);
-  assert.match(coupons, /inactiveFilterChipVisible/);
-  assert.match(coupons, /newestFilterChipVisible/);
-  assert.match(coupons, /inactiveFilterRoute/);
+  assert.match(coupons, /inactiveFilterApplied/);
+  assert.match(coupons, /newestOrderApplied/);
   assert.match(coupons, /Nao ativados, Mais novos/);
   assert.match(coupons, /activationControls/);
-  assert.match(coupons, /\^\(ativar\|aplicar\|resgatar\)/);
-  assert.match(coupons, /TABARATO_COUPON_TRUSTED_CLICK/);
+  assert.match(coupons, /ACTION_PATTERN/);
+  assert.match(coupons, /TABARATO_COUPON_CLICK/);
   assert.match(coupons, /activationConfirmed/);
-  assert.match(coupons, /trustedClicks/);
-  assert.match(background, /globalThis\.__TABARATO_COUPON_AUTOMATION__/);
-  assert.match(background, /automation\.activate\(couponLimit\)/);
-  assert.match(background, /Input\.dispatchMouseEvent/);
-  assert.match(background, /chrome\.debugger\.attach/);
-  assert.match(background, /chrome\.debugger\.detach/);
-  assert.match(background, /cupons\/filter\?new=true/);
-  assert.match(background, /\^\\\/cupons\(\?:\\\/\|\$\)/);
-  assert.match(sidePanelApp, /isCouponManagementUrl/);
-  assert.match(background, /chrome\.action\.onClicked/);
-  assert.match(background, /chrome\.tabs\.query\(\{\}\)/);
-  assert.match(sidePanelApp, /Capturando o novo produto/);
+  assert.doesNotMatch(coupons, /dispatchEvent|\.click\(\)/);
+  assert.match(backgroundSource, /activeOperation/);
+  assert.match(backgroundSource, /activeOperation\.id !== message\.operationId/);
+  assert.match(backgroundSource, /TABARATO_START_COUPONS/);
+  assert.match(backgroundSource, /TABARATO_STOP_ML_COUPONS/);
+  assert.match(backgroundSource, /Input\.dispatchMouseEvent/);
+  assert.match(backgroundSource, /chrome\.debugger\.attach/);
+  assert.match(backgroundSource, /chrome\.debugger\.detach/);
+  assert.match(backgroundSource, /cupons\/filter\?new=true/);
+  assert.match(backgroundSource, /\^\\\/cupons\(\?:\\\/\|\$\)/);
+  assert.match(panelSource, /couponActivationRunning/);
+  assert.match(panelSource, /Parar cupons/);
+  assert.match(panelSource, /isCouponManagementUrl/);
+  assert.match(backgroundSource, /chrome\.action\.onClicked/);
+  assert.match(backgroundSource, /chrome\.tabs\.query\(\{\}\)/);
+  assert.match(panelSource, /Capturando o novo produto/);
   assert.match(sidePanelStyles, /position: fixed/);
   assert.match(sidePanelStyles, /Montserrat/);
 });
@@ -408,13 +431,18 @@ test("side panel supports persistent light and dark themes", () => {
 });
 
 test("side panel product utilities normalize prices and message benefits", () => {
+  const couponCodeSource = readFileSync(join(extensionRoot, "shared", "coupon-code.js"), "utf8");
   const source = readFileSync(join(extensionRoot, "sidepanel", "product-utils.js"), "utf8");
   const context = { Intl, Number, Set, String, URL };
   context.globalThis = context;
+  vm.runInNewContext(couponCodeSource, context, { filename: "coupon-code.js" });
   vm.runInNewContext(source, context, { filename: "product-utils.js" });
   assert.equal(context.TaBaratoProductUtils.parsePrice("R$ 1.234,56"), 1234.56);
   assert.equal(context.TaBaratoProductUtils.previousPriceFor("79,92", "78,99", "99,90"), "99.9");
   assert.equal(context.TaBaratoProductUtils.previousPriceFor("79,92", "129,90", "99,90"), "129.9");
+  assert.equal(context.TaBaratoProductUtils.normalizeCouponCode("Fralda"), "");
+  assert.equal(context.TaBaratoProductUtils.normalizeCouponCode("MELIMODA"), "MELIMODA");
+  assert.equal(context.TaBaratoProductUtils.normalizeCouponCode("Cupom: FRALDA10"), "FRALDA10");
   assert.equal(context.TaBaratoProductUtils.firstUsefulParagraph("Muito curto.\nEste segundo paragrafo possui palavras suficientes para ser utilizado na oferta."), "Este segundo paragrafo possui palavras suficientes para ser utilizado na oferta.");
   const benefits = context.TaBaratoProductUtils.messageBenefits("Promocao: 43% OFF. 20% OFF com Pix. Preco principal no Pix. R$ 739,90 em 10x sem juros. 10x sem juros. Frete gratis. Frete gratis.");
   assert.equal(benefits.pix, true);

@@ -187,6 +187,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--orange); backgro
 .button-danger { color: #fff; background: var(--danger); }
 .coupon-button { height: 46px; color: #fff; border-color: var(--orange); background: var(--orange); box-shadow: 0 8px 20px color-mix(in srgb, var(--orange) 23%, transparent); }
 .coupon-button:hover:not(:disabled) { background: var(--orange-hover); }
+.coupon-button.is-running { border-color: var(--danger); background: var(--danger); box-shadow: 0 8px 20px color-mix(in srgb, var(--danger) 23%, transparent); }
 
 .segmented { display: grid; grid-template-columns: 1fr 1fr; height: 46px; padding: 3px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-soft); }
 .segmented button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-width: 0; border: 0; border-radius: 6px; color: var(--muted); background: transparent; font-size: 12px; font-weight: 700; }

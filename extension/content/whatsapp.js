@@ -226,34 +226,18 @@
     }
   }
 
-  function dispatchImagePaste(composer, file) {
-    const transfer = new DataTransfer();
-    transfer.items.add(file);
-    composer.focus();
-    composer.dispatchEvent(new ClipboardEvent("paste", {
-      bubbles: true,
-      cancelable: true,
-      composed: true,
-      clipboardData: transfer,
-    }));
-  }
-
   async function pasteOffer(file, caption, signal, clipboardPrepared = false) {
     const composer = await waitFor(messageComposer, 10000, signal);
     if (!composer) throw new Error("O campo de mensagem do WhatsApp nao foi encontrado.");
     const messageCountBefore = outgoingMessages().length;
 
     aborted(signal);
-    let captionBox = null;
-    if (clipboardPrepared) {
-      composer.focus();
-      document.execCommand("paste");
-      captionBox = await waitFor(() => captionEditor(composer), 3500, signal);
-    }
-    if (!captionBox) {
-      dispatchImagePaste(composer, file);
-      captionBox = await waitFor(() => captionEditor(composer), 6000, signal);
-    }
+    const copied = clipboardPrepared || await copyImageToClipboard(file);
+    if (!copied) throw new Error("Nao foi possivel copiar a imagem para o clipboard.");
+
+    composer.focus();
+    document.execCommand("paste");
+    let captionBox = await waitFor(() => captionEditor(composer), 5000, signal);
     if (!captionBox && await copyImageToClipboard(file)) {
       composer.focus();
       document.execCommand("paste");

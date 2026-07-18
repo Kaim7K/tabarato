@@ -36,11 +36,16 @@
   );
 
   const words = (value = "") => clean(value).split(/\s+/).filter(Boolean);
+  const meaningfulParagraph = (value = "") => {
+    const paragraph = clean(value);
+    const content = paragraph.match(/[\p{L}\p{N}]/gu)?.join("") || "";
+    return content.length >= 3 && words(paragraph).length >= 3 ? paragraph : "";
+  };
 
   const firstUsefulParagraph = (value = "") => {
     const paragraphs = String(value || "")
       .split(/\r?\n+/)
-      .map(clean)
+      .map(meaningfulParagraph)
       .filter(Boolean);
     if (!paragraphs.length) return "";
     if (words(paragraphs[0]).length >= 10 || !paragraphs[1]) return paragraphs[0];
@@ -51,7 +56,7 @@
     for (const selector of selectors) {
       const container = document.querySelector(selector);
       if (!container) continue;
-      const blocks = [...container.querySelectorAll("p, li, [class*='description']")]
+      const blocks = [...container.querySelectorAll("p, li")]
         .map((element) => clean(element.textContent))
         .filter(Boolean);
       const value = firstUsefulParagraph(blocks.length ? blocks.join("\n") : container.textContent);
@@ -246,26 +251,22 @@
       ? document.body.innerText || ""
       : root.innerText || root.textContent || "";
     const candidates = [];
-    const ignoredCodes = new Set(["CUPOM", "CUPONS", "DESCONTO", "FRETE", "GRATIS", "JUROS", "MERCADO", "PRODUTOS", "CARTAO", "PAGAMENTO", "PARCELAMENTO", "PIX", "OFF"]);
     const push = (value, confidence = 0.7) => {
-      const coupon = clean(value).replace(/^cupom[:\s-]*/i, "").replace(/["']/g, "");
-      if (!coupon || coupon.length > 40) return;
+      const coupon = globalThis.TaBaratoCouponCode?.normalize(value) || "";
+      if (!coupon) return;
       if (candidates.some((item) => item.value === coupon)) return;
       candidates.push({ value: coupon, confidence });
     };
 
-    [...pageText.matchAll(/cupom(?:\s+de\s+desconto)?[:\s-]+([A-Z0-9][A-Z0-9_-]{3,24})/gi)]
-      .forEach((match) => push(match[1], 0.95));
-    [...pageText.matchAll(/\b(?:Com|COM)\s+([A-Z][A-Z0-9_-]{3,24})\b/g)]
-      .filter((match) => !ignoredCodes.has(match[1]))
-      .forEach((match) => push(match[1], 0.99));
+    (globalThis.TaBaratoCouponCode?.extract(pageText) || [])
+      .forEach((code) => push(code, 0.99));
     [...root.querySelectorAll("button, [role='button'], input, textarea, [class*='coupon'], [class*='cupom']")]
       .filter(visible)
       .forEach((element) => {
         const value = element.value || element.textContent || element.getAttribute("aria-label") || "";
         if (/R\$\s*[\d.,]+\s+com\s+(?:o\s+)?cupom\b/i.test(clean(value))) return;
-        const code = clean(value).match(/\b[A-Z0-9][A-Z0-9_-]{3,24}\b/)?.[0];
-        if (/cupom|coupon|voucher|aplicar|ativar/i.test(value) && code && !/^\d+$/.test(code)) push(code, 0.9);
+        (globalThis.TaBaratoCouponCode?.extract(value) || []).forEach((code) => push(code, 0.9));
+        if (/cupom|coupon|voucher/i.test(value)) push(element.value || "", 0.88);
       });
     return candidates.sort((left, right) => right.confidence - left.confidence);
   };

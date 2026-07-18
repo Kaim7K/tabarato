@@ -7,7 +7,9 @@
     .toLowerCase()
     .trim();
 
-  const parsePrice = (value) => {
+  const normalizeCouponCode = (value = "") => globalThis.TaBaratoCouponCode?.normalize(value) || "";
+
+  function parsePrice(value) {
     const raw = String(value || "").replace(/[^\d.,]/g, "");
     if (!raw) return NaN;
     const separator = Math.max(raw.lastIndexOf(","), raw.lastIndexOf("."));
@@ -15,16 +17,16 @@
     const decimals = raw.slice(separator + 1);
     const integer = raw.slice(0, separator).replace(/[.,]/g, "");
     return Number(decimals.length === 2 ? `${integer}.${decimals}` : `${integer}${decimals}`);
-  };
+  }
 
-  const formatPrice = (value) => {
+  function formatPrice(value) {
     const number = Number(value);
     return Number.isFinite(number) && number > 0
       ? new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(number)
       : "Preco nao identificado";
-  };
+  }
 
-  const previousPriceFor = (currentValue, previousValue, regularValue) => {
+  function previousPriceFor(currentValue, previousValue, regularValue) {
     const current = parsePrice(currentValue);
     if (!Number.isFinite(current) || current <= 0) return "";
     const previous = parsePrice(previousValue);
@@ -32,9 +34,9 @@
     const regular = parsePrice(regularValue);
     if (Number.isFinite(regular) && regular >= current) return String(regular);
     return String(current);
-  };
+  }
 
-  const comparableUrl = (value) => {
+  function comparableUrl(value) {
     try {
       const url = new URL(value);
       url.hash = "";
@@ -42,56 +44,68 @@
     } catch {
       return String(value || "").trim().replace(/\/$/, "");
     }
-  };
+  }
 
-  const firstUsefulParagraph = (value = "") => {
-    const paragraphs = String(value || "")
+  function firstUsefulParagraph(value = "") {
+    const paragraphs = String(value)
       .split(/\r?\n+/)
       .map((item) => item.replace(/\s+/g, " ").trim())
       .filter(Boolean);
     if (!paragraphs.length) return "";
     if (paragraphs[0].split(/\s+/).length >= 10 || !paragraphs[1]) return paragraphs[0];
     return paragraphs[1];
-  };
+  }
 
-  const messageBenefits = (value = "") => {
-    const source = String(value || "").replace(/\s+/g, " ").trim();
-    const pix = /\b(?:no|via|pelo|preco principal no)\s+pix\b/i.test(normalizeText(source));
+  function messageBenefits(value = "") {
+    const source = String(value).replace(/\s+/g, " ").trim();
+    const normalizedSource = normalizeText(source);
+    const pix = /\b(?:no|via|pelo|preco principal no)\s+pix\b/i.test(normalizedSource);
     const lines = [];
+    const seen = new Set();
     let hasInstallments = false;
     let hasShipping = false;
+
+    const add = (line) => {
+      const key = normalizeText(line);
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      lines.push(line);
+    };
+
     source.split(/(?<=[.!?])\s+/).forEach((sentence) => {
       const containedDiscount = /\b\d{1,3}(?:[.,]\d+)?%\s*(?:off|de desconto)\b/i.test(sentence);
       const clean = sentence
-        .replace(/promo[cç][aã]o\s*:[^.!?]*/gi, "")
+        .replace(/promo(?:c|\u00e7)(?:a|\u00e3)o\s*:[^.!?]*/gi, "")
         .replace(/\b\d{1,3}(?:[.,]\d+)?%\s*(?:off|de desconto)\b/gi, "")
         .replace(/\s+/g, " ")
         .replace(/^[,;:\s-]+|[,;:\s-]+$/g, "")
         .trim();
-      if (!clean || !/[\p{L}\p{N}]/u.test(clean) || /pre[cç]o principal no pix/i.test(clean)) return;
-      if (containedDiscount && /^(?:com|no|via|pelo)?\s*pix\.?$/i.test(clean)) return;
-      if (/frete gr[aá]tis/i.test(clean)) {
-        if (!hasShipping) lines.push("🚚 Frete grátis.");
+      const normalized = normalizeText(clean);
+      if (!normalized || !/[\p{L}\p{N}]/u.test(clean) || /preco principal no pix/i.test(normalized)) return;
+      if (containedDiscount && /^(?:com|no|via|pelo)?\s*pix\.?$/i.test(normalized)) return;
+      if (/frete gratis/i.test(normalized)) {
+        if (!hasShipping) add("\u{1F69A} Frete gr\u00e1tis.");
         hasShipping = true;
         return;
       }
-      if (/sem juros|parcel(?:a|e|amento)|\b\d{1,2}x\b/i.test(clean)) {
-        if (!hasInstallments) lines.push(`💳 ${clean.replace(/^no cart[aã]o\s*:?\s*/i, "")}`);
+      if (/sem juros|parcel(?:a|e|amento)|\b\d{1,2}x\b/i.test(normalized)) {
+        if (!hasInstallments) add(`\u{1F4B3} ${clean.replace(/^no cart(?:a|\u00e3)o\s*:?\s*/i, "")}`);
         hasInstallments = true;
         return;
       }
-      if (!/promo[cç][aã]o|\boff\b/i.test(clean)) lines.push(clean);
+      if (!/promocao|\boff\b/i.test(normalized)) add(clean);
     });
-    return { pix, lines: [...new Set(lines)] };
-  };
+    return { pix, lines };
+  }
 
-  globalThis.TaBaratoProductUtils = {
+  globalThis.TaBaratoProductUtils = Object.freeze({
     comparableUrl,
     firstUsefulParagraph,
     formatPrice,
     messageBenefits,
+    normalizeCouponCode,
     normalizeText,
     parsePrice,
     previousPriceFor,
-  };
+  });
 })();

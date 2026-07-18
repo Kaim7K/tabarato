@@ -1,61 +1,75 @@
 # Extensao Ta Barato
 
-Extensao Manifest V3 para capturar produtos, gerar artes e publicar ofertas pelo painel lateral. Requer Chrome 116 ou superior.
+Extensao Chrome Manifest V3 para capturar produtos, gerar artes e publicar ofertas pelo painel lateral. A versao 3 requer Chrome 141 ou superior porque fecha o painel lateral ao sair de uma pagina permitida.
 
 ## Instalar localmente
 
-1. Abra `chrome://extensions` no Chrome ou `edge://extensions` no Edge.
+1. Abra `chrome://extensions`.
 2. Ative o modo do desenvolvedor.
 3. Clique em **Carregar sem compactacao**.
-4. Selecione a pasta `extension` deste projeto.
-5. Abra uma pagina permitida e clique no icone flutuante do Ta Barato ou no icone da extensao.
-6. No painel lateral, informe a URL publicada do Ta Barato e entre com o usuario administrativo.
+4. Selecione a pasta `extension`.
+5. Abra uma pagina permitida e clique no icone da extensao ou no botao flutuante.
+6. Entre com a conta administrativa do site.
 
-## Configuracao de producao
+O endereco padrao e `https://www.tabaratoofertas.shop`. Instalacoes antigas que ainda guardam o dominio da Vercel sao migradas automaticamente.
 
-Depois de instalar a extensao, copie o ID exibido pelo navegador e configure na Vercel:
+## Estrutura
+
+```text
+extension/
+  assets/                    Identidade visual, logos e fontes locais
+  background/
+    service-worker.js        Entrada e roteamento de mensagens
+    access.js                Dominios, acao, painel e scripts dinamicos
+    coupons.js               Operacao confiavel de cupons via Debugger API
+    whatsapp.js              Fila, cancelamento e navegacao por grupos
+  content/
+    index.js                 Inicializacao, launcher e captura da pagina
+    shared.js                Extratores e normalizadores compartilhados
+    coupons.js               Automacao da tela de cupons
+    whatsapp.js              Automacao do WhatsApp Web
+    stores/                  Adaptadores Mercado Livre, Shopee e lojas conectadas
+  shared/                    Runtime, configuracao e validacao de cupom
+  sidepanel/
+    app.js                   Inicializacao e eventos da interface
+    modules/                 API, catalogo, produto, captura, midia e publicacao
+    artwork.js               Geracao da arte quadrada
+    product-utils.js         Precos, texto e regras de produto
+    batch-utils.js           Normalizacao de rotas do lote
+```
+
+## Permissoes
+
+- `sidePanel`, `tabs`, `scripting` e `activeTab`: exibicao do painel e leitura somente nas paginas permitidas.
+- `storage`: sessao administrativa, grupos, preferencias e ultimo rascunho.
+- `clipboardRead` e `clipboardWrite`: copia da arte PNG pelo painel focado e, se necessario, pela aba ativa do WhatsApp.
+- `debugger`: cliques confiaveis nos botoes **Aplicar** da pagina de cupons. A operacao anexa apenas a aba de cupons e sempre remove o debugger ao terminar ou falhar.
+- `https://*/*`: imagens externas, API publicada e lojas conectadas dinamicamente. Os content scripts estaticos continuam restritos aos dominios declarados; novos dominios sao registrados somente depois da sincronizacao com o site.
+
+## Comportamento
+
+- O painel e unico por janela e o rascunho persiste ao alternar entre abas permitidas, fechar o painel ou reiniciar o navegador.
+- Fora do site, WhatsApp ou lojas permitidas, a acao e desativada, o launcher nao e criado e o painel e fechado.
+- Mercado Livre prioriza o valor explicito com cupom. O preco normal vira preco anterior quando nao existe outro valor anterior valido.
+- Um texto so vira cupom quando possui contexto explicito, como `Com MELIMODA` ou `Cupom: MELIMODA`. Categorias e nomes de produto nao sao aceitos como codigo.
+- A mensagem omite cupom e frete quando essas informacoes nao foram confirmadas. Parcelamento, Pix e frete nao sao duplicados.
+- Mercado Livre exige um link `meli.la` realmente gerado pela conta de afiliado. A URL comum nao e convertida nem apresentada como link de afiliado.
+- Todos os dialogs abertos pela captura sao fechados no bloco de finalizacao do adaptador.
+- O lote reutiliza uma aba de trabalho, elimina rotas repetidas e pula produtos abaixo do limite de confianca.
+- WhatsApp usa a imagem copiada no clipboard do sistema. A extensao nao simula upload por campo de arquivo.
+
+## Producao
+
+Depois de instalar a extensao, copie o ID exibido pelo Chrome e configure na Vercel:
 
 ```text
 EXTENSION_ORIGIN=chrome-extension://ID_DA_EXTENSAO
 ```
 
-Sem essa variavel, o servidor aceita origens com o formato oficial de extensoes Chrome. Definir a variavel restringe o acesso somente a instalacao publicada.
+A chave `ADMIN_API_KEY` permanece apenas no servidor. O login da extensao recebe um token temporario, nunca a chave administrativa.
 
-## Seguranca
+## Diagnostico
 
-- A chave `ADMIN_API_KEY` nunca e enviada para a extensao.
-- O login retorna um token assinado valido por 24 horas.
-- Produtos sao criados como `RASCUNHO`.
-- A acao **Publicar agora** exige confirmacao, cria a oferta como `APROVADO` e envia pelo publicador existente do Telegram.
-- **Enviar ao WhatsApp** reutiliza a aba aberta, entra no grupo configurado, preenche a legenda e cola pelo clipboard a arte gerada a partir da imagem original do produto.
-- Ofertas enviadas pela extensao usam uma arte quadrada com foto, precos, desconto e as logos do Ta Barato e da loja. A mesma arte e reutilizada no Telegram, WhatsApp e compartilhamento do site.
-- O botao **Painel** no cabecalho abre ou reutiliza a aba administrativa mesmo quando nenhum produto foi capturado.
-- Scripts de captura so executam nas lojas nativas, no WhatsApp, no site e nos dominios de lojas sincronizados pelo painel.
-- O link capturado deve ser revisado, pois algumas lojas nao disponibilizam automaticamente o link pessoal de afiliado no HTML.
+Falhas operacionais possuem tempo limite e liberam a interface para nova tentativa. O ultimo erro tecnico e guardado em `chrome.storage.session` sob `tabarato_last_extension_error`, sem senha, token, HTML capturado ou dados completos do produto. A versao de producao nao possui `console.log`, `console.debug` ou `console.warn`.
 
-## Mercado Livre
-
-Ao capturar um produto, a extensao procura o link curto criado pelo programa de afiliados. Se necessario, ela aciona **Compartilhar**, aguarda o modal **Gerar link / ID de produto** e captura o campo no formato `https://meli.la/...`.
-
-Ofertas do Mercado Livre nao podem ser salvas pela extensao com a URL comum do produto. Caso a conta ou a pagina nao disponibilize o gerador, abra o modal manualmente e cole o `meli.la` no campo de afiliado.
-
-A descricao capturada usa somente o primeiro paragrafo encontrado na pagina ou nos metadados do produto.
-
-A extensao prioriza o preco final exibido explicitamente como **com cupom**, captura codigos quando disponiveis e mantem uma orientacao de ativacao quando a loja nao revela o codigo. O comando **Ativar cupons** abre a pagina do Mercado Livre e ativa a quantidade escolhida.
-
-No modo **Lote**, inicie o processo na pagina que exibe os produtos. A extensao fixa essa pagina como origem, elimina rotas duplicadas por ID, reutiliza uma unica aba de leitura e ignora automaticamente produtos sem preco, imagem ou link de afiliado confiavel. O botao **Parar** fecha a aba de leitura e cancela o envio ao WhatsApp em andamento.
-
-## Paginas e painel
-
-- O painel e unico por janela e preserva o produto ao alternar entre paginas permitidas.
-- Em paginas nao permitidas, o botao flutuante e removido, a acao fica desabilitada e o painel e fechado quando a API do navegador permite.
-- Lojas conectadas sao registradas dinamicamente a partir das categorias e ofertas sincronizadas com o site.
-
-## Recuperacao de erros
-
-- Capturas, APIs, imagens e mensagens entre abas possuem tempo limite.
-- Uma falha preserva os dados que ja estavam no formulario e libera imediatamente uma nova tentativa.
-- Promessas de imagem com erro nao ficam armazenadas no cache da extensao.
-- Os scripts podem ser reinjetados sem duplicar listeners, botoes ou intervalos.
-- Envios expirados ao WhatsApp sao cancelados antes de novos cliques no campo de mensagem.
-- O ultimo erro tecnico fica registrado apenas em `chrome.storage.session`, sem produto, token ou credencial.
+Consulte [VALIDATION.md](./VALIDATION.md) para a matriz de testes e as validacoes manuais que dependem de contas autenticadas.

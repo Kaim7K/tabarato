@@ -7,6 +7,7 @@
   let extractionPromise = null;
   let extractionUrl = "";
   let allowedPage = false;
+  let navigationTimer = null;
 
   async function syncAdminMarker() {
     const stored = await chrome.storage.local.get("tabarato_extension_session").catch(() => ({}));
@@ -149,15 +150,31 @@
     }
   });
   let lastUrl = location.href;
-  window.setInterval(() => {
-    try {
-      if (lastUrl === location.href) return;
-      lastUrl = location.href;
-      extractionPromise = null;
-      extractionUrl = "";
-      updateButton().catch(() => {});
-    } catch (error) {
-      runtime.reportError("store-button", error);
-    }
-  }, 750);
+  const handleNavigation = () => {
+    if (lastUrl === location.href) return;
+    lastUrl = location.href;
+    window.clearTimeout(navigationTimer);
+    navigationTimer = window.setTimeout(() => {
+      try {
+        extractionPromise = null;
+        extractionUrl = "";
+        updateButton().catch(() => {});
+      } catch (error) {
+        runtime.reportError("store-button", error);
+      }
+    }, 80);
+  };
+
+  ["pushState", "replaceState"].forEach((method) => {
+    const original = history[method];
+    history[method] = function tabaratoHistoryUpdate(...args) {
+      const result = original.apply(this, args);
+      queueMicrotask(handleNavigation);
+      return result;
+    };
+  });
+  window.addEventListener("popstate", handleNavigation);
+  window.addEventListener("hashchange", handleNavigation);
+  window.addEventListener("pageshow", handleNavigation);
+  new MutationObserver(handleNavigation).observe(document.documentElement, { childList: true, subtree: true });
 })();
