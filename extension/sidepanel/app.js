@@ -2,7 +2,7 @@
   const panel = globalThis.TaBaratoPanel;
   const runtime = globalThis.TaBaratoRuntime;
   const { STORAGE, activeTab, elements, renderThemeControl, setBusy, setMode, setStatus, showToast, state } = panel;
-  const { comparableUrl, normalizeCouponCode } = globalThis.TaBaratoProductUtils;
+  const { comparableUrl, normalizeCouponValue } = globalThis.TaBaratoProductUtils;
 
   function changeCouponLimit(delta) {
     const current = Number(elements.couponLimit.value) || 5;
@@ -100,7 +100,7 @@
       panel.product.scheduleDraftPersist();
     }));
     elements.fields.coupon.addEventListener("change", () => {
-      elements.fields.coupon.value = normalizeCouponCode(elements.fields.coupon.value);
+      elements.fields.coupon.value = normalizeCouponValue(elements.fields.coupon.value);
       panel.product.updatePreview();
       panel.product.scheduleDraftPersist();
     });

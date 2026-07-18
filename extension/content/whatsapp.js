@@ -31,7 +31,7 @@
     let value = read();
     while (!value && Date.now() - startedAt < timeout) {
       aborted(signal);
-      await new Promise((resolve) => window.setTimeout(resolve, 200));
+      await new Promise((resolve) => window.setTimeout(resolve, 120));
       value = read();
     }
     aborted(signal);
@@ -69,7 +69,7 @@
       clipboardData: transfer,
     }));
 
-    await new Promise((resolve) => window.setTimeout(resolve, 120));
+    await new Promise((resolve) => window.setTimeout(resolve, 70));
 
     const needsFallback = !clean(element.textContent)
       || (text.includes("\n") && !String(element.innerText || "").includes("\n"));
@@ -82,7 +82,7 @@
       if (index < lines.length - 1) document.execCommand("insertParagraph", false, null);
     });
 
-    await new Promise((resolve) => window.setTimeout(resolve, 80));
+    await new Promise((resolve) => window.setTimeout(resolve, 60));
     if (!text.includes("\n") || String(element.innerText || "").includes("\n")) return;
 
     const content = document.createDocumentFragment();
@@ -246,9 +246,9 @@
     if (!captionBox) {
       throw new Error("O WhatsApp bloqueou a colagem da imagem. Mantenha a aba aberta e tente novamente.");
     }
-    await new Promise((resolve) => window.setTimeout(resolve, 700));
+    await new Promise((resolve) => window.setTimeout(resolve, 260));
     await setEditableText(captionBox, caption);
-    await new Promise((resolve) => window.setTimeout(resolve, 250));
+    await new Promise((resolve) => window.setTimeout(resolve, 110));
 
     const send = await waitFor(() => actionByLabel(["enviar", "send"])
       || [...document.querySelectorAll('[data-icon="send"]')].map((element) => element.closest("button, [role='button']")).find(visible), 10000, signal);

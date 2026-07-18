@@ -8,6 +8,7 @@
     .trim();
 
   const normalizeCouponCode = (value = "") => globalThis.TaBaratoCouponCode?.normalize(value) || "";
+  const COUPON_ACTIVATION_MESSAGE = "disponível no anúncio. Ative antes de comprar.";
 
   function parsePrice(value) {
     const raw = String(value || "").replace(/[^\d.,]/g, "");
@@ -24,6 +25,20 @@
     return Number.isFinite(number) && number > 0
       ? new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(number)
       : "Preco nao identificado";
+  }
+
+  function couponNoticeForStatus(status = "") {
+    return /^(?:activation-required|available-without-code)$/i.test(String(status || ""))
+      ? COUPON_ACTIVATION_MESSAGE
+      : "";
+  }
+
+  function normalizeCouponValue(value = "") {
+    const code = normalizeCouponCode(value);
+    if (code) return code;
+    return normalizeText(value) === normalizeText(COUPON_ACTIVATION_MESSAGE)
+      ? COUPON_ACTIVATION_MESSAGE
+      : "";
   }
 
   function previousPriceFor(currentValue, previousValue, regularValue) {
@@ -100,10 +115,12 @@
 
   globalThis.TaBaratoProductUtils = Object.freeze({
     comparableUrl,
+    couponNoticeForStatus,
     firstUsefulParagraph,
     formatPrice,
     messageBenefits,
     normalizeCouponCode,
+    normalizeCouponValue,
     normalizeText,
     parsePrice,
     previousPriceFor,

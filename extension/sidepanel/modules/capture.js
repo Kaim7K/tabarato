@@ -74,6 +74,7 @@
       const preview = await panel.api.request("/api/admin/product-preview", {
         method: "POST",
         body: { link: previewLink },
+        timeout: 5000,
       });
       return {
         ...preview.product,
@@ -109,6 +110,7 @@
 
   async function current({ reconcile = true } = {}) {
     const runId = ++state.captureSequence;
+    let productVisible = false;
     setBusy(elements.refreshButton, true, "...");
     elements.loading.classList.remove("hidden");
     elements.empty.classList.add("hidden");
@@ -120,14 +122,31 @@
       const catalogRequest = panel.catalog.synchronize().catch(() => null);
       const result = await extractFromTab(tab);
       if (!result?.ok) throw new Error(result?.error || "Produto nao encontrado.");
+      if (runId !== state.captureSequence) return;
+      await apply(result.product, tab, false);
+      productVisible = true;
+      elements.loading.classList.add("hidden");
+      setBusy(elements.refreshButton, false);
+      panel.renderActionLocks();
+
       const product = await enrich(result.product);
+      if (runId !== state.captureSequence) return;
+      if (product !== result.product) await apply(product, tab, false);
       await catalogRequest;
       if (runId !== state.captureSequence) return;
-      await apply(product, tab, reconcile);
+      const suggestedCategory = panel.catalog.suggestCategory(product);
+      if (suggestedCategory && elements.fields.category.value !== suggestedCategory) {
+        elements.fields.category.value = suggestedCategory;
+        panel.product.updatePreview();
+        await panel.product.persistDraft();
+      }
+      if (reconcile) {
+        await panel.publishing?.reconcile(product).catch((error) => runtime.reportError("reconcile-product", error));
+      }
     } catch (error) {
       if (runId === state.captureSequence) showFailure(error);
     } finally {
-      if (runId === state.captureSequence) {
+      if (runId === state.captureSequence && !productVisible) {
         elements.loading.classList.add("hidden");
         setBusy(elements.refreshButton, false);
         panel.renderActionLocks();
@@ -151,14 +170,56 @@
 
   async function urlInWorker(tabId, url, signal) {
     if (signal.aborted) throw new Error("Envio interrompido.");
-    let tab = await chrome.tabs.update(tabId, { url, active: false });
-    await runtime.waitForTabComplete(tabId, 40000, "O produto demorou para carregar.");
+    let tab = await chrome.tabs.update(tabId, { url, active: true });
+    if (tab.windowId) await chrome.windows.update(tab.windowId, { focused: true }).catch(() => {});
+    await waitForProductDom(tabId, url, signal);
     if (signal.aborted) throw new Error("Envio interrompido.");
-    await runtime.delay(300);
+    await runtime.delay(120);
     tab = await chrome.tabs.get(tabId);
     const result = await extractFromTab(tab);
     if (!result?.ok) throw new Error(result?.error || "Produto nao encontrado.");
     return result.product;
+  }
+
+  async function waitForProductDom(tabId, expectedUrl, signal, timeout = 32000) {
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < timeout) {
+      if (signal.aborted) throw new Error("Envio interrompido.");
+      const ready = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: (targetUrl) => {
+          const productKey = (value) => {
+            const mercadoLivre = String(value).match(/\bMLB-?(\d{6,})\b/i);
+            if (mercadoLivre) return `mlb:${mercadoLivre[1]}`;
+            const shopee = String(value).match(/(?:i\.|\/product\/)(\d+)[./](\d+)/i);
+            if (shopee) return `shopee:${shopee[1]}:${shopee[2]}`;
+            try {
+              const parsed = new URL(value);
+              return `${parsed.origin}${parsed.pathname.replace(/\/$/, "")}`;
+            } catch {
+              return "";
+            }
+          };
+          const selectors = [
+            "h1.ui-pdp-title",
+            ".ui-pdp-container h1",
+            "[itemprop='name']",
+            ".product-briefing h1",
+            "[data-testid='pdp-product-title']",
+          ];
+          return productKey(location.href) === productKey(targetUrl)
+            && document.readyState !== "loading"
+            && selectors.some((selector) => {
+            const element = document.querySelector(selector);
+            return Boolean(element && String(element.textContent || "").trim());
+          });
+        },
+        args: [expectedUrl],
+      }).then((results) => Boolean(results[0]?.result)).catch(() => false);
+      if (ready) return;
+      await runtime.delay(150);
+    }
+    throw new Error("O produto nao apareceu na pagina dentro do tempo esperado.");
   }
 
   function highlightNavigation(tab) {
@@ -188,6 +249,7 @@
     isPrimarySiteUrl,
     scriptsForUrl,
     showFailure,
+    waitForProductDom,
     urlInWorker,
     visibleProductUrls,
   };

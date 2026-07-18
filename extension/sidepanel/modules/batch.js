@@ -40,6 +40,7 @@
       text: elements.duplicateWarning.textContent,
     };
     let workerTab = null;
+    let sourceTab = null;
     let published = 0;
     let skipped = 0;
     let failed = 0;
@@ -48,7 +49,7 @@
     lockActions("batch", elements.batchStartButton, "Enviando...");
 
     try {
-      const sourceTab = await activeTab();
+      sourceTab = await activeTab();
       if (!sourceTab?.id) throw new Error("Abra a pagina com a lista de produtos antes de iniciar o lote.");
       const [urls] = await Promise.all([
         panel.capture.visibleProductUrls(limit, sourceTab),
@@ -56,7 +57,7 @@
       ]);
       if (!urls.length) throw new Error("Nenhum produto visivel foi encontrado.");
       log(`${urls.length} produtos encontrados.`);
-      workerTab = await chrome.tabs.create({ url: "about:blank", active: false });
+      workerTab = await chrome.tabs.create({ url: "about:blank", active: true, windowId: sourceTab.windowId });
       state.batchWorkerTabId = workerTab.id;
 
       for (const [index, url] of urls.entries()) {
@@ -126,6 +127,7 @@
       }
     } finally {
       if (workerTab?.id) await chrome.tabs.remove(workerTab.id).catch(() => {});
+      if (sourceTab?.id) await chrome.tabs.update(sourceTab.id, { active: true }).catch(() => {});
       if (state.batchWorkerTabId === workerTab?.id) state.batchWorkerTabId = null;
       state.activeProduct = productBeforeBatch;
       panel.product.invalidateShareImage();

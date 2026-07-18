@@ -2,7 +2,7 @@
   if (globalThis.TaBaratoBackgroundCoupons) return;
 
   const runtime = globalThis.TaBaratoRuntime;
-  const PAGE_URL = "https://www.mercadolivre.com.br/cupons/filter?new=true&source_page=int_coupons_shortcut";
+  const PAGE_URL = "https://www.mercadolivre.com.br/cupons/";
   let activeOperation = null;
 
   function isCouponUrl(value = "") {
@@ -35,31 +35,43 @@
     await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", {
       type: "mousePressed", x, y, button: "left", buttons: 1, clickCount: 1,
     });
-    await runtime.delay(45);
+    await runtime.delay(30);
     await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", {
       type: "mouseReleased", x, y, button: "left", buttons: 0, clickCount: 1,
     });
     return { ok: true };
   }
 
+  async function waitForCouponPage(tabId, timeout = 30000) {
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < timeout) {
+      const ready = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: () => {
+          const text = String(document.body?.innerText || "").replace(/\s+/g, " ").toLowerCase();
+          return document.readyState !== "loading"
+            && /\/cupons(?:\/|$)/i.test(location.pathname)
+            && /cupons/.test(text)
+            && /filtrar/.test(text);
+        },
+      }).then((results) => Boolean(results[0]?.result)).catch(() => false);
+      if (ready) return;
+      await runtime.delay(150);
+    }
+    throw new Error("A pagina de cupons nao terminou de carregar.");
+  }
+
   async function openPage() {
     const tabs = await chrome.tabs.query({});
     let tab = tabs.filter((item) => isCouponUrl(item.url))
       .sort((left, right) => Number(right.active) - Number(left.active) || (right.lastAccessed || 0) - (left.lastAccessed || 0))[0];
-    let navigating = false;
     if (tab?.id) {
       await chrome.windows.update(tab.windowId, { focused: true });
-      const filtered = new URL(tab.url).searchParams.get("new") === "true";
-      navigating = !filtered;
-      tab = await chrome.tabs.update(tab.id, filtered ? { active: true } : { active: true, url: PAGE_URL });
+      tab = await chrome.tabs.update(tab.id, { active: true });
     } else {
-      navigating = true;
       tab = await chrome.tabs.create({ url: PAGE_URL, active: true });
     }
-    if (navigating || tab.status !== "complete") {
-      await runtime.waitForTabComplete(tab.id, 45000, "A pagina de cupons demorou para carregar.");
-    }
-    await runtime.delay(650);
+    await waitForCouponPage(tab.id);
     return chrome.tabs.get(tab.id);
   }
 
@@ -120,5 +132,5 @@
     chrome.tabs.sendMessage(source.tabId, { type: "TABARATO_STOP_COUPONS" }).catch(() => {});
   }
 
-  globalThis.TaBaratoBackgroundCoupons = { activate, handleDebuggerDetach, isCouponUrl, stop, trustedClick };
+  globalThis.TaBaratoBackgroundCoupons = { activate, handleDebuggerDetach, isCouponUrl, stop, trustedClick, waitForCouponPage };
 })();

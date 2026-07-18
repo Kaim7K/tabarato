@@ -33,7 +33,7 @@ test("extension manifest is Manifest V3 and references existing files", () => {
   assert.ok(manifest.permissions.includes("clipboardRead"));
   assert.ok(manifest.permissions.includes("clipboardWrite"));
   assert.ok(manifest.permissions.includes("debugger"));
-  assert.ok(!manifest.permissions.includes("offscreen"));
+  assert.ok(manifest.permissions.includes("offscreen"));
   assert.ok(manifest.host_permissions.includes("https://*/*"));
   assert.ok(manifest.content_scripts.some((entry) => entry.js.includes("content/stores/generic.js")));
   assert.ok(manifest.content_scripts.some((entry) => entry.matches.includes("https://web.whatsapp.com/*")));
@@ -96,7 +96,7 @@ test("extension entry points delegate work to focused modules", () => {
   ["api", "batch", "capture", "catalog", "core", "media", "product", "publishing"].forEach((module) => {
     assert.ok(existsSync(join(extensionRoot, "sidepanel", "modules", `${module}.js`)));
   });
-  ["access", "coupons", "whatsapp"].forEach((module) => {
+  ["access", "clipboard", "coupons", "whatsapp"].forEach((module) => {
     assert.ok(existsSync(join(extensionRoot, "background", `${module}.js`)));
   });
 });
@@ -168,6 +168,10 @@ test("capture extracts requested product fields and closes store popups", () => 
   assert.match(shared, /closeTransientDialogs/);
   assert.match(meli, /captureAffiliateLink/);
   assert.match(meli, /MELI_LINK_PATTERN/);
+  assert.match(meli, /mainGalleryImageCandidates/);
+  assert.match(meli, /main-gallery/);
+  assert.doesNotMatch(meli, /img\[src\*='mlstatic'\]/);
+  assert.doesNotMatch(meli, /productImages\(structured\)\.map/);
   assert.match(meli, /pricePaymentMethod/);
   assert.match(meli, /couponPrice\.value \|\| basePrice/);
   assert.match(meli, /captureCoupon/);
@@ -205,6 +209,9 @@ test("coupon parser reads explicit Com CODE labels and never invents a coupon", 
   assert.equal(context.TaBaratoCapture.couponCandidates()[0]?.value, "FRALDA10");
   document.body.innerText = "Ver cupons disponiveis. Preco com cupom R$ 79,92.";
   assert.equal(context.TaBaratoCapture.couponCandidates().length, 0);
+  assert.equal(context.TaBaratoCouponCode.extract("Com... MELIMODA 20% OFF")[0], "MELIMODA");
+  assert.equal(context.TaBaratoCouponCode.classify("Ative o cupom antes da compra.", { hasCouponPrice: true }).status, "activation-required");
+  assert.equal(context.TaBaratoCouponCode.classify("Nenhum cupom disponivel.").status, "none");
 });
 
 test("Mercado Livre pricing reads the installment total and only explicit free shipping", () => {
@@ -225,6 +232,9 @@ test("Mercado Livre pricing reads the installment total and only explicit free s
     context.TaBaratoCapture.installmentSummary("R$ 637,91 20% OFF no Pix ou R$ 739,90 em 10x R$ 73,99 sem juros"),
     "R$ 739,90 em 10x sem juros.",
   );
+  assert.equal(context.TaBaratoCapture.installmentSummary("8x sem juros"), "");
+  assert.equal(context.TaBaratoCapture.commerceBenefits("8x sem juros. Frete gratis."), "Frete gratis.");
+  assert.equal(context.TaBaratoCapture.commerceBenefits("8x R$ 4,25 sem juros. Frete gratis."), "Frete gratis. 8x R$ 4,25 sem juros.");
 
   const shippingElement = (textContent) => ({
     textContent,
@@ -293,6 +303,9 @@ test("batch mode canonicalizes product routes and reuses one worker tab", () => 
   assert.match(panelSource, /urlInWorker/);
   assert.match(panelSource, /batchWorkerTabId/);
   assert.match(panelSource, /url: "about:blank"/);
+  assert.match(panelSource, /url: "about:blank", active: true/);
+  assert.match(panelSource, /waitForProductDom/);
+  assert.doesNotMatch(panelSource, /waitForTabComplete\(tabId, 40000/);
   assert.match(panelSource, /normalizeProductUrls/);
   assert.match(panelSource, /reviewProduct/);
   assert.doesNotMatch(panelSource, /captureUrlInTempTab/);
@@ -314,7 +327,9 @@ test("extension publishes to site, Telegram and sequential WhatsApp groups", () 
 
 test("offer artwork matches the requested premium share card", () => {
   const artwork = readFileSync(join(extensionRoot, "sidepanel", "artwork.js"), "utf8");
-  assert.match(panelSource, /imageSceneScore/);
+  const media = readFileSync(join(extensionRoot, "sidepanel", "modules", "media.js"), "utf8");
+  assert.match(media, /for \(const source of sources\)/);
+  assert.doesNotMatch(media, /imageSceneScore|usageScore|review|cliente|depoimento/);
   assert.match(panelSource, /assets\/tabarato-logo\.png/);
   assert.match(panelSource, /assets\/mercado-livre\.png/);
   assert.match(panelSource, /assets\/shopee\.svg/);
@@ -325,6 +340,9 @@ test("offer artwork matches the requested premium share card", () => {
   assert.match(artwork, /drawProduct\(context, product, \{ x: 42, y: 42, width: 996, height: 860 \}\)/);
   assert.match(artwork, /roundedRect\(context, 42, 918, 996, 126, 63\)/);
   assert.match(artwork, /previousX/);
+  assert.match(artwork, /roundedRect\(context, 792, 54, 236, 78, 39\)/);
+  assert.match(artwork, /font = "700 30px Montserrat/);
+  assert.match(artwork, /lineCap = "round"/);
   assert.match(artwork, /drawContained\(context, storeLogo/);
   assert.match(artwork, /drawContained\(context, siteLogo/);
   assert.doesNotMatch(artwork, /font\s*=\s*["'`](?:800|900)\s/);
@@ -336,7 +354,9 @@ test("WhatsApp artwork is copied and pasted without file attachment inputs", () 
   assert.match(media, /navigator\.clipboard\.write/);
   assert.match(media, /ClipboardItem/);
   assert.match(media, /copyImageToClipboard/);
-  assert.doesNotMatch(backgroundSource, /chrome\.offscreen/);
+  assert.match(backgroundSource, /chrome\.offscreen\.createDocument/);
+  assert.match(backgroundSource, /TABARATO_OFFSCREEN_WRITE_IMAGE/);
+  assert.ok(existsSync(join(extensionRoot, "offscreen", "clipboard.html")));
   assert.match(whatsapp, /clipboardPrepared/);
   assert.match(whatsapp, /execCommand\("paste"\)/);
   assert.match(whatsapp, /Nao foi possivel copiar a imagem para o clipboard/);
@@ -405,7 +425,8 @@ test("coupon activation uses confirmed filters and trusted Chrome input", () => 
   assert.match(backgroundSource, /Input\.dispatchMouseEvent/);
   assert.match(backgroundSource, /chrome\.debugger\.attach/);
   assert.match(backgroundSource, /chrome\.debugger\.detach/);
-  assert.match(backgroundSource, /cupons\/filter\?new=true/);
+  assert.match(backgroundSource, /PAGE_URL = "https:\/\/www\.mercadolivre\.com\.br\/cupons\/"/);
+  assert.doesNotMatch(backgroundSource, /cupons\/filter\?new=true/);
   assert.match(backgroundSource, /\^\\\/cupons\(\?:\\\/\|\$\)/);
   assert.match(panelSource, /couponActivationRunning/);
   assert.match(panelSource, /Parar cupons/);
@@ -443,10 +464,13 @@ test("side panel product utilities normalize prices and message benefits", () =>
   assert.equal(context.TaBaratoProductUtils.normalizeCouponCode("Fralda"), "");
   assert.equal(context.TaBaratoProductUtils.normalizeCouponCode("MELIMODA"), "MELIMODA");
   assert.equal(context.TaBaratoProductUtils.normalizeCouponCode("Cupom: FRALDA10"), "FRALDA10");
+  assert.equal(context.TaBaratoProductUtils.couponNoticeForStatus("activation-required"), "disponível no anúncio. Ative antes de comprar.");
+  assert.equal(context.TaBaratoProductUtils.normalizeCouponValue("disponível no anúncio. Ative antes de comprar."), "disponível no anúncio. Ative antes de comprar.");
   assert.equal(context.TaBaratoProductUtils.firstUsefulParagraph("Muito curto.\nEste segundo paragrafo possui palavras suficientes para ser utilizado na oferta."), "Este segundo paragrafo possui palavras suficientes para ser utilizado na oferta.");
   const benefits = context.TaBaratoProductUtils.messageBenefits("Promocao: 43% OFF. 20% OFF com Pix. Preco principal no Pix. R$ 739,90 em 10x sem juros. 10x sem juros. Frete gratis. Frete gratis.");
   assert.equal(benefits.pix, true);
   assert.deepEqual([...benefits.lines], ["💳 R$ 739,90 em 10x sem juros.", "🚚 Frete grátis."]);
+  assert.match(panelSource, /if \(benefits\.lines\.length\) lines\.push\("", \.\.\.benefits\.lines/);
 });
 
 test("extension runtime releases timed out operations", async () => {

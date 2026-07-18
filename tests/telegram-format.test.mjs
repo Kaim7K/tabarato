@@ -90,3 +90,14 @@ test("Telegram removes discount copy and deduplicates payment and shipping benef
   assert.equal((message.match(/sem juros/g) || []).length, 1);
   assert.equal((message.match(/Frete grátis/g) || []).length, 1);
 });
+
+test("Telegram separates prices from free shipping with a blank line", () => {
+  const message = formatTelegramMessage({
+    productName: "Produto",
+    currentPrice: 69.9,
+    previousPrice: 99.99,
+    extraText: "Frete gratis.",
+  });
+
+  assert.match(message, /<s>R\$ 99,99<\/s>\n\n🚚 Frete grátis/u);
+});

@@ -154,9 +154,15 @@ test("extension publication sends a transient branded image to Telegram", () => 
 
 test("database migration records real price changes", () => {
   const migration = readFileSync(join(root, "migrations", "001_create_telegram_offers.sql"), "utf8");
+  const runtimeSchema = readFileSync(join(root, "api", "_lib", "db.js"), "utf8");
   assert.match(migration, /CREATE TABLE IF NOT EXISTS offer_price_history/);
   assert.match(migration, /OLD\.current_price IS DISTINCT FROM NEW\.current_price/);
   assert.match(migration, /AFTER INSERT OR UPDATE OF current_price/);
+  assert.match(migration, /offer\.previous_price IS DISTINCT FROM offer\.current_price/);
+  assert.match(migration, /last_recorded_price IS DISTINCT FROM OLD\.current_price/);
+  assert.match(migration, /VALUES \(NEW\.id, OLD\.current_price, NOW\(\) - INTERVAL '1 millisecond'\)/);
+  assert.match(runtimeSchema, /offer\.previous_price IS DISTINCT FROM offer\.current_price/);
+  assert.match(runtimeSchema, /last_recorded_price IS DISTINCT FROM OLD\.current_price/);
 });
 
 test("database prevents duplicate product and price pairs", () => {

@@ -5,9 +5,11 @@
   const { LIMITS, STORAGE, elements, state } = panel;
   const {
     comparableUrl,
+    couponNoticeForStatus,
     firstUsefulParagraph,
     formatPrice,
     normalizeCouponCode,
+    normalizeCouponValue,
     previousPriceFor,
   } = globalThis.TaBaratoProductUtils;
 
@@ -23,7 +25,7 @@
       previousPrice: previousPriceFor(currentPrice, product.previousPrice, product.regularPrice || currentPrice),
       platform: product.platform || "Loja conectada",
       category: panel.catalog.suggestCategory(product),
-      coupon: normalizeCouponCode(product.coupon),
+      coupon: normalizeCouponCode(product.coupon) || couponNoticeForStatus(product.couponStatus),
       shortDescription: firstUsefulParagraph(product.shortDescription || ""),
       imageUrl: product.imageUrl || product.imageCandidates?.[0]?.url || "",
       extraText: [product.pricePaymentMethod === "Pix" ? "Preco principal no Pix." : "", product.extraText || ""]
@@ -40,7 +42,7 @@
       shortDescription: elements.fields.shortDescription.value.trim(),
       currentPrice,
       previousPrice: previousPriceFor(currentPrice, elements.fields.previousPrice.value, sourceProduct?.regularPrice || currentPrice),
-      coupon: normalizeCouponCode(elements.fields.coupon.value),
+      coupon: normalizeCouponValue(elements.fields.coupon.value),
       couponDiscountPercent: 0,
       category: elements.fields.category.value,
       imageUrl: elements.fields.imageUrl.value.trim(),
@@ -85,6 +87,13 @@
     state.activeProduct = product;
     const values = valuesFor(product);
     Object.entries(values).forEach(([key, value]) => { elements.fields[key].value = value; });
+    const couponPlaceholders = {
+      "activation-required": "Cupom precisa ser ativado antes da compra.",
+      "applied-without-code": "Cupom aplicado, mas sem codigo exibido.",
+      "available-without-code": "Cupom disponivel, mas sem codigo exibido.",
+      none: "Nenhum cupom identificado.",
+    };
+    elements.fields.coupon.placeholder = couponPlaceholders[product.couponStatus] || "Codigo do cupom";
     const reviewItems = [
       !values.affiliateLink && "link",
       !values.productName && "nome",
@@ -124,7 +133,7 @@
     state.capturedPageUrl = draft.capturedPageUrl || comparableUrl(draft.product.sourceUrl || "");
     fill(draft.product);
     Object.entries(draft.values || {}).forEach(([key, value]) => {
-      if (elements.fields[key]) elements.fields[key].value = key === "coupon" ? normalizeCouponCode(value) : value;
+      if (elements.fields[key]) elements.fields[key].value = key === "coupon" ? normalizeCouponValue(value) : value;
     });
     elements.fields.previousPrice.value = previousPriceFor(
       elements.fields.currentPrice.value,

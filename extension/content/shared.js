@@ -191,13 +191,13 @@
     push(meta("og:image") || meta("twitter:image"), 30, "metadata");
     selectors.forEach((selector, selectorIndex) => {
       document.querySelectorAll(selector).forEach((image) => {
+        if (image.closest("[class*='description' i], [class*='descricao' i], [class*='review' i], [class*='rating' i], [class*='testimonial' i], [data-testid*='description' i], [data-testid*='review' i]")) return;
         const rect = image.getBoundingClientRect();
         const src = image.currentSrc || image.src || image.getAttribute("data-src") || image.getAttribute("srcset")?.split(/\s+/)[0] || "";
         const alt = normalized(`${image.alt || ""} ${image.getAttribute("aria-label") || ""}`);
         const areaScore = Math.min(40, Math.round((rect.width * rect.height) / 7000));
-        const usageScore = /(uso|ambiente|modelo|review|cliente|real)/i.test(alt) ? 30 : 0;
         const whitePenalty = /(thumb|sprite|logo|avatar|icon)/i.test(src) ? -30 : 0;
-        push(src, 90 - selectorIndex * 8 + areaScore + usageScore + whitePenalty, alt || selector);
+        push(src, 90 - selectorIndex * 8 + areaScore + whitePenalty, alt || selector);
       });
     });
 
@@ -208,7 +208,7 @@
     const source = clean(value);
     const benefits = [];
     if (/frete gr[aá]tis/i.test(source)) benefits.push("Frete gratis.");
-    const installments = [...source.matchAll(/(?:at[eé]\s+)?\d{1,2}x(?:\s+de\s+R\$\s*[\d.,]+)?\s+sem\s+juros/gi)]
+    const installments = [...source.matchAll(/\b\d{1,2}x\s+(?:de\s+)?R\$\s*[\d.,]+\s+sem\s+juros\b/gi)]
       .map((match) => clean(match[0]));
     if (installments.length) {
       const best = installments.sort((first, second) => Number(second.match(/\d+/)?.[0]) - Number(first.match(/\d+/)?.[0]))[0];
@@ -221,7 +221,7 @@
     const source = clean(value);
     const total = source.match(/(?:^|\bou\s+)R\$\s*([\d.]+(?:,\d{2})?)\s+em\s+(\d{1,2})x(?:\s+(?:de\s+)?R\$\s*[\d.,]+)?\s+sem\s+juros\b/i);
     if (total) return `R$ ${total[1]} em ${total[2]}x sem juros.`;
-    const installments = source.match(/\b(\d{1,2})x(?:\s+(?:de\s+)?R\$\s*[\d.,]+)?\s+sem\s+juros\b/i);
+    const installments = source.match(/\b(\d{1,2})x\s+(?:de\s+)?R\$\s*[\d.,]+\s+sem\s+juros\b/i);
     return installments ? `${installments[1]}x sem juros.` : "";
   };
 

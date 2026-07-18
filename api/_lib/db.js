@@ -204,6 +204,17 @@ export async function ensureSchema() {
       FROM telegram_offers offer
       WHERE NOT EXISTS (SELECT 1 FROM offer_price_history history WHERE history.offer_id = offer.id);
 
+      INSERT INTO offer_price_history (offer_id, price, recorded_at)
+      SELECT offer.id, offer.previous_price, COALESCE(offer.published_at, offer.created_at, NOW()) - INTERVAL '1 second'
+      FROM telegram_offers offer
+      WHERE offer.previous_price IS NOT NULL
+        AND offer.previous_price IS DISTINCT FROM offer.current_price
+        AND offer.previous_price > 0
+        AND NOT EXISTS (
+          SELECT 1 FROM offer_price_history history
+          WHERE history.offer_id = offer.id AND history.price = offer.previous_price
+        );
+
       CREATE TABLE IF NOT EXISTS telegram_auto_messages (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         title TEXT NOT NULL,
@@ -246,8 +257,26 @@ export async function ensureSchema() {
 
       CREATE OR REPLACE FUNCTION record_offer_price()
       RETURNS TRIGGER AS $$
+      DECLARE
+        last_recorded_price NUMERIC(12, 2);
       BEGIN
-        IF TG_OP = 'INSERT' OR OLD.current_price IS DISTINCT FROM NEW.current_price THEN
+        IF TG_OP = 'INSERT' THEN
+          INSERT INTO offer_price_history (offer_id, price) VALUES (NEW.id, NEW.current_price);
+          RETURN NEW;
+        END IF;
+
+        IF OLD.current_price IS DISTINCT FROM NEW.current_price THEN
+          SELECT price INTO last_recorded_price
+          FROM offer_price_history
+          WHERE offer_id = NEW.id
+          ORDER BY recorded_at DESC
+          LIMIT 1;
+
+          IF last_recorded_price IS DISTINCT FROM OLD.current_price THEN
+            INSERT INTO offer_price_history (offer_id, price, recorded_at)
+            VALUES (NEW.id, OLD.current_price, NOW() - INTERVAL '1 millisecond');
+          END IF;
+
           INSERT INTO offer_price_history (offer_id, price) VALUES (NEW.id, NEW.current_price);
         END IF;
         RETURN NEW;

@@ -2,6 +2,7 @@ importScripts(
   "../shared/runtime.js",
   "../shared/config.js",
   "access.js",
+  "clipboard.js",
   "whatsapp.js",
   "coupons.js",
 );

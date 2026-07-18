@@ -72,12 +72,18 @@
 
     const discount = discountPercent(currentPrice, previousPrice);
     if (discount > 0) {
+      context.shadowColor = "rgba(0,0,0,.14)";
+      context.shadowBlur = 18;
+      context.shadowOffsetY = 5;
       context.fillStyle = "#15965D";
-      roundedRect(context, 814, 48, 214, 72, 36); context.fill();
+      roundedRect(context, 792, 54, 236, 78, 39); context.fill();
+      context.shadowColor = "transparent";
+      context.shadowBlur = 0;
+      context.shadowOffsetY = 0;
       context.fillStyle = "#FFFFFF";
-      context.font = "700 34px Montserrat, Arial, sans-serif";
+      context.font = "700 36px Montserrat, Arial, sans-serif";
       context.textAlign = "center"; context.textBaseline = "middle";
-      context.fillText(`-${discount}%`, 921, 84);
+      context.fillText(`-${discount}%`, 910, 93);
     }
 
     context.shadowColor = "rgba(17,17,17,.18)"; context.shadowBlur = 24; context.shadowOffsetY = 8;
@@ -93,12 +99,12 @@
 
     if (discount > 0) {
       const previousLabel = formatPrice(previousPrice);
-      const previousX = Math.min(470, 76 + currentWidth + 20);
-      context.fillStyle = "#8B8F8C"; context.font = "600 24px Montserrat, Arial, sans-serif";
-      context.fillText(previousLabel, previousX, 981, 200);
-      const previousWidth = Math.min(context.measureText(previousLabel).width, 200);
-      context.strokeStyle = "#8B8F8C"; context.lineWidth = 3;
-      context.beginPath(); context.moveTo(previousX, 986); context.lineTo(previousX + previousWidth, 976); context.stroke();
+      const previousX = Math.min(458, 76 + currentWidth + 26);
+      context.fillStyle = "#6F7471"; context.font = "700 30px Montserrat, Arial, sans-serif";
+      context.fillText(previousLabel, previousX, 981, 240);
+      const previousWidth = Math.min(context.measureText(previousLabel).width, 240);
+      context.strokeStyle = "#6F7471"; context.lineWidth = 4; context.lineCap = "round";
+      context.beginPath(); context.moveTo(previousX, 981); context.lineTo(previousX + previousWidth, 981); context.stroke();
     }
 
     context.strokeStyle = "rgba(17,17,17,.13)"; context.lineWidth = 2;

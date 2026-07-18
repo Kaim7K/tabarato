@@ -60,7 +60,7 @@ export function formatTelegramMessage(offer) {
     `\u{1F4B0} <b>${money(currentPrice)}</b>${benefits.pix ? " (no Pix)" : ""}   |   \u{274C} <s>${money(previousPrice)}</s>`,
   ];
   if (offer.coupon) lines.push("", `\u{1F39F}\u{FE0F} Cupom: <b>${escapeHtml(offer.coupon)}</b>`);
-  if (benefits.lines.length) lines.push(...benefits.lines.map((line) => escapeHtml(line.replace(/\.$/, ""))));
+  if (benefits.lines.length) lines.push("", ...benefits.lines.map((line) => escapeHtml(line.replace(/\.$/, ""))));
   lines.push("", "\u{1F447} <b>Compre aqui:</b>", escapeHtml(offer.affiliateLink || ""));
 
   return compactLines(lines);

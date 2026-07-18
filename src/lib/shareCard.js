@@ -93,15 +93,21 @@ export async function shareOfferCard(offer) {
 
   const percentage = discount(offer);
   if (percentage > 0) {
+    context.shadowColor = "rgba(0,0,0,.14)";
+    context.shadowBlur = 18;
+    context.shadowOffsetY = 5;
     context.fillStyle = "#15965D";
     context.beginPath();
-    context.roundRect(814, 48, 214, 72, 36);
+    context.roundRect(792, 54, 236, 78, 39);
     context.fill();
+    context.shadowColor = "transparent";
+    context.shadowBlur = 0;
+    context.shadowOffsetY = 0;
     context.fillStyle = "#FFFFFF";
-    context.font = "700 34px Montserrat, Arial, sans-serif";
+    context.font = "700 36px Montserrat, Arial, sans-serif";
     context.textAlign = "center";
     context.textBaseline = "middle";
-    context.fillText(`-${percentage}%`, 921, 84);
+    context.fillText(`-${percentage}%`, 910, 93);
   }
 
   context.shadowColor = "rgba(17,17,17,.18)";
@@ -125,16 +131,17 @@ export async function shareOfferCard(offer) {
 
   if (Number(offer.previous_price) > Number(offer.price)) {
     const oldPrice = formatPrice(offer.previous_price);
-    context.fillStyle = "#8D8D8D";
-    const previousX = Math.min(470, 76 + currentWidth + 20);
-    context.font = "600 24px Montserrat, Arial, sans-serif";
-    context.fillText(oldPrice, previousX, 981, 200);
-    const width = Math.min(context.measureText(oldPrice).width, 200);
-    context.strokeStyle = "#8D8D8D";
+    context.fillStyle = "#6F7471";
+    const previousX = Math.min(458, 76 + currentWidth + 26);
+    context.font = "700 30px Montserrat, Arial, sans-serif";
+    context.fillText(oldPrice, previousX, 981, 240);
+    const width = Math.min(context.measureText(oldPrice).width, 240);
+    context.strokeStyle = "#6F7471";
     context.lineWidth = 4;
+    context.lineCap = "round";
     context.beginPath();
-    context.moveTo(previousX, 986);
-    context.lineTo(previousX + width, 976);
+    context.moveTo(previousX, 981);
+    context.lineTo(previousX + width, 981);
     context.stroke();
   }
 

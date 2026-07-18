@@ -2,6 +2,7 @@
   if (globalThis.TaBaratoBackgroundWhatsApp) return;
 
   const runtime = globalThis.TaBaratoRuntime;
+  const clipboard = globalThis.TaBaratoBackgroundClipboard;
   let activeOperation = null;
 
   function normalizeGroups(message) {
@@ -49,7 +50,13 @@
     await chrome.windows.update(tab.windowId, { focused: true });
     await chrome.tabs.update(tab.id, { active: true });
     await runtime.waitForTabComplete(tab.id, 30000, "O WhatsApp Web demorou para carregar.");
-    await runtime.delay(350);
+    await runtime.delay(140);
+    const clipboardPrepared = message.imageDataUrl
+      ? await clipboard.writeImage(message.imageDataUrl).catch((error) => {
+        runtime.reportError("prepare-whatsapp-clipboard", error);
+        return false;
+      })
+      : false;
 
     const results = [];
     for (const groupName of groups) {
@@ -63,11 +70,11 @@
         text: message.text,
         imageDataUrl: message.imageDataUrl || "",
         fileName: message.fileName || "oferta.png",
-        clipboardPrepared: Boolean(message.clipboardPrepared),
+        clipboardPrepared: clipboardPrepared || Boolean(message.clipboardPrepared),
       });
       if (!result?.ok) throw new Error(result?.error || `Nao foi possivel enviar para ${groupName}.`);
       results.push({ groupName, ok: true });
-      await runtime.delay(650);
+      await runtime.delay(240);
     }
     return { ok: true, results, stopped: operation.cancelled };
   }

@@ -8,7 +8,7 @@
   const { formatPrice, messageBenefits, normalizeText, previousPriceFor } = globalThis.TaBaratoProductUtils;
 
   async function evaluateImageCandidate(source) {
-    const response = await runtime.fetchWithTimeout(source, {}, 15000, "A imagem demorou para carregar.");
+    const response = await runtime.fetchWithTimeout(source, {}, 8000, "A imagem demorou para carregar.");
     if (!response.ok) return null;
     const blob = await response.blob();
     if (!/^image\/(?:png|jpe?g|webp)$/i.test(blob.type) || blob.size > 12 * 1024 * 1024) return null;
@@ -16,59 +16,28 @@
     try {
       const ratio = bitmap.width / Math.max(1, bitmap.height);
       if (ratio > 3.2 || ratio < 0.32 || Math.min(bitmap.width, bitmap.height) < 180) return null;
-      return { blob, score: imageSceneScore(bitmap, source) };
+      return blob;
     } finally {
       bitmap.close?.();
     }
   }
 
-  function imageSceneScore(bitmap, source) {
-    const canvas = document.createElement("canvas");
-    canvas.width = 24;
-    canvas.height = 24;
-    const context = canvas.getContext("2d", { willReadFrequently: true });
-    context.drawImage(bitmap, 0, 0, 24, 24);
-    const pixels = context.getImageData(0, 0, 24, 24).data;
-    let white = 0;
-    let colorful = 0;
-    for (let index = 0; index < pixels.length; index += 4) {
-      const red = pixels[index];
-      const green = pixels[index + 1];
-      const blue = pixels[index + 2];
-      if (red > 240 && green > 240 && blue > 240) white += 1;
-      if (Math.max(red, green, blue) - Math.min(red, green, blue) > 36) colorful += 1;
-    }
-    const total = pixels.length / 4;
-    const ratio = bitmap.width / Math.max(1, bitmap.height);
-    const aspectScore = Math.max(0, 1 - Math.abs(Math.log(ratio)) / 1.25) * 22;
-    const usageScore = /(uso|ambiente|review|cliente|lifestyle|scene|modelo)/i.test(source) ? 25 : 0;
-    return colorful / total * 42
-      - white / total * 22
-      + aspectScore
-      + usageScore
-      + Math.min(20, bitmap.width * bitmap.height / 120000);
-  }
-
   async function productImageBlob(payload) {
+    const imageCandidates = state.activeProduct?.imageCandidates || [];
     const candidates = [
       payload.imageUrl,
-      ...(state.activeProduct?.imageCandidates || []).map((item) => item.url),
+      ...imageCandidates.map((item) => item.url),
     ].filter(Boolean);
-    const sources = [...new Set(candidates)].slice(0, 8);
-    const evaluated = [];
-    for (let index = 0; index < sources.length; index += 4) {
-      const group = await Promise.all(sources.slice(index, index + 4).map(async (source) => {
-        try {
-          return await evaluateImageCandidate(source);
-        } catch {
-          return null;
-        }
-      }));
-      evaluated.push(...group);
+    const sources = [...new Set(candidates)].slice(0, 6);
+    for (const source of sources) {
+      try {
+        const blob = await evaluateImageCandidate(source);
+        if (blob) return blob;
+      } catch {
+        /* The next gallery image is tried when the current one cannot be used. */
+      }
     }
-    const best = evaluated.filter(Boolean).sort((left, right) => right.score - left.score)[0]?.blob;
-    if (!best) throw new Error("Nao foi possivel preparar a imagem do produto.");
-    return best;
+    throw new Error("Nao foi possivel preparar a imagem do produto.");
   }
 
   async function extensionAssetBlob(path) {
@@ -171,7 +140,7 @@
       `\u{1F4B0} *${formatPrice(payload.currentPrice)}*${pixLabel}   |   \u{274C} ~${formatPrice(previousPrice)}~`,
     ];
     if (payload.coupon) lines.push("", `\u{1F39F}\u{FE0F} Cupom: *${payload.coupon}*`);
-    if (benefits.lines.length) lines.push(...benefits.lines.map((line) => line.replace(/\.$/, "")));
+    if (benefits.lines.length) lines.push("", ...benefits.lines.map((line) => line.replace(/\.$/, "")));
     lines.push("", "\u{1F447} *Compre aqui:*", payload.affiliateLink);
     return lines.join("\n");
   }

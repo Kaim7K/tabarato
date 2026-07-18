@@ -114,10 +114,11 @@
     capturedAffiliatePage = location.href;
     capturedAffiliateLink = "";
     for (let attempt = 0; attempt < 2; attempt += 1) {
-      prepareAffiliateLink(attempt > 0);
-      const dialog = await tools.waitFor(affiliateDialog, 10000);
-      if (!dialog) continue;
-      const link = await tools.waitFor(() => readProductLink(dialog), 10000);
+      const prepared = prepareAffiliateLink(attempt > 0);
+      if (!prepared && !affiliateDialog()) return "";
+      const dialog = await tools.waitFor(affiliateDialog, attempt === 0 ? 5000 : 3000);
+      if (!dialog) return "";
+      const link = await tools.waitFor(() => readProductLink(dialog), attempt === 0 ? 4500 : 2500);
       if (MELI_LINK_PATTERN.test(link)) {
         await copyProductLink(dialog, link);
         capturedAffiliateLink = link;
@@ -130,22 +131,29 @@
     return "";
   };
 
-  const couponDialog = () => visibleDialog(/cupons do mercado livre|cupom dispon[ií]vel|conferir produtos|com\s+[A-Z][A-Z0-9_-]{3,24}/i);
+  const couponDialog = () => visibleDialog(/cupons? do mercado livre|cupom|conferir produtos|com\s*(?:\.{2,}|:|-)?\s*[A-Z][A-Z0-9_-]{3,24}/i);
 
   const usefulCoupon = (root = document) => tools.couponCandidates(root)[0]?.value || "";
 
-  const captureCoupon = async () => {
+  const captureCoupon = async (hasCouponPrice = false) => {
     const existing = usefulCoupon();
-    if (existing) return existing;
+    if (existing) return { code: existing, status: "code" };
     const control = visibleControl(/ver cupons dispon[ií]veis|ver.*cupons?|cupons? dispon[ií]veis/i);
     let dialog = couponDialog();
     if (!dialog && control) {
       control.click();
-      dialog = await tools.waitFor(couponDialog, 6000);
+      dialog = await tools.waitFor(couponDialog, 3200);
     }
     try {
-      if (!dialog) return "";
-      return await tools.waitFor(() => usefulCoupon(couponDialog() || dialog), 4500) || "";
+      if (!dialog) {
+        return {
+          code: "",
+          status: hasCouponPrice && control ? "activation-required" : "none",
+        };
+      }
+      const code = await tools.waitFor(() => usefulCoupon(couponDialog() || dialog), 1400) || "";
+      if (code) return { code, status: "code" };
+      return globalThis.TaBaratoCouponCode.classify(dialog.innerText, { hasCouponPrice });
     } finally {
       if (dialog && tools.visible(dialog)) closeDialog(dialog);
       await tools.closeTransientDialogs();
@@ -162,7 +170,7 @@
     const control = !installment && visibleControl(/meios de pagamento|formas de pagamento|ver.*pagamento/i);
     if (!installment && control) {
       control.click();
-      await tools.waitFor(() => (/meios de pagamento|cart[oõ]es de cr[eé]dito|aproveite estas promo[cç][oõ]es/i.test(document.body.innerText) ? true : ""), 8000);
+      await tools.waitFor(() => (/meios de pagamento|cart[oõ]es de cr[eé]dito|aproveite estas promo[cç][oõ]es/i.test(document.body.innerText) ? true : ""), 3500);
       const dialog = visibleDialog(/meios de pagamento|cart[oõ]es de cr[eé]dito|aproveite estas promo[cç][oõ]es/i);
       installment = tools.installmentSummary(`${pagePaymentText} ${dialog?.innerText || ""}`);
       if (dialog && tools.visible(dialog)) closeDialog(dialog);
@@ -179,6 +187,42 @@
       if (itemId && !products.has(itemId)) products.set(itemId, url);
     });
     return [...products.values()].slice(0, limit);
+  };
+
+  const absoluteImageUrl = (value = "") => {
+    try {
+      return new URL(value, location.href).href;
+    } catch {
+      return "";
+    }
+  };
+
+  const mainGalleryImageCandidates = () => {
+    const selectors = [
+      ".ui-pdp-gallery__figure .ui-pdp-image",
+      ".ui-pdp-gallery__figure img",
+      ".ui-pdp-gallery img",
+      "[data-testid*='gallery' i] img",
+      ".ui-pdp-container__row--gallery img",
+    ];
+    const candidates = [];
+    const push = (image, selector) => {
+      if (!image || !tools.visible(image)) return;
+      const source = image.currentSrc
+        || image.src
+        || image.getAttribute("data-src")
+        || image.getAttribute("srcset")?.split(/\s+/)[0]
+        || "";
+      const url = absoluteImageUrl(source);
+      if (!/^https?:\/\/[^?#]*mlstatic\.com\//i.test(url)) return;
+      if (/sprite|logo|avatar|icon/i.test(url)) return;
+      if (candidates.some((item) => item.url === url)) return;
+      candidates.push({ url, score: Math.max(20, 120 - candidates.length), reason: `main-gallery:${selector}` });
+    };
+    selectors.forEach((selector) => {
+      document.querySelectorAll(selector).forEach((image) => push(image, selector));
+    });
+    return candidates;
   };
 
   globalThis.TaBaratoStores.push({
@@ -202,7 +246,7 @@
       const priceInfo = tools.priceDetails(".ui-pdp-price__second-line .andes-money-amount", ".ui-pdp-price__main-container .andes-money-amount");
       const basePrice = priceInfo.value || tools.productPrice(structured);
       const couponPrice = tools.couponPriceDetails(basePrice);
-      const coupon = await captureCoupon();
+      const couponState = await captureCoupon(Boolean(couponPrice.value));
       const currentPrice = couponPrice.value || basePrice;
       const capturedPreviousPrice = tools.price(".ui-pdp-price__original-value .andes-money-amount", ".andes-money-amount--previous");
       const previousPrice = Number(capturedPreviousPrice) > Number(currentPrice)
@@ -217,12 +261,10 @@
         currentPrice,
         previousPrice,
         regularPrice: basePrice,
-        coupon,
+        coupon: couponState.code,
+        couponStatus: couponState.status,
         imageUrl: "",
-        imageCandidates: [
-          ...tools.imageCandidates(".ui-pdp-gallery__figure img", ".ui-pdp-image", "img[src*='mlstatic']"),
-          ...tools.productImages(structured).map((url) => ({ url, score: 60, reason: "structured" })),
-        ],
+        imageCandidates: mainGalleryImageCandidates(),
         affiliateLink,
         affiliateLinkType: affiliateLink ? "mercado-livre-generated" : "missing",
         sourceUrl: tools.canonicalUrl(),
