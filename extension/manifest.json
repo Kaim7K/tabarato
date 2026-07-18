@@ -3,7 +3,7 @@
   "name": "Ta Barato - Central de Ofertas",
   "description": "Capture ofertas, gere artes e publique no site, Telegram e WhatsApp somente nas lojas conectadas.",
   "version": "2.0.0",
-  "minimum_chrome_version": "114",
+  "minimum_chrome_version": "141",
   "icons": {
     "128": "assets/icon.png"
   },

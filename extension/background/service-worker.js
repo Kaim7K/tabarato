@@ -57,8 +57,13 @@ async function updateTabAvailability(tabId, url = "") {
   const allowed = await isAllowedUrl(url);
   await Promise.all([
     allowed ? chrome.action.enable(tabId) : chrome.action.disable(tabId),
-    chrome.sidePanel.setOptions({ tabId, path: "sidepanel/index.html", enabled: allowed }),
+    chrome.sidePanel.setOptions({ tabId, enabled: allowed }),
   ]).catch(() => {});
+}
+
+async function closePanelIfDisallowed(tab) {
+  if (!tab?.id || !tab?.windowId || await isAllowedUrl(tab.url)) return;
+  await chrome.sidePanel.close({ windowId: tab.windowId }).catch(() => {});
 }
 
 async function refreshAllTabs() {
@@ -198,12 +203,13 @@ chrome.runtime.onStartup.addListener(() => refreshAllTabs().catch((error) => run
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.url || changeInfo.status === "complete") {
     updateTabAvailability(tabId, changeInfo.url || tab.url).catch((error) => runtime.reportError("tab-availability", error));
+    if (tab.active) closePanelIfDisallowed({ ...tab, id: tabId, url: changeInfo.url || tab.url }).catch(() => {});
   }
 });
 chrome.tabs.onActivated.addListener(({ tabId }) => {
   chrome.tabs.get(tabId).then(async (tab) => {
     await updateTabAvailability(tabId, tab.url);
-    if (!await isAllowedUrl(tab.url) && chrome.sidePanel.close) await chrome.sidePanel.close({ tabId }).catch(() => {});
+    await closePanelIfDisallowed(tab);
   }).catch(() => {});
 });
 chrome.storage.onChanged.addListener((changes, area) => {
@@ -220,7 +226,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
   if (message?.type === "TABARATO_OPEN_PANEL" && sender.tab?.id) {
-    chrome.sidePanel.open({ tabId: sender.tab.id }).catch(() => {});
+    chrome.sidePanel.open({ windowId: sender.tab.windowId }).catch(() => {});
     return;
   }
   if (message?.type === "TABARATO_SHARE_WHATSAPP") {

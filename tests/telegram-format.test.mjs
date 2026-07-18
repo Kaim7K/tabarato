@@ -33,3 +33,16 @@ test("Telegram message never invents a final coupon price", () => {
   assert.doesNotMatch(message, /Com cupom/i);
   assert.doesNotMatch(message, /471,19/);
 });
+
+test("Telegram message keeps benefits concise and places Pix beside the price", () => {
+  const message = formatTelegramMessage({
+    productName: "Produto",
+    currentPrice: 176.9,
+    extraText: "Promocao: 43% OFF. Preco principal no Pix. Ate 10x sem juros. Frete gratis.",
+  });
+
+  assert.match(message, /R\$ 176,90<\/b> \(no Pix\)/);
+  assert.match(message, /💳/u);
+  assert.match(message, /🚚 Frete grátis/u);
+  assert.doesNotMatch(message, /Promo(?:ção|cao)|43%|OFF/i);
+});

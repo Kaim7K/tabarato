@@ -192,8 +192,9 @@
   };
 
   async function copyImageToClipboard(file) {
-    if (!document.hasFocus() || !navigator.clipboard?.write || typeof ClipboardItem === "undefined") return false;
+    if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined") return false;
     try {
+      window.focus();
       await navigator.clipboard.write([new ClipboardItem({ "image/png": file })]);
       return true;
     } catch {
@@ -214,44 +215,22 @@
     if (pasted) document.execCommand("paste");
   }
 
-  async function attachImageFile(file, signal) {
-    const attach = actionByLabel(["anexar", "attach", "adicionar"])
-      || [...document.querySelectorAll('[data-icon="plus-rounded"], [data-icon="clip"]')]
-        .map((element) => element.closest("button, [role='button']")).find(visible);
-    attach?.click();
-    const input = await waitFor(() => [...document.querySelectorAll('input[type="file"]')]
-      .find((element) => /image|video|\*/i.test(element.accept || "")), 5000, signal);
-    if (!input) return false;
-    const transfer = new DataTransfer();
-    transfer.items.add(file);
-    input.files = transfer.files;
-    input.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
-    return true;
-  }
-
   async function pasteOffer(file, caption, signal) {
     const composer = await waitFor(messageComposer, 10000, signal);
     if (!composer) throw new Error("O campo de mensagem do WhatsApp nao foi encontrado.");
     const messageCountBefore = outgoingMessages().length;
 
     aborted(signal);
-    const attached = await attachImageFile(file, signal);
-    if (!attached) {
-      await setEditableText(composer, caption);
-      pasteImageFromClipboard(composer, file);
-    }
+    if (!await copyImageToClipboard(file)) throw new Error("Nao foi possivel copiar a imagem para o clipboard.");
+    composer.focus();
+    document.execCommand("paste");
 
-    let captionBox = await waitFor(() => captionEditor(composer), attached ? 12000 : 3000, signal);
-    if (!captionBox && await copyImageToClipboard(file)) {
-      aborted(signal);
-      window.focus();
-      composer.focus();
-      document.execCommand("paste");
-      captionBox = await waitFor(() => captionEditor(composer), 12000, signal);
+    let captionBox = await waitFor(() => captionEditor(composer), 5000, signal);
+    if (!captionBox) {
+      pasteImageFromClipboard(composer, file);
+      captionBox = await waitFor(() => captionEditor(composer), 10000, signal);
     }
     if (!captionBox) {
-      const sent = await waitFor(() => sentMessageAppeared(messageCountBefore, caption), 3000, signal);
-      if (sent) return;
       throw new Error("A imagem foi copiada, mas o WhatsApp nao abriu a previa de envio.");
     }
     await new Promise((resolve) => window.setTimeout(resolve, 700));

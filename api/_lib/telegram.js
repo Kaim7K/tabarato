@@ -11,13 +11,40 @@ const compactLines = (lines) =>
     .join("\n")
     .trim();
 
+export function formatOfferBenefits(value = "") {
+  const source = String(value || "").replace(/\s+/g, " ").trim();
+  const normalizedSource = source.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const pix = /\b(?:no|via|pelo|preco principal no)\s+pix\b/i.test(normalizedSource);
+  const lines = [];
+  source.split(/(?<=[.!?])\s+/).forEach((sentence) => {
+    const clean = sentence
+      .replace(/promo[cç][aã]o\s*:[^.!?]*/gi, "")
+      .replace(/\b\d{1,3}(?:[.,]\d+)?%\s*(?:off|de desconto)\b/gi, "")
+      .replace(/\s+/g, " ")
+      .replace(/^[,;:\s-]+|[,;:\s-]+$/g, "")
+      .trim();
+    if (!clean || /pre[cç]o principal no pix/i.test(clean)) return;
+    if (/frete gr[aá]tis/i.test(clean)) {
+      if (!lines.includes("🚚 Frete grátis.")) lines.push("🚚 Frete grátis.");
+      return;
+    }
+    if (/sem juros|parcel(?:a|e|amento)|\b\d{1,2}x\b/i.test(clean)) {
+      lines.push(`💳 ${clean.replace(/^no cart[aã]o\s*:?\s*/i, "")}`);
+      return;
+    }
+    if (!/promo[cç][aã]o|\boff\b/i.test(clean)) lines.push(clean);
+  });
+  return { pix, lines: [...new Set(lines)] };
+}
+
 export function formatTelegramMessage(offer) {
+  const benefits = formatOfferBenefits(offer.extraText);
   const lines = [
     "<b>🔥 TÁ BARATO!</b>",
     "",
     `<b>${escapeHtml(offer.productName)}</b>`,
     "",
-    `💰 Agora: <b>R$ ${Number(offer.currentPrice).toFixed(2).replace(".", ",")}</b>`,
+    `💰 Agora: <b>R$ ${Number(offer.currentPrice).toFixed(2).replace(".", ",")}</b>${benefits.pix ? " (no Pix)" : ""}`,
   ];
 
   if (offer.previousPrice) {
@@ -29,7 +56,7 @@ export function formatTelegramMessage(offer) {
       : `Cupom: <b>${escapeHtml(offer.coupon)}</b>`);
   }
   if (offer.category) lines.push("", `📦 ${escapeHtml(offer.category)}`);
-  if (offer.extraText) lines.push("", escapeHtml(offer.extraText));
+  if (benefits.lines.length) lines.push("", ...benefits.lines.map(escapeHtml));
   lines.push("", "Preço e disponibilidade podem mudar.");
 
   return compactLines(lines);

@@ -193,12 +193,14 @@
       const structured = tools.jsonProduct();
       const productId = location.href.match(/\b(MLB-?\d{6,})\b/i)?.[1]?.replace("-", "").toUpperCase() || "";
       const priceInfo = tools.priceDetails(".ui-pdp-price__second-line .andes-money-amount", ".ui-pdp-price__main-container .andes-money-amount");
+      const basePrice = priceInfo.value || tools.productPrice(structured);
+      const couponPrice = tools.couponPriceDetails(basePrice);
       const coupon = tools.couponCandidates()[0]?.value || "Cupom disponivel no anuncio. Ative antes de comprar.";
       const product = {
         productName: tools.text(".ui-pdp-title", "h1") || tools.clean(structured.name) || tools.meta("og:title"),
         shortDescription: tools.description(".ui-pdp-description__content", ".ui-pdp-description") || tools.firstUsefulParagraph(structured.description) || tools.firstUsefulParagraph(tools.meta("og:description")),
         sourceCategory: tools.text(".andes-breadcrumb__container", ".ui-pdp-breadcrumb"),
-        currentPrice: priceInfo.value || tools.productPrice(structured),
+        currentPrice: couponPrice.value || basePrice,
         previousPrice: tools.price(".ui-pdp-price__original-value .andes-money-amount", ".andes-money-amount--previous"),
         coupon,
         imageUrl: "",
@@ -211,7 +213,7 @@
         sourceUrl: tools.canonicalUrl(),
         externalProductId: productId,
         platform: "Mercado Livre",
-        pricePaymentMethod: priceInfo.method,
+        pricePaymentMethod: couponPrice.value ? "Cupom" : priceInfo.method,
         confidence: 0,
       };
       product.imageUrl = product.imageCandidates[0]?.url || "";

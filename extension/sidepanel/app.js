@@ -553,6 +553,11 @@ async function productImageBlob(payload) {
       const blob = await response.blob();
       if (!/^image\/(?:png|jpe?g|webp)$/i.test(blob.type) || blob.size > 12 * 1024 * 1024) continue;
       const bitmap = await createImageBitmap(blob);
+      const aspectRatio = bitmap.width / Math.max(1, bitmap.height);
+      if (aspectRatio > 3.2 || aspectRatio < 0.32 || Math.min(bitmap.width, bitmap.height) < 180) {
+        bitmap.close?.();
+        continue;
+      }
       const score = imageSceneScore(bitmap, source);
       bitmap.close?.();
       if (score > bestScore) {
@@ -582,8 +587,10 @@ function imageSceneScore(bitmap, source) {
     if (Math.max(r, g, b) - Math.min(r, g, b) > 36) colorful += 1;
   }
   const total = pixels.length / 4;
+  const aspectRatio = bitmap.width / Math.max(1, bitmap.height);
+  const balancedAspect = Math.max(0, 1 - Math.abs(Math.log(aspectRatio)) / 1.25) * 22;
   const usageBonus = /(uso|ambiente|review|cliente|lifestyle|scene|modelo)/i.test(source) ? 25 : 0;
-  return colorful / total * 60 - white / total * 45 + usageBonus + Math.min(25, bitmap.width * bitmap.height / 90000);
+  return colorful / total * 42 - white / total * 22 + balancedAspect + usageBonus + Math.min(20, bitmap.width * bitmap.height / 120000);
 }
 
 async function extensionAssetBlob(path) {
@@ -636,19 +643,43 @@ async function prepareShareImage(payload) {
 }
 
 function whatsappMessage(payload) {
+  const benefits = messageBenefits(payload.extraText);
   const lines = [
     "*TA BARATO!*",
     "",
     `*${payload.productName}*`,
     "",
-    `Agora: *${formatPrice(payload.currentPrice)}*${activeProduct?.pricePaymentMethod === "Pix" ? " *(Pix)*" : ""}`,
+    `Agora: *${formatPrice(payload.currentPrice)}*${activeProduct?.pricePaymentMethod === "Pix" || benefits.pix ? " *(no Pix)*" : ""}`,
   ];
   if (payload.previousPrice) lines.push(`Antes: ~${formatPrice(payload.previousPrice)}~`);
   if (payload.coupon) lines.push("", `Cupom: *${payload.coupon}*`);
   if (payload.category) lines.push("", `Categoria: ${payload.category}`);
-  if (payload.extraText) lines.push("", payload.extraText);
+  if (benefits.lines.length) lines.push("", ...benefits.lines);
   lines.push("", "Preco e disponibilidade podem mudar.", "", "Comprar:", payload.affiliateLink);
   return lines.join("\n");
+}
+
+function messageBenefits(value = "") {
+  const source = String(value || "").replace(/\s+/g, " ").trim();
+  const pix = /\b(?:no|via|pelo|preco principal no)\s+pix\b/i.test(normalizeText(source));
+  const lines = [];
+  source.split(/(?<=[.!?])\s+/).forEach((sentence) => {
+    const clean = sentence
+      .replace(/promo[cç][aã]o\s*:[^.!?]*/gi, "")
+      .replace(/\b\d{1,3}(?:[.,]\d+)?%\s*(?:off|de desconto)\b/gi, "")
+      .replace(/\s+/g, " ")
+      .replace(/^[,;:\s-]+|[,;:\s-]+$/g, "")
+      .trim();
+    if (!clean || /pre[cç]o principal no pix/i.test(clean)) return;
+    if (/frete gr[aá]tis/i.test(clean)) {
+      if (!lines.includes("🚚 Frete grátis.")) lines.push("🚚 Frete grátis.");
+    } else if (/sem juros|parcel(?:a|e|amento)|\b\d{1,2}x\b/i.test(clean)) {
+      lines.push(`💳 ${clean.replace(/^no cart[aã]o\s*:?\s*/i, "")}`);
+    } else if (!/promo[cç][aã]o|\boff\b/i.test(clean)) {
+      lines.push(clean);
+    }
+  });
+  return { pix, lines: [...new Set(lines)] };
 }
 
 async function sendOfferToWhatsApp(payload, onProgress = () => {}) {
@@ -907,6 +938,7 @@ function renderAuth() {
   elements.setup.classList.toggle("hidden", connected);
   elements.editor.classList.toggle("hidden", !connected);
   setStatus(connected ? "Conectado" : "Desconectado", connected ? "success" : "neutral");
+  if (connected) synchronizeCatalog().catch((error) => runtime.reportError("sync-categories", error));
 }
 
 function highlightProductChange(tab) {

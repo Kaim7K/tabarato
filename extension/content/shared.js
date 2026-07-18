@@ -102,6 +102,45 @@
     return { value: "", method: "", context: "" };
   };
 
+  const couponPriceDetails = (referencePrice = "") => {
+    const reference = Number(referencePrice);
+    const candidates = [];
+    const push = (rawValue, context, score) => {
+      const value = normalizePrice(rawValue);
+      const amount = Number(value);
+      if (!value || !Number.isFinite(amount) || amount <= 0) return;
+      if (Number.isFinite(reference) && reference > 0 && amount >= reference) return;
+      if (candidates.some((item) => item.value === value)) return;
+      candidates.push({ value, method: "Cupom", context: clean(context), score });
+    };
+
+    [...document.querySelectorAll("span, p, div, a, button")].forEach((element) => {
+      if (!visible(element)) return;
+      const context = clean(element.textContent);
+      if (!context || context.length > 120 || !/cupom/i.test(context)) return;
+      const before = context.match(/R\$\s*([\d.]+(?:,\d{2})?)\s+com\s+(?:o\s+)?cupom\b/i);
+      const after = context.match(/\bcom\s+(?:o\s+)?cupom\s*(?:por|de|a)?\s*R\$\s*([\d.]+(?:,\d{2})?)/i);
+      const match = before || after;
+      if (match) push(match[1], context, 160 - context.length);
+    });
+
+    [...document.querySelectorAll("[class*='coupon' i] .andes-money-amount, [class*='coupon' i] [class*='price' i], .andes-money-amount")]
+      .forEach((element) => {
+        if (!visible(element)) return;
+        let current = element;
+        for (let depth = 0; current && depth < 3; depth += 1, current = current.parentElement) {
+          const context = clean(current.textContent);
+          if (context.length <= 140 && /\bcom\s+(?:o\s+)?cupom\b/i.test(context)) {
+            push(priceTextFrom(element), context, 120 - depth * 20 - context.length / 10);
+            break;
+          }
+        }
+      });
+
+    return candidates.sort((left, right) => right.score - left.score)[0]
+      || { value: "", method: "", context: "" };
+  };
+
   const jsonProduct = () => {
     const products = [];
     const visit = (value) => {
@@ -191,8 +230,9 @@
       .filter(visible)
       .forEach((element) => {
         const value = element.value || element.textContent || element.getAttribute("aria-label") || "";
+        if (/R\$\s*[\d.,]+\s+com\s+(?:o\s+)?cupom\b/i.test(clean(value))) return;
         const code = clean(value).match(/\b[A-Z0-9][A-Z0-9_-]{3,24}\b/)?.[0];
-        if (/cupom|coupon|voucher|aplicar|ativar/i.test(value) && code) push(code, 0.9);
+        if (/cupom|coupon|voucher|aplicar|ativar/i.test(value) && code && !/^\d+$/.test(code)) push(code, 0.9);
       });
     if (/cupom|coupon|voucher/i.test(pageText) && !candidates.length) {
       push("Cupom disponivel no anuncio. Ative antes de comprar.", 0.55);
@@ -263,6 +303,7 @@
     closeTransientDialogs,
     commerceBenefits,
     couponCandidates,
+    couponPriceDetails,
     description,
     findAffiliateLink,
     firstUsefulParagraph,

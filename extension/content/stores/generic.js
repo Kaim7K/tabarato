@@ -29,12 +29,14 @@
       const structured = tools.jsonProduct();
       const coupon = tools.couponCandidates()[0]?.value || "Cupom disponivel no anuncio. Ative antes de comprar.";
       const priceInfo = tools.priceDetails("[itemprop='price']", "[class*='price']", "[data-price]");
+      const basePrice = priceInfo.value || tools.productPrice(structured);
+      const couponPrice = tools.couponPriceDetails(basePrice);
       const platform = document.querySelector('meta[property="og:site_name"]')?.content || location.hostname.replace(/^www\./, "");
       const product = {
         productName: tools.text("h1", "[itemprop='name']") || tools.clean(structured.name) || tools.meta("og:title"),
         shortDescription: tools.description("[itemprop='description']", "[class*='description']", "main") || tools.firstUsefulParagraph(structured.description) || tools.firstUsefulParagraph(tools.meta("og:description")),
         sourceCategory: tools.text("nav[aria-label*='breadcrumb' i]", "[class*='breadcrumb']"),
-        currentPrice: priceInfo.value || tools.productPrice(structured),
+        currentPrice: couponPrice.value || basePrice,
         previousPrice: tools.price("[class*='old-price']", "[class*='original']", "del"),
         coupon,
         extraText: tools.commerceBenefits(document.body.innerText),
@@ -47,7 +49,7 @@
         sourceUrl: tools.canonicalUrl(),
         externalProductId: tools.meta("product:retailer_item_id") || tools.meta("sku") || "",
         platform,
-        pricePaymentMethod: priceInfo.method,
+        pricePaymentMethod: couponPrice.value ? "Cupom" : priceInfo.method,
         confidence: 0,
       };
       product.imageUrl = product.imageCandidates[0]?.url || "";

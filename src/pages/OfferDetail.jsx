@@ -108,12 +108,14 @@ export default function OfferDetail() {
           </div>
 
           <div className="p-5 sm:p-7 lg:p-9">
-            {adminMode && (
-              <a href={`/admin/ofertas?edit=${encodeURIComponent(offer.id)}`} target="_blank" rel="noopener noreferrer" className="mb-5 min-h-11 inline-flex items-center gap-2 px-4 rounded-md bg-[#111111] text-white text-sm font-semibold hover:bg-[#292929]">
-                <Pencil className="w-4 h-4" /> Editar produto
-              </a>
-            )}
-            <Link to={`/categoria/${slugify(offer.category)}`} className="text-[#FF6B35] text-xs font-semibold uppercase hover:underline">{offer.category}</Link>
+            <div className="flex items-center justify-between gap-3">
+              <Link to={`/categoria/${slugify(offer.category)}`} className="min-w-0 text-[#FF6B35] text-xs font-semibold uppercase hover:underline">{offer.category}</Link>
+              {adminMode && (
+                <a href={`/admin/ofertas?edit=${encodeURIComponent(offer.id)}`} target="_blank" rel="noopener noreferrer" className="shrink-0 min-h-9 inline-flex items-center gap-1.5 px-3 rounded-md border border-[#111111]/12 bg-[#F4F5F6] text-[#111111]/70 text-xs font-semibold hover:bg-[#111111] hover:text-white transition-colors" title="Editar produto no painel">
+                  <Pencil className="w-3.5 h-3.5" /> Editar
+                </a>
+              )}
+            </div>
             <h1 className="text-2xl sm:text-3xl lg:text-4xl font-semibold text-[#111111] leading-tight mt-3">{offer.name}</h1>
 
             <div className="mt-7 pb-7 border-b border-[#111111]/8">

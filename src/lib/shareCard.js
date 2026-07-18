@@ -16,6 +16,35 @@ const contained = (image, area) => {
   return { x: area.x + (area.width - width) / 2, y: area.y + (area.height - height) / 2, width, height };
 };
 
+const subjectBounds = (image) => {
+  const sample = document.createElement("canvas");
+  sample.width = 160;
+  sample.height = 160;
+  const context = sample.getContext("2d", { willReadFrequently: true });
+  context.drawImage(image, 0, 0, 160, 160);
+  const pixels = context.getImageData(0, 0, 160, 160).data;
+  let left = 160; let top = 160; let right = 0; let bottom = 0; let found = 0;
+  for (let y = 0; y < 160; y += 1) {
+    for (let x = 0; x < 160; x += 1) {
+      const index = (y * 160 + x) * 4;
+      if (pixels[index + 3] <= 20 || Math.min(pixels[index], pixels[index + 1], pixels[index + 2]) >= 242) continue;
+      found += 1; left = Math.min(left, x); top = Math.min(top, y); right = Math.max(right, x); bottom = Math.max(bottom, y);
+    }
+  }
+  if (found < 160 * 160 * 0.015) return { x: 0, y: 0, width: image.width, height: image.height };
+  const padding = 5;
+  left = Math.max(0, left - padding); top = Math.max(0, top - padding); right = Math.min(159, right + padding); bottom = Math.min(159, bottom + padding);
+  return { x: left / 160 * image.width, y: top / 160 * image.height, width: (right - left + 1) / 160 * image.width, height: (bottom - top + 1) / 160 * image.height };
+};
+
+const drawProduct = (context, image, area) => {
+  const source = subjectBounds(image);
+  const scale = Math.min(area.width / source.width, area.height / source.height);
+  const width = source.width * scale;
+  const height = source.height * scale;
+  context.drawImage(image, source.x, source.y, source.width, source.height, area.x + (area.width - width) / 2, area.y + (area.height - height) / 2, width, height);
+};
+
 const drawContained = (context, image, area) => {
   if (!image?.width) return;
   const target = contained(image, area);
@@ -42,32 +71,37 @@ export async function shareOfferCard(offer) {
   context.imageSmoothingEnabled = true;
   context.imageSmoothingQuality = "high";
 
-  context.fillStyle = "#EEF1EE";
+  context.fillStyle = "#ECEFEC";
   context.fillRect(0, 0, 1080, 1080);
   context.fillStyle = "#FFFFFF";
   context.beginPath();
-  context.roundRect(36, 36, 1008, 1008, 38);
+  context.roundRect(34, 34, 1012, 1012, 34);
+  context.fill();
+
+  context.fillStyle = "#F7F8F6";
+  context.beginPath();
+  context.roundRect(66, 66, 948, 730, 24);
   context.fill();
 
   try {
     const product = await loadImage(offer.image, true);
-    drawContained(context, product, { x: 74, y: 70, width: 932, height: 790 });
+    drawProduct(context, product, { x: 94, y: 88, width: 892, height: 686 });
   } catch {
     context.fillStyle = "#F4F5F6";
-    context.fillRect(74, 70, 932, 790);
+    context.fillRect(94, 88, 892, 686);
   }
 
   const percentage = discount(offer);
   if (percentage > 0) {
     context.fillStyle = "#15965D";
     context.beginPath();
-    context.roundRect(754, 76, 246, 76, 38);
+    context.roundRect(792, 78, 198, 68, 34);
     context.fill();
     context.fillStyle = "#FFFFFF";
-    context.font = "800 38px Montserrat, Arial, sans-serif";
+    context.font = "700 34px Montserrat, Arial, sans-serif";
     context.textAlign = "center";
     context.textBaseline = "middle";
-    context.fillText(`-${percentage}%`, 877, 114);
+    context.fillText(`-${percentage}%`, 891, 112);
   }
 
   context.shadowColor = "rgba(17,17,17,.18)";
@@ -75,7 +109,7 @@ export async function shareOfferCard(offer) {
   context.shadowOffsetY = 12;
   context.fillStyle = "#FFFFFF";
   context.beginPath();
-  context.roundRect(70, 842, 940, 154, 77);
+  context.roundRect(70, 824, 940, 184, 92);
   context.fill();
   context.shadowColor = "transparent";
   context.shadowBlur = 0;
@@ -84,36 +118,39 @@ export async function shareOfferCard(offer) {
   context.textAlign = "left";
   context.textBaseline = "alphabetic";
   context.fillStyle = "#111111";
-  context.font = "900 58px Montserrat, Arial, sans-serif";
-  context.fillText(formatPrice(offer.price), 112, 930, 370);
+  context.font = "700 56px Montserrat, Arial, sans-serif";
+  const currentLabel = formatPrice(offer.price);
+  context.fillText(currentLabel, 112, 916, 350);
+  const currentWidth = Math.min(context.measureText(currentLabel).width, 350);
 
   if (Number(offer.previous_price) > Number(offer.price)) {
     const oldPrice = formatPrice(offer.previous_price);
     context.fillStyle = "#8D8D8D";
-    context.font = "700 28px Montserrat, Arial, sans-serif";
-    context.fillText(oldPrice, 112, 966, 260);
-    const width = Math.min(context.measureText(oldPrice).width, 260);
+    const previousX = Math.min(470, 112 + currentWidth + 24);
+    context.font = "600 25px Montserrat, Arial, sans-serif";
+    context.fillText(oldPrice, previousX, 916, 190);
+    const width = Math.min(context.measureText(oldPrice).width, 190);
     context.strokeStyle = "#8D8D8D";
     context.lineWidth = 4;
     context.beginPath();
-    context.moveTo(112, 956);
-    context.lineTo(112 + width, 944);
+    context.moveTo(previousX, 921);
+    context.lineTo(previousX + width, 911);
     context.stroke();
   }
 
   context.strokeStyle = "rgba(17,17,17,.16)";
   context.lineWidth = 2;
   context.beginPath();
-  context.moveTo(704, 876);
-  context.lineTo(704, 962);
+  context.moveTo(748, 866);
+  context.lineTo(748, 966);
   context.stroke();
 
   const [brand, store] = await Promise.all([
     loadImage(BRAND_LOGO).catch(() => null),
     storeLogo(offer.platform) ? loadImage(storeLogo(offer.platform)).catch(() => null) : null,
   ]);
-  drawContained(context, store, { x: 598, y: 884, width: 70, height: 70 });
-  drawContained(context, brand, { x: 732, y: 878, width: 224, height: 82 });
+  drawContained(context, store, { x: 650, y: 878, width: 62, height: 76 });
+  drawContained(context, brand, { x: 786, y: 865, width: 178, height: 96 });
 
   const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png", 0.94));
   if (!blob) throw new Error("Nao foi possivel gerar o card.");

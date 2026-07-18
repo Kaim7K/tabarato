@@ -2,139 +2,111 @@
   if (globalThis.TaBaratoArtwork) return;
 
   const SIZE = 1080;
-
-  const fitCoverOrContain = (width, height, area, mode = "contain") => {
-    const scale = mode === "cover"
-      ? Math.max(area.width / width, area.height / height)
-      : Math.min(area.width / width, area.height / height);
-    const targetWidth = Math.max(1, width * scale);
-    const targetHeight = Math.max(1, height * scale);
-    return {
-      x: area.x + (area.width - targetWidth) / 2,
-      y: area.y + (area.height - targetHeight) / 2,
-      width: targetWidth,
-      height: targetHeight,
-    };
-  };
-
   const roundedRect = (context, x, y, width, height, radius) => {
     context.beginPath();
     context.roundRect(x, y, width, height, radius);
   };
 
-  const drawContainedImage = (context, image, area) => {
+  const subjectBounds = (image) => {
+    const sample = document.createElement("canvas");
+    sample.width = 160;
+    sample.height = 160;
+    const context = sample.getContext("2d", { willReadFrequently: true });
+    context.drawImage(image, 0, 0, 160, 160);
+    const pixels = context.getImageData(0, 0, 160, 160).data;
+    let left = 160; let top = 160; let right = 0; let bottom = 0; let found = 0;
+    for (let y = 0; y < 160; y += 1) {
+      for (let x = 0; x < 160; x += 1) {
+        const index = (y * 160 + x) * 4;
+        const visible = pixels[index + 3] > 20 && Math.min(pixels[index], pixels[index + 1], pixels[index + 2]) < 242;
+        if (!visible) continue;
+        found += 1; left = Math.min(left, x); top = Math.min(top, y); right = Math.max(right, x); bottom = Math.max(bottom, y);
+      }
+    }
+    if (found < 160 * 160 * 0.015) return { x: 0, y: 0, width: image.width, height: image.height };
+    const padding = 5;
+    left = Math.max(0, left - padding); top = Math.max(0, top - padding);
+    right = Math.min(159, right + padding); bottom = Math.min(159, bottom + padding);
+    return { x: left / 160 * image.width, y: top / 160 * image.height, width: (right - left + 1) / 160 * image.width, height: (bottom - top + 1) / 160 * image.height };
+  };
+
+  const drawProduct = (context, image, area) => {
+    const source = subjectBounds(image);
+    const scale = Math.min(area.width / source.width, area.height / source.height);
+    const width = source.width * scale;
+    const height = source.height * scale;
+    context.drawImage(image, source.x, source.y, source.width, source.height, area.x + (area.width - width) / 2, area.y + (area.height - height) / 2, width, height);
+  };
+
+  const drawContained = (context, image, area) => {
     if (!image?.width || !image?.height) return;
-    const target = fitCoverOrContain(image.width, image.height, area, "contain");
-    context.drawImage(image, target.x, target.y, target.width, target.height);
+    const scale = Math.min(area.width / image.width, area.height / image.height);
+    const width = image.width * scale;
+    const height = image.height * scale;
+    context.drawImage(image, area.x + (area.width - width) / 2, area.y + (area.height - height) / 2, width, height);
   };
 
-  const canvasBlob = (canvas) => new Promise((resolve, reject) => {
-    canvas.toBlob((blob) => {
-      if (blob) resolve(blob);
-      else reject(new Error("Nao foi possivel gerar a arte da oferta."));
-    }, "image/png", 0.92);
-  });
-
-  const formatPrice = (value) => {
-    const price = Number(value);
-    return Number.isFinite(price) && price > 0
-      ? new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(price)
-      : "Preco indisponivel";
-  };
-
-  const discountPercent = (currentPrice, previousPrice) => {
-    const current = Number(currentPrice);
-    const previous = Number(previousPrice);
-    if (!Number.isFinite(current) || !Number.isFinite(previous) || previous <= current) return 0;
-    return Math.max(1, Math.round((1 - current / previous) * 100));
-  };
-
-  const drawLogo = (context, image, area) => {
-    if (!image) return;
-    drawContainedImage(context, image, area);
-  };
+  const formatPrice = (value) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(value) || 0);
+  const discountPercent = (current, previous) => Number(previous) > Number(current) && Number(current) > 0 ? Math.round((1 - Number(current) / Number(previous)) * 100) : 0;
+  const canvasBlob = (canvas) => new Promise((resolve, reject) => canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error("Nao foi possivel gerar a arte.")), "image/png", 0.94));
 
   async function createOfferArtwork({ productBlob, siteLogoBlob, storeLogoBlob, currentPrice, previousPrice }) {
-    const [productImage, siteLogo, storeLogo] = await Promise.all([
+    const [product, siteLogo, storeLogo] = await Promise.all([
       createImageBitmap(productBlob),
       siteLogoBlob ? createImageBitmap(siteLogoBlob) : null,
       storeLogoBlob ? createImageBitmap(storeLogoBlob) : null,
     ]);
     const canvas = document.createElement("canvas");
-    canvas.width = SIZE;
-    canvas.height = SIZE;
+    canvas.width = SIZE; canvas.height = SIZE;
     const context = canvas.getContext("2d", { alpha: false });
-    context.imageSmoothingEnabled = true;
-    context.imageSmoothingQuality = "high";
+    context.imageSmoothingEnabled = true; context.imageSmoothingQuality = "high";
 
-    const gradient = context.createLinearGradient(0, 0, 0, SIZE);
-    gradient.addColorStop(0, "#f8faf8");
-    gradient.addColorStop(1, "#eef1ee");
-    context.fillStyle = gradient;
+    context.fillStyle = "#ECEFEC";
     context.fillRect(0, 0, SIZE, SIZE);
+    context.fillStyle = "#FFFFFF";
+    roundedRect(context, 34, 34, 1012, 1012, 34); context.fill();
 
-    context.fillStyle = "#ffffff";
-    roundedRect(context, 36, 36, 1008, 1008, 38);
-    context.fill();
-
-    drawContainedImage(context, productImage, { x: 74, y: 70, width: 932, height: 790 });
+    context.fillStyle = "#F7F8F6";
+    roundedRect(context, 66, 66, 948, 730, 24); context.fill();
+    drawProduct(context, product, { x: 94, y: 88, width: 892, height: 686 });
 
     const discount = discountPercent(currentPrice, previousPrice);
     if (discount > 0) {
-      context.fillStyle = "#15965d";
-      roundedRect(context, 754, 76, 246, 76, 38);
-      context.fill();
-      context.fillStyle = "#ffffff";
-      context.font = "800 38px Montserrat, Arial, sans-serif";
-      context.textBaseline = "middle";
-      context.textAlign = "center";
-      context.fillText(`-${discount}%`, 877, 114);
-      context.textAlign = "start";
+      context.fillStyle = "#15965D";
+      roundedRect(context, 792, 78, 198, 68, 34); context.fill();
+      context.fillStyle = "#FFFFFF";
+      context.font = "700 34px Montserrat, Arial, sans-serif";
+      context.textAlign = "center"; context.textBaseline = "middle";
+      context.fillText(`-${discount}%`, 891, 112);
     }
 
-    const bar = { x: 70, y: 842, width: 940, height: 154 };
-    context.shadowColor = "rgba(17,17,17,.18)";
-    context.shadowBlur = 28;
-    context.shadowOffsetY = 12;
-    context.fillStyle = "#ffffff";
-    roundedRect(context, bar.x, bar.y, bar.width, bar.height, 77);
-    context.fill();
-    context.shadowColor = "transparent";
-    context.shadowBlur = 0;
-    context.shadowOffsetY = 0;
+    context.shadowColor = "rgba(17,17,17,.16)"; context.shadowBlur = 26; context.shadowOffsetY = 10;
+    context.fillStyle = "#FFFFFF";
+    roundedRect(context, 70, 824, 940, 184, 92); context.fill();
+    context.shadowColor = "transparent"; context.shadowBlur = 0; context.shadowOffsetY = 0;
 
-    context.fillStyle = "#111111";
-    context.font = "900 58px Montserrat, Arial, sans-serif";
-    context.textBaseline = "alphabetic";
-    context.fillText(formatPrice(currentPrice), 112, 930, 360);
+    context.textAlign = "left"; context.textBaseline = "middle";
+    context.fillStyle = "#111111"; context.font = "700 56px Montserrat, Arial, sans-serif";
+    const currentLabel = formatPrice(currentPrice);
+    context.fillText(currentLabel, 112, 916, 350);
+    const currentWidth = Math.min(context.measureText(currentLabel).width, 350);
 
     if (discount > 0) {
-      const oldPrice = formatPrice(previousPrice);
-      context.fillStyle = "#8d8d8d";
-      context.font = "700 28px Montserrat, Arial, sans-serif";
-      context.fillText(oldPrice, 112, 966, 260);
-      const measure = context.measureText(oldPrice);
-      context.strokeStyle = "#8d8d8d";
-      context.lineWidth = 4;
-      context.beginPath();
-      context.moveTo(112, 956);
-      context.lineTo(112 + Math.min(measure.width, 260), 944);
-      context.stroke();
+      const previousLabel = formatPrice(previousPrice);
+      const previousX = Math.min(470, 112 + currentWidth + 24);
+      context.fillStyle = "#8B8F8C"; context.font = "600 25px Montserrat, Arial, sans-serif";
+      context.fillText(previousLabel, previousX, 916, 190);
+      const previousWidth = Math.min(context.measureText(previousLabel).width, 190);
+      context.strokeStyle = "#8B8F8C"; context.lineWidth = 3;
+      context.beginPath(); context.moveTo(previousX, 921); context.lineTo(previousX + previousWidth, 911); context.stroke();
     }
 
-    context.strokeStyle = "rgba(17,17,17,.16)";
-    context.lineWidth = 2;
-    context.beginPath();
-    context.moveTo(704, 876);
-    context.lineTo(704, 962);
-    context.stroke();
+    context.strokeStyle = "rgba(17,17,17,.13)"; context.lineWidth = 2;
+    context.beginPath(); context.moveTo(748, 866); context.lineTo(748, 966); context.stroke();
+    drawContained(context, storeLogo, { x: 650, y: 878, width: 62, height: 76 });
+    drawContained(context, siteLogo, { x: 786, y: 865, width: 178, height: 96 });
 
-    drawLogo(context, storeLogo, { x: 598, y: 884, width: 70, height: 70 });
-    drawLogo(context, siteLogo, { x: 732, y: 878, width: 224, height: 82 });
-
-    productImage.close?.();
-    siteLogo?.close?.();
-    storeLogo?.close?.();
+    product.close?.(); siteLogo?.close?.(); storeLogo?.close?.();
     return canvasBlob(canvas);
   }
 

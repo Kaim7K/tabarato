@@ -42,6 +42,9 @@ test("extension action and launcher stay hidden outside allowed pages", () => {
   assert.match(background, /configuredOrigin/);
   assert.match(background, /chrome\.action\.disable/);
   assert.match(background, /chrome\.sidePanel\.setOptions/);
+  assert.match(background, /chrome\.sidePanel\.close\(\{ windowId: tab\.windowId \}\)/);
+  assert.match(background, /chrome\.sidePanel\.open\(\{ windowId: sender\.tab\.windowId \}\)/);
+  assert.doesNotMatch(background, /setOptions\(\{ tabId, path:/);
   assert.match(content, /TABARATO_IS_ALLOWED_PAGE/);
   assert.match(content, /existing\?\.(?:remove|remove\(\))/);
   assert.match(content, /assets\/icon\.png/);
@@ -67,6 +70,8 @@ test("capture extracts requested product fields and closes store popups", () => 
   const shopee = readFileSync(join(extensionRoot, "content", "stores", "shopee.js"), "utf8");
   assert.match(shared, /firstUsefulParagraph/);
   assert.match(shared, /couponCandidates/);
+  assert.match(shared, /couponPriceDetails/);
+  assert.match(shared, /com\\s\+\(\?:o\\s\+\)\?cupom/);
   assert.match(shared, /priceDetails/);
   assert.match(shared, /commerceBenefits/);
   assert.match(shared, /imageCandidates/);
@@ -74,6 +79,7 @@ test("capture extracts requested product fields and closes store popups", () => 
   assert.match(meli, /captureAffiliateLink/);
   assert.match(meli, /MELI_LINK_PATTERN/);
   assert.match(meli, /pricePaymentMethod/);
+  assert.match(meli, /couponPrice\.value \|\| basePrice/);
   assert.match(meli, /Cupom disponivel no anuncio/);
   assert.match(meli, /await tools\.closeTransientDialogs/);
   assert.match(shopee, /couponCandidates/);
@@ -120,9 +126,21 @@ test("offer artwork matches the requested premium share card", () => {
   assert.match(app, /assets\/shopee\.svg/);
   assert.match(artwork, /createOfferArtwork/);
   assert.match(artwork, /discountPercent/);
-  assert.match(artwork, /roundedRect\(context, bar\.x, bar\.y, bar\.width, bar\.height, 77\)/);
-  assert.match(artwork, /drawLogo\(context, storeLogo/);
-  assert.match(artwork, /drawLogo\(context, siteLogo/);
+  assert.match(artwork, /subjectBounds/);
+  assert.match(artwork, /drawProduct/);
+  assert.match(artwork, /roundedRect\(context, 70, 824, 940, 184, 92\)/);
+  assert.match(artwork, /previousX/);
+  assert.match(artwork, /drawContained\(context, storeLogo/);
+  assert.match(artwork, /drawContained\(context, siteLogo/);
+  assert.doesNotMatch(artwork, /font\s*=\s*["'`](?:800|900)\s/);
+});
+
+test("WhatsApp artwork is copied and pasted without file attachment inputs", () => {
+  const whatsapp = readFileSync(join(extensionRoot, "content", "whatsapp.js"), "utf8");
+  assert.match(whatsapp, /navigator\.clipboard\.write/);
+  assert.match(whatsapp, /ClipboardItem/);
+  assert.match(whatsapp, /execCommand\("paste"\)/);
+  assert.doesNotMatch(whatsapp, /input\[type=["']file["']\]/);
 });
 
 test("duplicate products are reconciled automatically by price movement", () => {

@@ -43,28 +43,44 @@ export const telegramOffersApi = {
 const compactLines = (lines) =>
   lines.filter((line, index, array) => String(line || "").trim() || String(array[index - 1] || "").trim()).join("\n").trim();
 
+const previewBenefits = (value = "") => {
+  const source = String(value || "").replace(/\s+/g, " ").trim();
+  const pix = /\b(?:no|via|pelo|preco principal no)\s+pix\b/i.test(source.normalize("NFD").replace(/[\u0300-\u036f]/g, ""));
+  const lines = [];
+  source.split(/(?<=[.!?])\s+/).forEach((sentence) => {
+    const clean = sentence.replace(/promo[cç][aã]o\s*:[^.!?]*/gi, "").replace(/\b\d{1,3}(?:[.,]\d+)?%\s*(?:off|de desconto)\b/gi, "").replace(/\s+/g, " ").trim();
+    if (!clean || /pre[cç]o principal no pix/i.test(clean)) return;
+    if (/frete gr[aá]tis/i.test(clean)) lines.push("🚚 Frete grátis.");
+    else if (/sem juros|parcel(?:a|e|amento)|\b\d{1,2}x\b/i.test(clean)) lines.push(`💳 ${clean.replace(/^no cart[aã]o\s*:?\s*/i, "")}`);
+    else if (!/promo[cç][aã]o|\boff\b/i.test(clean)) lines.push(clean);
+  });
+  return { pix, lines: [...new Set(lines)] };
+};
+
 export function formatTelegramPreview(offer) {
+  const benefits = previewBenefits(offer.extraText);
   const lines = [
     "🔥 TÁ BARATO!",
     "",
     offer.productName || "[NOME DO PRODUTO]",
     "",
-    `💰 Agora: ${offer.currentPrice ? `R$ ${Number(offer.currentPrice).toFixed(2).replace(".", ",")}` : "[PRECO ATUAL]"}`,
+    `💰 Agora: ${offer.currentPrice ? `R$ ${Number(offer.currentPrice).toFixed(2).replace(".", ",")}` : "[PRECO ATUAL]"}${benefits.pix ? " (no Pix)" : ""}`,
   ];
   if (offer.previousPrice) lines.push(`Antes: R$ ${Number(offer.previousPrice).toFixed(2).replace(".", ",")}`);
   if (offer.coupon) lines.push(`Cupom: ${offer.coupon}`);
   if (offer.category) lines.push("", `📦 ${offer.category}`);
-  if (offer.extraText) lines.push("", offer.extraText);
+  if (benefits.lines.length) lines.push("", ...benefits.lines);
   lines.push("", "Preco e disponibilidade podem mudar.", "", "🛒 Ver oferta");
   return compactLines(lines);
 }
 
 export function formatWhatsAppPreview(offer) {
+  const benefits = previewBenefits(offer.extraText);
   const price = offer.currentPrice ? `R$ ${Number(offer.currentPrice).toFixed(2).replace(".", ",")}` : "[PREÇO ATUAL]";
-  const lines = ["🔥 *TÁ BARATO!*", "", `*${offer.productName || "[NOME DO PRODUTO]"}*`, "", `💰 Agora: *${price}*`];
+  const lines = ["🔥 *TÁ BARATO!*", "", `*${offer.productName || "[NOME DO PRODUTO]"}*`, "", `💰 Agora: *${price}*${benefits.pix ? " *(no Pix)*" : ""}`];
   if (offer.previousPrice) lines.push(`Antes: ~R$ ${Number(offer.previousPrice).toFixed(2).replace(".", ",")}~`);
   if (offer.coupon) lines.push("", `🎟️ Cupom: *${offer.coupon}*`);
-  if (offer.extraText) lines.push("", offer.extraText);
+  if (benefits.lines.length) lines.push("", ...benefits.lines);
   lines.push("", "🛒 *Comprar:*", offer.affiliateLink || "[LINK DA OFERTA]");
   return compactLines(lines);
 }
