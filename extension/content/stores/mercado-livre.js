@@ -2,7 +2,8 @@
   const tools = globalThis.TaBaratoCapture;
   if (!tools || globalThis.TaBaratoStores?.some((store) => store.id === "mercado-livre")) return;
 
-  const MELI_LINK_PATTERN = /^https:\/\/meli\.la\/[A-Za-z0-9_-]+/i;
+  const MELI_LINK_PATTERN = /^https:\/\/(?:www\.)?meli\.la\/[A-Za-z0-9_-]+(?:[/?#][^\s"'<>]*)?$/i;
+  const MELI_LINK_SEARCH = /https:\/\/(?:www\.)?meli\.la\/[A-Za-z0-9_-]+(?:[/?#][^\s"'<>]*)?/i;
   let affiliateRequestStartedAt = 0;
   let capturedAffiliateLink = "";
   let capturedAffiliatePage = "";
@@ -17,7 +18,35 @@
     return value;
   };
 
-  const controlLabel = (element) => tools.clean(`${element?.textContent || ""} ${element?.getAttribute?.("aria-label") || ""} ${element?.getAttribute?.("title") || ""}`);
+  const controlLabel = (element) => {
+    const descendants = [...(element?.querySelectorAll?.("[aria-label], [title], [data-testid]") || [])]
+      .slice(0, 8)
+      .map((item) => `${item.getAttribute("aria-label") || ""} ${item.getAttribute("title") || ""} ${item.getAttribute("data-testid") || ""}`)
+      .join(" ");
+    return tools.clean([
+      element?.textContent || "",
+      element?.getAttribute?.("aria-label") || "",
+      element?.getAttribute?.("title") || "",
+      element?.getAttribute?.("data-testid") || "",
+      element?.getAttribute?.("name") || "",
+      descendants,
+    ].join(" "));
+  };
+
+  const extractMeliLink = (value = "") => {
+    const decoded = String(value || "")
+      .replace(/&amp;/gi, "&")
+      .replace(/\\u002F/gi, "/")
+      .replace(/\\\//g, "/");
+    const match = decoded.match(MELI_LINK_SEARCH)?.[0]?.replace(/[),.;!?]+$/, "") || "";
+    if (!match) return "";
+    try {
+      const url = new URL(match);
+      return /^(?:www\.)?meli\.la$/i.test(url.hostname) ? url.href.replace(/\/$/, "") : "";
+    } catch {
+      return "";
+    }
+  };
 
   const productRoot = () => document.querySelector(".ui-pdp--sticky-wrapper-right")
     || document.querySelector(".ui-pdp-container--column-right")
@@ -31,12 +60,12 @@
   const visibleDialog = (pattern) => [...document.querySelectorAll("[role='dialog'], .andes-modal, [class*='modal']")]
     .find((element) => tools.visible(element) && pattern.test(tools.clean(element.textContent)));
 
-  const affiliateDialog = () => visibleDialog(/gerar link\s*\/\s*id de produto|link do produto.*id do produto|texto sugerido|afiliad/i);
+  const affiliateDialog = () => visibleDialog(/gerar link\s*\/\s*id de produto|link do produto.*id do produto|texto sugerido|afiliad|meli\.la/i);
 
   const productLinkField = (dialog = affiliateDialog()) => {
     if (!dialog) return null;
     const candidates = [...dialog.querySelectorAll("input, textarea")]
-      .filter((element) => MELI_LINK_PATTERN.test(tools.clean(element.value)))
+      .filter((element) => extractMeliLink(element.value || element.getAttribute("value")))
       .map((element) => ({
         element,
         score: (element.matches("input") ? 30 : 0)
@@ -48,17 +77,30 @@
   };
 
   const readProductLink = (dialog = affiliateDialog()) => {
+    if (!dialog) return "";
     const field = productLinkField(dialog);
-    if (field) return tools.clean(field.value).match(MELI_LINK_PATTERN)?.[0] || "";
-    const link = [...(dialog?.querySelectorAll("a[href]") || [])]
-      .map((element) => tools.clean(element.href))
-      .find((value) => MELI_LINK_PATTERN.test(value));
-    return link?.match(MELI_LINK_PATTERN)?.[0] || "";
+    if (field) return extractMeliLink(field.value || field.getAttribute("value"));
+
+    const values = [dialog.innerText, dialog.textContent, dialog.innerHTML];
+    [...dialog.querySelectorAll("a[href], input, textarea, [contenteditable='true'], [data-clipboard-text], [data-copy], code, pre")]
+      .forEach((element) => {
+        values.push(
+          element.href,
+          element.value,
+          element.textContent,
+          element.getAttribute("value"),
+          element.getAttribute("data-clipboard-text"),
+          element.getAttribute("data-copy"),
+        );
+      });
+    return values.map(extractMeliLink).find(Boolean) || "";
   };
 
   const copyProductLink = async (dialog, link) => {
     const field = productLinkField(dialog);
-    const copyControl = [...(field?.parentElement?.querySelectorAll("button, [role='button']") || [])]
+    const copyRoots = [field?.parentElement, dialog].filter(Boolean);
+    const copyControl = copyRoots
+      .flatMap((root) => [...root.querySelectorAll("button, [role='button']")])
       .filter(tools.visible)
       .find((element) => /copiar|copy/i.test(controlLabel(element)));
     if (copyControl) {
@@ -84,58 +126,110 @@
     await tools.closeTransientDialogs();
   };
 
-  const affiliateShareContext = (element) => {
+  const affiliateContextScore = (element) => {
     let current = element;
-    for (let depth = 0; current && depth < 5; depth += 1) {
+    let score = 0;
+    for (let depth = 0; current && depth < 9; depth += 1) {
       const text = tools.clean(current.textContent);
-      if (/ganhos?\s*(?:extras?)?\s*\d+(?:[.,]\d+)?\s*%/i.test(text)
-        || /programa\s+de\s+afiliados?|link\s+de\s+afiliado/i.test(text)) return true;
-      const rectangle = current.getBoundingClientRect();
-      if (depth > 0 && rectangle.height > 180) break;
+      if (/ganh(?:e|os?)\s*(?:extras?)?\s*(?:at[eé]\s*)?\d+(?:[.,]\d+)?\s*%/i.test(text)) score = Math.max(score, 120 - depth * 8);
+      if (/programa\s+de\s+afiliados?|link\s+de\s+afiliado|afiliados?\s+e\s+criadores/i.test(text)) score = Math.max(score, 140 - depth * 8);
       current = current.parentElement;
     }
-    return false;
+    return score;
   };
 
-  const shareControl = () => [...document.querySelectorAll("button, a, [role='button']")]
-    .filter((element) => element.id !== "tabarato-launcher")
-    .filter((element) => /(?:^|\s)compartilhar(?:\s|$)/i.test(controlLabel(element)))
-    .filter(tools.visible)
-    .filter(affiliateShareContext)
-    .sort((left, right) => (right.getBoundingClientRect().top < 180 ? 20 : 0) - (left.getBoundingClientRect().top < 180 ? 20 : 0))[0];
+  const shareControls = () => [...document.querySelectorAll("button, a, [role='button']")]
+    .filter((element) => element.id !== "tabarato-launcher" && tools.visible(element))
+    .map((element) => {
+      const label = controlLabel(element);
+      const shareLabel = /compartilhar|compartilhe|\bshare\b|gerar\s+link|link\s+de\s+afiliado|afiliad/i.test(controlLabel(element));
+      if (!shareLabel) return null;
+      const rectangle = element.getBoundingClientRect();
+      const viewportWidth = Number(globalThis.innerWidth || document.documentElement?.clientWidth || 0);
+      const score = affiliateContextScore(element)
+        + (/compartilh|\bshare\b/i.test(label) ? 60 : 0)
+        + (/afiliad|gerar\s+link/i.test(label) ? 80 : 0)
+        + (rectangle.top >= 0 && rectangle.top < 420 ? 25 : 0)
+        + (viewportWidth > 0 && rectangle.left > viewportWidth * 0.45 ? 10 : 0);
+      return { element, score };
+    })
+    .filter(Boolean)
+    .sort((left, right) => right.score - left.score)
+    .map((item) => item.element);
+
+  const affiliateRequestPending = () => Date.now() - affiliateRequestStartedAt < 1800;
 
   const prepareAffiliateLink = (force = false) => {
     if (affiliateDialog()) return true;
-    if (!force && Date.now() - affiliateRequestStartedAt < 8000) return true;
-    const control = shareControl();
+    if (!force && affiliateRequestPending()) return true;
+    const control = shareControls()[0];
     if (!control) return false;
     affiliateRequestStartedAt = Date.now();
+    control.scrollIntoView?.({ block: "center", inline: "nearest" });
     control.click();
     return true;
   };
 
-  const captureAffiliateLink = async () => {
-    if (capturedAffiliatePage === location.href && MELI_LINK_PATTERN.test(capturedAffiliateLink)) {
+  const affiliateOutputControls = (dialog) => [...dialog.querySelectorAll("button, [role='button'], [role='tab'], a")]
+    .filter(tools.visible);
+
+  const activateAffiliateOutput = async (dialog) => {
+    const controls = affiliateOutputControls(dialog);
+    const productLinkTab = controls.find((element) => /^(?:link\s+do\s+produto|produto)$/i.test(controlLabel(element)));
+    if (productLinkTab) {
+      productLinkTab.click();
+      await new Promise((resolve) => window.setTimeout(resolve, 180));
+    }
+    const generateControl = affiliateOutputControls(dialog)
+      .find((element) => /^(?:gerar|gerar\s+link|criar\s+link)$/i.test(controlLabel(element)));
+    generateControl?.click();
+  };
+
+  const openAffiliateDialog = async (attempt = 0) => {
+    const existing = affiliateDialog();
+    if (existing) return existing;
+    if (affiliateRequestPending()) {
+      const pendingDialog = await tools.waitFor(affiliateDialog, 1800);
+      if (pendingDialog) return pendingDialog;
+    }
+    const controlWaits = [4500, 2500, 1800];
+    const dialogWaits = [2500, 2000, 1500];
+    const control = await tools.waitFor(() => shareControls()[0] || "", controlWaits[attempt] || 1800);
+    if (!control) return null;
+    affiliateRequestStartedAt = 0;
+    prepareAffiliateLink(true);
+    return tools.waitFor(affiliateDialog, dialogWaits[attempt] || 1500);
+  };
+
+  const captureAffiliateLink = async ({ force = false } = {}) => {
+    if (!force && capturedAffiliatePage === location.href && MELI_LINK_PATTERN.test(capturedAffiliateLink)) {
       return capturedAffiliateLink;
     }
-    if (capturedAffiliatePage !== location.href) affiliateRequestStartedAt = 0;
+    if (force || capturedAffiliatePage !== location.href) affiliateRequestStartedAt = 0;
     capturedAffiliatePage = location.href;
     capturedAffiliateLink = "";
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      const prepared = prepareAffiliateLink(attempt > 0);
-      if (!prepared && !affiliateDialog()) return "";
-      const dialog = await tools.waitFor(affiliateDialog, attempt === 0 ? 5000 : 3000);
-      if (!dialog) return "";
-      const link = await tools.waitFor(() => readProductLink(dialog), attempt === 0 ? 4500 : 2500);
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      if (attempt > 0) {
+        await closeAffiliateDialog().catch(() => {});
+        await new Promise((resolve) => window.setTimeout(resolve, 350 * attempt));
+      }
+      const dialog = await openAffiliateDialog(attempt);
+      if (!dialog) continue;
+      let link = readProductLink(dialog);
+      if (!link) {
+        const linkWaits = [2500, 1800, 1200];
+        await activateAffiliateOutput(dialog);
+        link = await tools.waitFor(() => readProductLink(affiliateDialog() || dialog), linkWaits[attempt] || 1200);
+      }
       if (MELI_LINK_PATTERN.test(link)) {
         await copyProductLink(dialog, link);
         capturedAffiliateLink = link;
         return link;
       }
-      closeDialog(dialog);
-      await tools.closeTransientDialogs();
       affiliateRequestStartedAt = 0;
     }
+    await closeAffiliateDialog().catch(() => {});
     return "";
   };
 
@@ -241,6 +335,7 @@
     isProduct: () => /(?:^|[/?-])MLB-?\d{6,}(?:$|[/?#-])/i.test(location.href)
       || Boolean(document.querySelector(".ui-pdp-title, .ui-pdp-price__second-line")),
     prepareAffiliateLink,
+    captureAffiliateLink,
     listProducts,
     extract: async () => {
       try {

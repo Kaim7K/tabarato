@@ -140,6 +140,24 @@
       return true;
     }
 
+    if (message?.type === "TABARATO_CAPTURE_AFFILIATE_LINK") {
+      currentAdapter()
+        .then(async (adapter) => {
+          if (!adapter?.captureAffiliateLink) {
+            sendResponse({ ok: false, error: "Esta loja nao oferece recuperacao de link afiliado." });
+            return;
+          }
+          const affiliateLink = await adapter.captureAffiliateLink({ force: true });
+          sendResponse({
+            ok: Boolean(affiliateLink),
+            affiliateLink: affiliateLink || "",
+            error: affiliateLink ? "" : "O Mercado Livre nao retornou o link meli.la.",
+          });
+        })
+        .catch((error) => sendResponse({ ok: false, error: runtime.errorMessage(error) }));
+      return true;
+    }
+
     if (message?.type === "TABARATO_LIST_VISIBLE_PRODUCTS") {
       currentAdapter()
         .then(async (adapter) => {

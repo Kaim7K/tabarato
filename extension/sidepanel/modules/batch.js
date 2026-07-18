@@ -64,7 +64,11 @@
         if (controller.signal.aborted) break;
         try {
           log(`Lendo ${index + 1}/${urls.length}...`);
-          const product = await panel.capture.urlInWorker(workerTab.id, url, controller.signal);
+          let product = await panel.capture.urlInWorker(workerTab.id, url, controller.signal);
+          if (product.platform === "Mercado Livre" && !/^https:\/\/(?:www\.)?meli\.la\//i.test(product.affiliateLink || "")) {
+            log(`Recuperando link afiliado ${index + 1}/${urls.length}...`);
+            product = await panel.capture.recoverAffiliateLink(workerTab.id, product, controller.signal);
+          }
           const reviewReasons = batchUtils.reviewProduct(product, LIMITS.minimumBatchConfidence, parsePrice);
           if (reviewReasons.length) {
             skipped += 1;

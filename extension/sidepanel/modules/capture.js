@@ -66,6 +66,64 @@
     }
   }
 
+  function isMeliAffiliateLink(value) {
+    try {
+      const url = new URL(String(value || "").trim());
+      return url.protocol === "https:" && /^(?:www\.)?meli\.la$/i.test(url.hostname) && url.pathname.length > 1;
+    } catch {
+      return false;
+    }
+  }
+
+  function withRecoveredAffiliateLink(product, affiliateLink) {
+    const next = {
+      ...product,
+      affiliateLink,
+      affiliateLinkType: "mercado-livre-generated",
+    };
+    const required = [next.productName, next.currentPrice, next.imageUrl || next.imageCandidates?.[0]?.url, next.externalProductId, isMeliAffiliateLink(next.affiliateLink)];
+    next.confidence = required.filter(Boolean).length / required.length;
+    return next;
+  }
+
+  async function requestAffiliateLink(tabId) {
+    const send = () => runtime.withTimeout(
+      chrome.tabs.sendMessage(tabId, { type: "TABARATO_CAPTURE_AFFILIATE_LINK" }),
+      30000,
+      "O Mercado Livre demorou para gerar o link afiliado.",
+    );
+    try {
+      return await send();
+    } catch (error) {
+      const missingReceiver = /receiving end does not exist|could not establish connection|message port closed|extension context invalidated/i.test(error?.message || "");
+      if (!missingReceiver) throw error;
+      const tab = await chrome.tabs.get(tabId);
+      await ensureScripts(tab);
+      return send();
+    }
+  }
+
+  async function recoverAffiliateLink(tabId, product, signal, { reloadOnFailure = true } = {}) {
+    if (product?.platform !== "Mercado Livre" || isMeliAffiliateLink(product?.affiliateLink)) return product;
+    if (signal?.aborted) throw new Error("Envio interrompido.");
+
+    const direct = await requestAffiliateLink(tabId).catch(() => null);
+    if (isMeliAffiliateLink(direct?.affiliateLink)) return withRecoveredAffiliateLink(product, direct.affiliateLink);
+    if (!reloadOnFailure) return product;
+
+    const tab = await chrome.tabs.get(tabId);
+    const expectedUrl = tab.url || product.sourceUrl;
+    await chrome.tabs.reload(tabId);
+    await waitForProductDom(tabId, expectedUrl, signal, 32000);
+    if (signal?.aborted) throw new Error("Envio interrompido.");
+    await runtime.delay(350);
+
+    const refreshed = await requestAffiliateLink(tabId).catch(() => null);
+    return isMeliAffiliateLink(refreshed?.affiliateLink)
+      ? withRecoveredAffiliateLink(product, refreshed.affiliateLink)
+      : product;
+  }
+
   async function enrich(product) {
     const complete = product.productName && product.currentPrice && product.imageUrl && product.shortDescription;
     const previewLink = product.affiliateLink || product.sourceUrl;
@@ -247,6 +305,7 @@
     highlightNavigation,
     isCouponManagementUrl,
     isPrimarySiteUrl,
+    recoverAffiliateLink,
     scriptsForUrl,
     showFailure,
     waitForProductDom,

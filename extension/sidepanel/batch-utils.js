@@ -57,10 +57,9 @@
     if (String(product?.productName || "").trim().length < 4) reasons.push("nome");
     if (!(parsePrice(product?.currentPrice) > 0)) reasons.push("preco");
     if (!validHttpsUrl(product?.imageUrl || product?.imageCandidates?.[0]?.url)) reasons.push("imagem");
-    if (!validHttpsUrl(product?.affiliateLink)) reasons.push("link de afiliado");
-    if (product?.platform === "Mercado Livre" && !/^https:\/\/(?:www\.)?meli\.la\//i.test(product?.affiliateLink || "")) {
-      reasons.push("link meli.la");
-    }
+    if (product?.platform === "Mercado Livre") {
+      if (!/^https:\/\/(?:www\.)?meli\.la\/[A-Za-z0-9_-]+/i.test(product?.affiliateLink || "")) reasons.push("link afiliado meli.la");
+    } else if (!validHttpsUrl(product?.affiliateLink)) reasons.push("link de afiliado");
     if (Number(product?.confidence || 0) < minimumConfidence) reasons.push("confianca");
     return [...new Set(reasons)];
   };

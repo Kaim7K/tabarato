@@ -1,4 +1,4 @@
-# Validacao da extensao 3.1.0
+# Validacao da extensao 3.1.1
 
 Este documento registra o que foi efetivamente validado nesta revisao e separa os fluxos que ainda dependem das contas reais do usuario.
 
@@ -44,6 +44,8 @@ A instalacao descompactada completa nao foi carregada nesta execucao porque o Ch
 - Valores com uma casa decimal, como `4847.8`, podiam ser interpretados como `48478` tanto no painel quanto na API.
 - Depois do primeiro login, o produto atual nao era capturado automaticamente e exigia um clique manual em atualizar.
 - O botao de afiliado `Compartilhar` do Mercado Livre podia nao ser encontrado quando aparecia somente como icone com `aria-label` ou `title`.
+- O envio em lote descartava o produto logo apos a primeira falha de leitura do `meli.la`. Agora aguarda o carregamento tardio do componente, reabre o modal, le campos, atributos e textos, tenta novamente e faz uma recarga controlada antes de desistir.
+- O diagnostico repetia `link de afiliado` e `link meli.la` para a mesma falha. Agora exibe apenas `link afiliado meli.la`.
 - O WhatsApp tentava novamente o clipboard offscreen mesmo quando o painel ja havia copiado a imagem corretamente.
 - O lint falhava por codigo abandonado no extrator do Mercado Livre.
 - A documentacao dizia que o fallback offscreen havia sido removido, embora ele ainda existisse.

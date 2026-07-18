@@ -352,6 +352,15 @@ test("batch mode canonicalizes product routes and reuses one worker tab", () => 
     [...context.TaBaratoBatchUtils.reviewProduct(validProduct, 0.8, (value) => Number(String(value).replace(",", ".")))],
     [],
   );
+  const missingAffiliate = {
+    ...validProduct,
+    affiliateLink: "",
+    confidence: 0.8,
+  };
+  assert.deepEqual(
+    [...context.TaBaratoBatchUtils.reviewProduct(missingAffiliate, 0.8, (value) => Number(String(value).replace(",", ".")))],
+    ["link afiliado meli.la"],
+  );
   assert.match(html, /src="batch-utils\.js"/);
   assert.match(panelSource, /urlInWorker/);
   assert.match(panelSource, /batchWorkerTabId/);
@@ -361,8 +370,12 @@ test("batch mode canonicalizes product routes and reuses one worker tab", () => 
   assert.doesNotMatch(panelSource, /waitForTabComplete\(tabId, 40000/);
   assert.match(panelSource, /normalizeProductUrls/);
   assert.match(panelSource, /reviewProduct/);
+  assert.match(panelSource, /recoverAffiliateLink/);
+  assert.match(panelSource, /TABARATO_CAPTURE_AFFILIATE_LINK/);
+  assert.match(panelSource, /chrome\.tabs\.reload/);
   assert.doesNotMatch(panelSource, /captureUrlInTempTab/);
   assert.match(content, /storeId: adapter\?\.id/);
+  assert.match(content, /message\?\.type === "TABARATO_CAPTURE_AFFILIATE_LINK"/);
 });
 
 test("extension publishes to site, Telegram and sequential WhatsApp groups", () => {
