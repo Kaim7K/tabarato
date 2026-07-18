@@ -1,3 +1,5 @@
+import { visitorId } from "@/lib/visitorAnalytics";
+
 const CACHE_TTL = 30_000;
 const responseCache = new Map();
 
@@ -62,7 +64,8 @@ export async function trackOfferClick(id) {
 export async function trackOfferMetric(id, action) {
   fetch(`/api/ofertas/${encodeURIComponent(id)}`, {
     method: "POST",
+    credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ action }),
+    body: JSON.stringify({ action, visitorId: visitorId() }),
   }).catch(() => {});
 }

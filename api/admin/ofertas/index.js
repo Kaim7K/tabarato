@@ -1,6 +1,7 @@
 import { handleExtensionCors, requireAdmin, sendJson, methodNotAllowed, readJson, publicError } from "../../_lib/http.js";
 import { createOffer, listOffers, validateOffer } from "../../_lib/offers.js";
 import { createCategory, listCategories, removeCategory } from "../../_lib/categories.js";
+import { query } from "../../_lib/db.js";
 
 function connectedStoreHostsFromOffers(offers) {
   const hosts = new Set();
@@ -28,8 +29,24 @@ export default async function handler(req, res) {
         status: req.query.status || "",
         category: req.query.category || "",
       });
-      const categories = await listCategories();
-      return sendJson(res, 200, { offers, categories, connectedStoreHosts: connectedStoreHostsFromOffers(offers) });
+      const [categories, metrics] = await Promise.all([
+        listCategories(),
+        query(`SELECT
+          (SELECT COUNT(*) FROM site_visitors) AS unique_visitors,
+          (SELECT COUNT(*) FROM site_visits) AS visits,
+          (SELECT COUNT(*) FROM site_analytics_events WHERE event_type='click') AS real_clicks`),
+      ]);
+      const metricRow = metrics.rows[0] || {};
+      return sendJson(res, 200, {
+        offers,
+        categories,
+        siteMetrics: {
+          uniqueVisitors: Number(metricRow.unique_visitors || 0),
+          visits: Number(metricRow.visits || 0),
+          realClicks: Number(metricRow.real_clicks || 0),
+        },
+        connectedStoreHosts: connectedStoreHostsFromOffers(offers),
+      });
     }
 
     if (req.method === "POST") {

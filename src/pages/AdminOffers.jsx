@@ -207,6 +207,7 @@ const browserCaptureScript = `(() => {
 export default function AdminOffers() {
   useDocumentMetadata("Painel administrativo | Tá Barato", undefined, "noindex, nofollow");
   const [offers, setOffers] = useState([]);
+  const [siteMetrics, setSiteMetrics] = useState({ uniqueVisitors: 0, visits: 0, realClicks: 0 });
   const [autoMessages, setAutoMessages] = useState([]);
   const [form, setForm] = useState(emptyOffer);
   const [messageForm, setMessageForm] = useState(emptyAutoMessage);
@@ -279,6 +280,8 @@ export default function AdminOffers() {
       totalShares,
       totalFavorites,
       publicationCount,
+      uniqueVisitors: siteMetrics.uniqueVisitors,
+      visits: siteMetrics.visits,
       topOffers: [...offers].sort((a, b) => number(b.clicks) - number(a.clicks)).slice(0, 5),
       byPlatform: [...new Set(offers.map((offer) => offer.platform).filter(Boolean))].map((name) => ({
         name,
@@ -292,7 +295,7 @@ export default function AdminOffers() {
         .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())
         .slice(0, 4),
     };
-  }, [offers, categories]);
+  }, [offers, categories, siteMetrics]);
 
   const showMessage = (value, tone) => {
     const resolvedTone = tone || (/erro|faltam|informe|selecione|escolha|nao |não |inval/i.test(value) ? "error" : "success");
@@ -316,6 +319,10 @@ export default function AdminOffers() {
       const migrated = await Promise.all(missingLegacy.map((item) => telegramOffersApi.createCategory(item.name)));
       const synchronizedCategories = [...serverCategories, ...migrated.map((item) => item.category)];
       setOffers(nextOffers);
+      setSiteMetrics(data.siteMetrics || { uniqueVisitors: 0, visits: 0, realClicks: 0 });
+      const requestedId = new URLSearchParams(window.location.search).get("edit");
+      const requestedOffer = nextOffers.find((offer) => offer.id === requestedId);
+      if (requestedOffer) edit(requestedOffer);
       setCustomCategories(synchronizedCategories.filter((item) => !baseCategories.includes(item.name)));
       setAutoMessages(messagesData.messages || []);
       setSelectedIds((current) => current.filter((id) => nextOffers.some((offer) => offer.id === id)));

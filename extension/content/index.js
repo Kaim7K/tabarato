@@ -8,6 +8,15 @@
   let extractionUrl = "";
   let allowedPage = false;
 
+  async function syncAdminMarker() {
+    const stored = await chrome.storage.local.get("tabarato_extension_session").catch(() => ({}));
+    const extensionSession = stored.tabarato_extension_session;
+    const active = Boolean(extensionSession?.token && new Date(extensionSession.expiresAt).getTime() > Date.now());
+    if (active) document.documentElement.dataset.tabaratoExtensionAdmin = "true";
+    else delete document.documentElement.dataset.tabaratoExtensionAdmin;
+    window.dispatchEvent(new CustomEvent("tabarato:admin-extension", { detail: { active } }));
+  }
+
   async function currentAdapter() {
     const stores = globalThis.TaBaratoStores || [];
     for (const adapter of stores) {
@@ -61,7 +70,10 @@
     button.addEventListener("mouseleave", () => { button.style.transform = ""; });
     button.addEventListener("click", async () => {
       const adapter = await currentAdapter();
-      if (adapter?.isProduct?.()) adapter.prepareAffiliateLink?.();
+      if (adapter?.isProduct?.()) {
+        adapter.prepareAffiliateLink?.();
+        await chrome.storage.local.set({ tabarato_capture_request: { url: location.href, at: Date.now() } });
+      }
       chrome.runtime.sendMessage({ type: "TABARATO_OPEN_PANEL" }).catch(() => {});
     });
     document.documentElement.appendChild(button);
@@ -111,6 +123,10 @@
   });
 
   updateButton().catch((error) => runtime.reportError("launcher", error));
+  syncAdminMarker().catch(() => {});
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === "local" && changes.tabarato_extension_session) syncAdminMarker().catch(() => {});
+  });
   let lastUrl = location.href;
   window.setInterval(() => {
     try {

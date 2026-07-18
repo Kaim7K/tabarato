@@ -214,16 +214,34 @@
     if (pasted) document.execCommand("paste");
   }
 
+  async function attachImageFile(file, signal) {
+    const attach = actionByLabel(["anexar", "attach", "adicionar"])
+      || [...document.querySelectorAll('[data-icon="plus-rounded"], [data-icon="clip"]')]
+        .map((element) => element.closest("button, [role='button']")).find(visible);
+    attach?.click();
+    const input = await waitFor(() => [...document.querySelectorAll('input[type="file"]')]
+      .find((element) => /image|video|\*/i.test(element.accept || "")), 5000, signal);
+    if (!input) return false;
+    const transfer = new DataTransfer();
+    transfer.items.add(file);
+    input.files = transfer.files;
+    input.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
+    return true;
+  }
+
   async function pasteOffer(file, caption, signal) {
     const composer = await waitFor(messageComposer, 10000, signal);
     if (!composer) throw new Error("O campo de mensagem do WhatsApp nao foi encontrado.");
     const messageCountBefore = outgoingMessages().length;
 
-    await setEditableText(composer, caption);
     aborted(signal);
-    pasteImageFromClipboard(composer, file);
+    const attached = await attachImageFile(file, signal);
+    if (!attached) {
+      await setEditableText(composer, caption);
+      pasteImageFromClipboard(composer, file);
+    }
 
-    let captionBox = await waitFor(() => captionEditor(composer), 3000, signal);
+    let captionBox = await waitFor(() => captionEditor(composer), attached ? 12000 : 3000, signal);
     if (!captionBox && await copyImageToClipboard(file)) {
       aborted(signal);
       window.focus();

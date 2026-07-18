@@ -179,6 +179,18 @@ async function stopWhatsAppSend() {
   return { ok: true };
 }
 
+async function activateMercadoLivreCoupons(limit) {
+  const tab = await chrome.tabs.create({ url: "https://www.mercadolivre.com.br/cupons", active: true });
+  await waitForTab(tab.id, 45000);
+  await runtime.delay(1000);
+  await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["content/coupons.js"] });
+  return runtime.withTimeout(
+    chrome.tabs.sendMessage(tab.id, { type: "TABARATO_ACTIVATE_COUPONS", limit }),
+    Math.max(45000, Number(limit) * 4000),
+    "A ativacao de cupons demorou demais.",
+  );
+}
+
 chrome.action.disable().catch(() => {});
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
 chrome.runtime.onInstalled.addListener(() => refreshAllTabs().catch((error) => runtime.reportError("extension-installed", error)));
@@ -189,7 +201,10 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   }
 });
 chrome.tabs.onActivated.addListener(({ tabId }) => {
-  chrome.tabs.get(tabId).then((tab) => updateTabAvailability(tabId, tab.url)).catch(() => {});
+  chrome.tabs.get(tabId).then(async (tab) => {
+    await updateTabAvailability(tabId, tab.url);
+    if (!await isAllowedUrl(tab.url) && chrome.sidePanel.close) await chrome.sidePanel.close({ tabId }).catch(() => {});
+  }).catch(() => {});
 });
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === "local" && STORAGE_KEYS.some((key) => changes[key])) {
@@ -216,6 +231,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
   if (message?.type === "TABARATO_STOP_WHATSAPP") {
     stopWhatsAppSend()
+      .then(sendResponse)
+      .catch((error) => sendResponse({ ok: false, error: runtime.errorMessage(error) }));
+    return true;
+  }
+  if (message?.type === "TABARATO_ACTIVATE_ML_COUPONS") {
+    activateMercadoLivreCoupons(message.limit)
       .then(sendResponse)
       .catch((error) => sendResponse({ ok: false, error: runtime.errorMessage(error) }));
     return true;

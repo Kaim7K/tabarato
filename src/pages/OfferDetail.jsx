@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { AlertCircle, ArrowLeft, ArrowLeftRight, ArrowUpRight, Bell, Check, Heart, ImageDown, ImageOff, TrendingDown } from "lucide-react";
+import { AlertCircle, ArrowLeft, ArrowLeftRight, ArrowUpRight, Bell, Check, Heart, ImageDown, ImageOff, Pencil, TrendingDown } from "lucide-react";
 import Footer from "@/components/Footer";
 import { StoreBadge, WhatsAppIcon } from "@/components/BrandIcons";
 import OfferCard from "@/components/OfferCard";
@@ -11,6 +11,7 @@ import { getPublicOffer, listPublicOffers, trackOfferClick, trackOfferMetric } f
 import { useDocumentMetadata } from "@/hooks/useDocumentMetadata";
 import { useOfferTools } from "@/lib/OfferToolsContext";
 import { shareOfferCard } from "@/lib/shareCard";
+import { validateAdminSession } from "@/lib/adminAuth";
 
 export default function OfferDetail() {
   const { id } = useParams();
@@ -19,6 +20,7 @@ export default function OfferDetail() {
   const [loading, setLoading] = useState(true);
   const [targetPrice, setTargetPrice] = useState("");
   const [alertSaved, setAlertSaved] = useState(false);
+  const [adminMode, setAdminMode] = useState(false);
   const { toggle, isFavorite } = useFavorites();
   const { compareIds, createAlert, isComparing, recordInterest, toggleCompare } = useOfferTools();
   useDocumentMetadata(offer ? `${offer.name} | Tá Barato` : "Oferta | Tá Barato", offer?.description || undefined);
@@ -47,6 +49,15 @@ export default function OfferDetail() {
   useEffect(() => {
     if (offer?.category) recordInterest(offer.category);
   }, [offer?.category, recordInterest]);
+
+  useEffect(() => {
+    const extensionAdmin = () => document.documentElement.dataset.tabaratoExtensionAdmin === "true";
+    const updateFromExtension = (event) => setAdminMode(Boolean(event.detail?.active) || extensionAdmin());
+    if (extensionAdmin()) setAdminMode(true);
+    validateAdminSession().then((valid) => setAdminMode(valid || extensionAdmin())).catch(() => setAdminMode(extensionAdmin()));
+    window.addEventListener("tabarato:admin-extension", updateFromExtension);
+    return () => window.removeEventListener("tabarato:admin-extension", updateFromExtension);
+  }, []);
 
   if (loading) {
     return (
@@ -97,6 +108,11 @@ export default function OfferDetail() {
           </div>
 
           <div className="p-5 sm:p-7 lg:p-9">
+            {adminMode && (
+              <a href={`/admin/ofertas?edit=${encodeURIComponent(offer.id)}`} target="_blank" rel="noopener noreferrer" className="mb-5 min-h-11 inline-flex items-center gap-2 px-4 rounded-md bg-[#111111] text-white text-sm font-semibold hover:bg-[#292929]">
+                <Pencil className="w-4 h-4" /> Editar produto
+              </a>
+            )}
             <Link to={`/categoria/${slugify(offer.category)}`} className="text-[#FF6B35] text-xs font-semibold uppercase hover:underline">{offer.category}</Link>
             <h1 className="text-2xl sm:text-3xl lg:text-4xl font-semibold text-[#111111] leading-tight mt-3">{offer.name}</h1>
 
@@ -107,6 +123,10 @@ export default function OfferDetail() {
               {offer.previous_price > offer.price && <p className="text-sm text-[#111111]/40 mt-2"><span className="line-through">{formatPrice(offer.previous_price)}</span> <strong className="ml-2 text-[#168A55]">Economize {formatPrice(offer.savings)}</strong></p>}
               {offer.coupon && <span className="inline-flex mt-3 px-3 py-2 rounded-md bg-[#FF6B35]/10 text-[#D95426] text-sm font-semibold">Cupom: {offer.coupon}</span>}
             </div>
+
+            <a href={offer.affiliate_link} target="_blank" rel="noopener noreferrer" onClick={() => trackOfferClick(offer.id)} className="mt-6 min-h-12 w-full flex items-center justify-center gap-2 px-6 py-3 bg-[#FF6B35] hover:bg-[#D95426] text-white font-semibold rounded-md transition">
+              Ver oferta <ArrowUpRight className="w-5 h-5" />
+            </a>
 
             <PriceHistory history={offer.price_history || []} currentPrice={offer.price} />
 
@@ -136,9 +156,6 @@ export default function OfferDetail() {
               {offer.time_label && <span className="px-3 py-2 bg-[#F3F3F3] rounded-md">Publicado às {offer.time_label}</span>}
             </div>
 
-            <a href={offer.affiliate_link} target="_blank" rel="noopener noreferrer" onClick={() => trackOfferClick(offer.id)} className="min-h-12 w-full flex items-center justify-center gap-2 px-6 py-3 bg-[#FF6B35] hover:bg-[#D95426] text-white font-semibold rounded-md transition">
-              Ver oferta <ArrowUpRight className="w-5 h-5" />
-            </a>
             <div className="grid sm:grid-cols-3 gap-2 mt-2">
               <button type="button" onClick={() => { if (!favorite) trackOfferMetric(offer.id, "favorite"); toggle(offer.id); }} className={`min-h-11 flex items-center justify-center gap-2 px-4 py-2.5 rounded-md font-semibold text-sm transition border ${favorite ? "bg-[#FF6B35] border-[#FF6B35] text-white" : "bg-white text-[#111111] border-[#111111]/12 hover:bg-[#F3F3F3]"}`}>
                 <Heart className="w-4 h-4" fill={favorite ? "currentColor" : "none"} /> {favorite ? "Salvo" : "Salvar"}

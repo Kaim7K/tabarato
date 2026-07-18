@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createInitialClickCount, normalizeProductIdentity, validateOffer } from "../api/_lib/offers.js";
+import { normalizeProductIdentity, validateOffer } from "../api/_lib/offers.js";
+import { readFileSync } from "node:fs";
 
 const validOffer = {
   productName: "Produto teste",
@@ -24,15 +25,10 @@ test("validateOffer requires scheduledAt for scheduled offers", () => {
   assert.ok(errors.some((error) => error.includes("agendamento")));
 });
 
-test("new offers receive an integer click count between 0 and 20", () => {
-  const samples = Array.from({ length: 100 }, () => createInitialClickCount());
-  assert.ok(samples.every((value) => Number.isInteger(value) && value >= 0 && value <= 20));
-});
-
-test("new offers avoid click counts already used by recent products", () => {
-  const recentCounts = [20, 19, 18, 12, 7, 3];
-  const samples = Array.from({ length: 100 }, () => createInitialClickCount(recentCounts));
-  assert.ok(samples.every((value) => !recentCounts.includes(value)));
+test("new offers start with zero real clicks", () => {
+  const source = readFileSync(new URL("../api/_lib/offers.js", import.meta.url), "utf8");
+  assert.doesNotMatch(source, /randomInt|createInitialClickCount/);
+  assert.match(source, /data\.scheduled_at, 0,/);
 });
 
 test("product identity ignores accents, punctuation and casing", () => {

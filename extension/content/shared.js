@@ -228,12 +228,16 @@
   const canonicalUrl = () => attribute("href", 'link[rel="canonical"]') || location.href;
 
   const closeTransientDialogs = async () => {
-    const controls = [...document.querySelectorAll("button, [role='button'], a")]
-      .filter(visible)
-      .filter((element) => /^(fechar|close|x|×|agora nao|agora n[aã]o|continuar navegando)$/i.test(clean(`${element.textContent} ${element.getAttribute("aria-label") || ""} ${element.getAttribute("title") || ""}`)));
-    controls.slice(0, 4).forEach((element) => element.click());
-    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-    await new Promise((resolve) => window.setTimeout(resolve, 250));
+    for (let round = 0; round < 3; round += 1) {
+      const controls = [...document.querySelectorAll("button, [role='button'], a")]
+        .filter(visible)
+        .filter((element) => /^(fechar|close|x|×|agora nao|agora n[aã]o|continuar navegando)$/i.test(clean(`${element.textContent} ${element.getAttribute("aria-label") || ""} ${element.getAttribute("title") || ""}`)));
+      controls.slice(0, 6).forEach((element) => element.click());
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true }));
+      document.dispatchEvent(new KeyboardEvent("keyup", { key: "Escape", code: "Escape", bubbles: true }));
+      await new Promise((resolve) => window.setTimeout(resolve, 220));
+      if (![...document.querySelectorAll("[role='dialog'], [aria-modal='true'], .andes-modal")].some(visible)) break;
+    }
   };
 
   const productLinks = (patterns = []) => {

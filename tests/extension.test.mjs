@@ -153,6 +153,25 @@ test("extension synchronizes categories and connected store hosts from the site"
   assert.match(listRoute, /connectedStoreHostsFromOffers/);
 });
 
+test("extension persists the active product and exposes admin mode to the site", () => {
+  const sidePanelApp = readFileSync(join(extensionRoot, "sidepanel", "app.js"), "utf8");
+  const contentIndex = readFileSync(join(extensionRoot, "content", "index.js"), "utf8");
+  assert.match(sidePanelApp, /tabarato_product_draft/);
+  assert.match(sidePanelApp, /persistProductDraft/);
+  assert.match(contentIndex, /tabaratoExtensionAdmin/);
+  assert.match(contentIndex, /tabarato:admin-extension/);
+});
+
+test("extension offers coupon activation and compact icon actions", () => {
+  const sidePanelHtml = readFileSync(join(extensionRoot, "sidepanel", "index.html"), "utf8");
+  const sidePanelStyles = readFileSync(join(extensionRoot, "sidepanel", "styles.css"), "utf8");
+  const coupons = readFileSync(join(root, "extension", "content", "coupons.js"), "utf8");
+  assert.match(sidePanelHtml, /activate-coupons-button/);
+  assert.match(sidePanelHtml, /action-icon-button/);
+  assert.match(coupons, /TABARATO_ACTIVATE_COUPONS/);
+  assert.match(sidePanelStyles, /Montserrat/);
+});
+
 test("extension runtime releases timed out operations", async () => {
   const source = readFileSync(join(extensionRoot, "shared", "runtime.js"), "utf8");
   const context = {

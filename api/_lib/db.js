@@ -74,6 +74,56 @@ export async function ensureSchema() {
       ALTER TABLE telegram_offers ADD COLUMN IF NOT EXISTS last_check_error TEXT;
       ALTER TABLE telegram_offers ALTER COLUMN short_description DROP NOT NULL;
 
+      CREATE TABLE IF NOT EXISTS site_visitors (
+        visitor_id UUID PRIMARY KEY,
+        first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS site_visits (
+        id BIGSERIAL PRIMARY KEY,
+        visitor_id UUID NOT NULL REFERENCES site_visitors(visitor_id) ON DELETE CASCADE,
+        visit_day DATE NOT NULL DEFAULT CURRENT_DATE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (visitor_id, visit_day)
+      );
+
+      CREATE TABLE IF NOT EXISTS site_analytics_events (
+        id BIGSERIAL PRIMARY KEY,
+        event_type TEXT NOT NULL,
+        offer_id UUID REFERENCES telegram_offers(id) ON DELETE CASCADE,
+        visitor_id UUID NOT NULL REFERENCES site_visitors(visitor_id) ON DELETE CASCADE,
+        event_day DATE NOT NULL DEFAULT CURRENT_DATE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (event_type, offer_id, visitor_id, event_day)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_site_analytics_events_offer
+      ON site_analytics_events (offer_id, event_type);
+
+      CREATE TABLE IF NOT EXISTS social_page_settings (
+        id SMALLINT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+        title TEXT NOT NULL DEFAULT 'Ta Barato',
+        bio TEXT NOT NULL DEFAULT 'Ofertas selecionadas para voce comprar melhor.',
+        avatar_url TEXT,
+        accent_color TEXT NOT NULL DEFAULT '#FF6B35',
+        background_color TEXT NOT NULL DEFAULT '#F4F5F6',
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      INSERT INTO social_page_settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+
+      CREATE TABLE IF NOT EXISTS social_links (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        label TEXT NOT NULL,
+        url TEXT NOT NULL,
+        icon_url TEXT,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
       CREATE TABLE IF NOT EXISTS site_categories (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         name TEXT NOT NULL,

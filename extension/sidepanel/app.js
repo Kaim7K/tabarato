@@ -2,6 +2,8 @@ const STORAGE_KEY = "tabarato_extension_session";
 const GROUPS_KEY = "tabarato_whatsapp_groups";
 const LAST_BASE_URL_KEY = "tabarato_last_base_url";
 const CONNECTED_HOSTS_KEY = "tabarato_connected_store_hosts";
+const PRODUCT_DRAFT_KEY = "tabarato_product_draft";
+const CAPTURE_REQUEST_KEY = "tabarato_capture_request";
 const runtime = globalThis.TaBaratoRuntime;
 const artwork = globalThis.TaBaratoArtwork;
 const REQUEST_TIMEOUT = 22000;
@@ -57,6 +59,8 @@ const elements = {
   customTelegram: document.getElementById("custom-telegram"),
   customWhatsapp: document.getElementById("custom-whatsapp"),
   customSendButton: document.getElementById("custom-send-button"),
+  couponLimit: document.getElementById("coupon-limit"),
+  activateCouponsButton: document.getElementById("activate-coupons-button"),
   fields: {
     affiliateLink: document.getElementById("affiliate-link"),
     productName: document.getElementById("product-name"),
@@ -333,6 +337,33 @@ function fillForm(product) {
   updatePreview();
 }
 
+async function persistProductDraft() {
+  if (!activeProduct) return;
+  await chrome.storage.local.set({
+    [PRODUCT_DRAFT_KEY]: {
+      product: activeProduct,
+      values: Object.fromEntries(Object.entries(elements.fields).map(([key, field]) => [key, field.value])),
+      capturedTabId,
+      capturedPageUrl,
+      savedAt: Date.now(),
+    },
+  });
+}
+
+function restoreProductDraft(draft) {
+  if (!draft?.product) return false;
+  activeProduct = draft.product;
+  capturedTabId = draft.capturedTabId || null;
+  capturedPageUrl = draft.capturedPageUrl || comparableUrl(draft.product.sourceUrl || "");
+  fillForm(activeProduct);
+  Object.entries(draft.values || {}).forEach(([key, value]) => {
+    if (elements.fields[key]) elements.fields[key].value = value;
+  });
+  updatePreview();
+  elements.captureSource.textContent = "Produto restaurado";
+  return true;
+}
+
 function formPayload(status = "RASCUNHO") {
   return {
     productName: elements.fields.productName.value.trim(),
@@ -489,6 +520,7 @@ async function captureProduct({ reconcile = true } = {}) {
     fillForm(product);
     capturedTabId = tab.id;
     capturedPageUrl = comparableUrl(tab.url);
+    await persistProductDraft();
     elements.refreshButton.classList.remove("needs-refresh");
     if (reconcile) await reconcileExistingOffer(product).catch((error) => runtime.reportError("reconcile-product", error));
   } catch (error) {
@@ -875,7 +907,6 @@ function renderAuth() {
   elements.setup.classList.toggle("hidden", connected);
   elements.editor.classList.toggle("hidden", !connected);
   setStatus(connected ? "Conectado" : "Desconectado", connected ? "success" : "neutral");
-  if (connected) captureProduct();
 }
 
 function highlightProductChange(tab) {
@@ -932,6 +963,18 @@ elements.saveGroupsButton.addEventListener("click", async () => {
 elements.stopMacroButton.addEventListener("click", stopMacros);
 elements.batchStopButton.addEventListener("click", stopMacros);
 elements.refreshButton.addEventListener("click", () => captureProduct());
+elements.activateCouponsButton.addEventListener("click", async () => {
+  setBusy(elements.activateCouponsButton, true, "Ativando...");
+  try {
+    const result = await chrome.runtime.sendMessage({ type: "TABARATO_ACTIVATE_ML_COUPONS", limit: Number(elements.couponLimit.value) || 5 });
+    if (!result?.ok) throw new Error(result?.error || "Nao foi possivel ativar os cupons.");
+    showToast(`${result.activated} cupons ativados.`, result.activated ? "success" : "neutral");
+  } catch (error) {
+    showToast(runtime.errorMessage(error), "error");
+  } finally {
+    setBusy(elements.activateCouponsButton, false);
+  }
+});
 elements.modeSingle.addEventListener("click", () => setMode("single"));
 elements.modeBatch.addEventListener("click", () => setMode("batch"));
 elements.batchStartButton.addEventListener("click", startBatch);
@@ -941,7 +984,10 @@ elements.logoutButton.addEventListener("click", async () => {
   await clearSession();
   renderAuth();
 });
-Object.values(elements.fields).forEach((field) => field.addEventListener("input", updatePreview));
+Object.values(elements.fields).forEach((field) => field.addEventListener("input", () => {
+  updatePreview();
+  persistProductDraft().catch(() => {});
+}));
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (!changeInfo.url || !tab.active) return;
@@ -953,12 +999,21 @@ chrome.tabs.onActivated.addListener(async ({ tabId }) => {
   } catch { /* Closed tabs are ignored. */ }
 });
 
-chrome.storage.local.get([STORAGE_KEY, GROUPS_KEY, LAST_BASE_URL_KEY]).then((stored) => {
+chrome.storage.local.get([STORAGE_KEY, GROUPS_KEY, LAST_BASE_URL_KEY, PRODUCT_DRAFT_KEY, CAPTURE_REQUEST_KEY]).then(async (stored) => {
   session = stored[STORAGE_KEY] || null;
   elements.whatsappGroups.value = stored[GROUPS_KEY] || "";
   elements.baseUrl.value = session?.baseUrl || stored[LAST_BASE_URL_KEY] || "";
   if (session?.expiresAt && new Date(session.expiresAt).getTime() <= Date.now()) session = null;
+  restoreProductDraft(stored[PRODUCT_DRAFT_KEY]);
   renderAuth();
+  const captureRequest = stored[CAPTURE_REQUEST_KEY];
+  const tab = await activeTab().catch(() => null);
+  if (session && captureRequest?.at > Date.now() - 15000 && comparableUrl(captureRequest.url) === comparableUrl(tab?.url)) {
+    await chrome.storage.local.remove(CAPTURE_REQUEST_KEY);
+    captureProduct();
+  } else if (session && !activeProduct && tab?.url && !/web\.whatsapp\.com/i.test(tab.url)) {
+    captureProduct();
+  }
 }).catch((error) => {
   runtime.reportError("load-settings", error);
   renderAuth();

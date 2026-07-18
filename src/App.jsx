@@ -16,6 +16,7 @@ const Alerts = lazy(() => import('@/pages/Alerts'));
 const PageNotFound = lazy(() => import('@/lib/PageNotFound'));
 const AdminOffers = lazy(() => import('@/pages/AdminOffers'));
 const AdminLogin = lazy(() => import('@/pages/AdminLogin'));
+const SocialPage = lazy(() => import('@/pages/SocialPage'));
 
 function App() {
 
@@ -24,6 +25,7 @@ function App() {
       <ScrollToTop />
       <Suspense fallback={<PageLoading />}>
         <Routes>
+          <Route path="/social" element={<SocialPage />} />
           <Route element={<Layout />}>
             <Route path="/" element={<Home />} />
             <Route path="/categorias" element={<Categories />} />

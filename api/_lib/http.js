@@ -116,6 +116,16 @@ export function requireAdmin(req, res, { allowExtension = false } = {}) {
   return true;
 }
 
+export function isAdminAuthorized(req, { allowExtension = false } = {}) {
+  const expected = process.env.ADMIN_API_KEY;
+  if (!expected) return false;
+  const providedKey = req.headers["x-admin-api-key"] || getBearer(req);
+  const session = getCookie(req, "tb_admin_session");
+  return safeEqual(providedKey, expected)
+    || safeEqual(session, createAdminSessionToken(expected))
+    || (allowExtension && verifyAdminExtensionToken(providedKey, expected));
+}
+
 export function requireCron(req, res) {
   const expected = process.env.CRON_SECRET;
   if (!expected) {

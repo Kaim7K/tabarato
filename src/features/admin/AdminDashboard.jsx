@@ -1,4 +1,4 @@
-import { BarChart3, CalendarClock, CircleDollarSign, ClipboardList, MousePointerClick, Plus, RefreshCw, Send, Tag } from "lucide-react";
+import { BarChart3, CalendarClock, CircleDollarSign, ClipboardList, MousePointerClick, Plus, RefreshCw, Send, Tag, Users } from "lucide-react";
 import { formatPrice } from "@/lib/catalog";
 import { EmptyBlock, LoadingBlock, Panel } from "@/features/admin/AdminUi";
 import { number, statusClasses, statusLabels } from "@/features/admin/adminOfferConfig";
@@ -20,7 +20,8 @@ export function Dashboard({ analytics, offers, loading, onNew, onEdit, onRefresh
         </div>
       </div>
 
-      <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="grid sm:grid-cols-2 xl:grid-cols-5 gap-4">
+        <Metric icon={Users} label="Pessoas reais" value={analytics.uniqueVisitors} hint={`${analytics.visits} visitas unicas por dia`} />
         <Metric icon={ClipboardList} label="Ofertas cadastradas" value={analytics.total} hint={`${analytics.drafts} rascunhos`} />
         <Metric icon={Send} label="Publicadas" value={analytics.published} hint={`${analytics.totalClicks} cliques registrados`} />
         <Metric icon={CalendarClock} label="Agendadas" value={analytics.scheduled} hint={analytics.scheduled ? "Na fila de publicacao" : "Nenhuma pendente"} />

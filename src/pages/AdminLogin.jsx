@@ -14,23 +14,26 @@ export default function AdminLogin() {
   const [loading, setLoading] = useState(false);
   const [checking, setChecking] = useState(() => isAdminLoggedIn());
   const [error, setError] = useState("");
+  const returnTo = location.state?.from
+    ? `${location.state.from.pathname || ""}${location.state.from.search || ""}`
+    : "/admin";
 
   useEffect(() => {
     if (!checking) return;
     let active = true;
     validateAdminSession().then((valid) => {
-      if (valid) window.location.href = location.state?.from?.pathname || "/admin";
+      if (valid) window.location.href = returnTo;
       else if (active) setChecking(false);
     });
     return () => { active = false; };
-  }, [checking, location.state?.from?.pathname]);
+  }, [checking, returnTo]);
 
   if (checking) {
     return <div className="min-h-screen bg-[#0D0D0D] text-white flex items-center justify-center" role="status">Validando acesso...</div>;
   }
 
   if (isAdminLoggedIn()) {
-    return <Navigate to={location.state?.from?.pathname || "/admin"} replace />;
+    return <Navigate to={returnTo} replace />;
   }
 
   const submit = async (event) => {
@@ -39,7 +42,7 @@ export default function AdminLogin() {
     setLoading(true);
     try {
       await loginAdmin(username.trim(), password);
-      window.location.href = location.state?.from?.pathname || "/admin";
+      window.location.href = returnTo;
     } catch (err) {
       setError(err.message);
     } finally {

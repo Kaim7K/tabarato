@@ -85,7 +85,7 @@
       roundedRect(context, 754, 76, 246, 76, 38);
       context.fill();
       context.fillStyle = "#ffffff";
-      context.font = "800 38px Arial, sans-serif";
+      context.font = "800 38px Montserrat, Arial, sans-serif";
       context.textBaseline = "middle";
       context.textAlign = "center";
       context.fillText(`-${discount}%`, 877, 114);
@@ -104,14 +104,14 @@
     context.shadowOffsetY = 0;
 
     context.fillStyle = "#111111";
-    context.font = "900 58px Arial, sans-serif";
+    context.font = "900 58px Montserrat, Arial, sans-serif";
     context.textBaseline = "alphabetic";
     context.fillText(formatPrice(currentPrice), 112, 930, 360);
 
     if (discount > 0) {
       const oldPrice = formatPrice(previousPrice);
       context.fillStyle = "#8d8d8d";
-      context.font = "700 28px Arial, sans-serif";
+      context.font = "700 28px Montserrat, Arial, sans-serif";
       context.fillText(oldPrice, 112, 966, 260);
       const measure = context.measureText(oldPrice);
       context.strokeStyle = "#8d8d8d";

@@ -1,4 +1,3 @@
-import { randomInt } from "node:crypto";
 import { query } from "./db.js";
 
 export const STATUSES = ["RASCUNHO", "APROVADO", "AGENDADO", "PUBLICANDO", "PUBLICADO", "ERRO", "EXPIRADO"];
@@ -190,16 +189,6 @@ function rethrowDuplicateConstraint(error, productName) {
   throw error;
 }
 
-export function createInitialClickCount(recentClickCounts = []) {
-  const possibleCounts = Array.from({ length: 21 }, (_, index) => index);
-  const usedCounts = new Set(recentClickCounts
-    .map(Number)
-    .filter((value) => Number.isInteger(value) && value >= 0 && value <= 20));
-  const availableCounts = possibleCounts.filter((value) => !usedCounts.has(value));
-  const candidates = availableCounts.length ? availableCounts : possibleCounts;
-  return candidates[randomInt(0, candidates.length)];
-}
-
 export async function listOffers({ search = "", status = "", category = "" } = {}) {
   const filters = [];
   const params = [];
@@ -217,10 +206,11 @@ export async function listOffers({ search = "", status = "", category = "" } = {
   }
   const where = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
   const result = await query(`SELECT telegram_offers.*,
+    (SELECT COUNT(*) FROM site_analytics_events events WHERE events.offer_id=telegram_offers.id AND events.event_type='click') AS real_clicks,
     (SELECT COUNT(*) FROM offer_publication_history history WHERE history.offer_id=telegram_offers.id AND history.status='SUCESSO') AS publication_count,
     (SELECT MAX(published_at) FROM offer_publication_history history WHERE history.offer_id=telegram_offers.id AND history.status='SUCESSO') AS last_published_at
     FROM telegram_offers ${where} ORDER BY created_at DESC LIMIT 500`, params);
-  return result.rows.map(mapOffer);
+  return result.rows.map((row) => mapOffer({ ...row, clicks: Number(row.real_clicks || 0) }));
 }
 
 export async function getOffer(id) {
@@ -232,8 +222,6 @@ export async function createOffer(input) {
   const data = toDbParams(input);
   const duplicate = await findDuplicateOffer(input);
   if (duplicate) throw duplicateError(duplicate);
-  const recentClicks = await query("SELECT clicks FROM telegram_offers ORDER BY created_at DESC LIMIT 20");
-  const initialClicks = createInitialClickCount(recentClicks.rows.map((row) => row.clicks));
   const result = await query(
     `INSERT INTO telegram_offers (
       product_name, short_description, current_price, previous_price, coupon, category, image_url,
@@ -243,7 +231,7 @@ export async function createOffer(input) {
     RETURNING *`,
     [
       data.product_name, data.short_description, data.current_price, data.previous_price, data.coupon, data.category,
-      data.image_url, data.affiliate_link, data.platform, data.extra_text, data.status, data.scheduled_at, initialClicks,
+      data.image_url, data.affiliate_link, data.platform, data.extra_text, data.status, data.scheduled_at, 0,
       data.source_product_id, productKey(data), data.coupon_discount_percent,
     ]
   ).catch((error) => rethrowDuplicateConstraint(error, data.product_name));
