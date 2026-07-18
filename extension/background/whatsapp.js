@@ -51,12 +51,13 @@
     await chrome.tabs.update(tab.id, { active: true });
     await runtime.waitForTabComplete(tab.id, 30000, "O WhatsApp Web demorou para carregar.");
     await runtime.delay(140);
-    const clipboardPrepared = message.imageDataUrl
-      ? await clipboard.writeImage(message.imageDataUrl).catch((error) => {
+    let clipboardPrepared = Boolean(message.clipboardPrepared);
+    if (!clipboardPrepared && message.imageDataUrl) {
+      clipboardPrepared = await clipboard.writeImage(message.imageDataUrl).catch((error) => {
         runtime.reportError("prepare-whatsapp-clipboard", error);
         return false;
-      })
-      : false;
+      });
+    }
 
     const results = [];
     for (const groupName of groups) {
@@ -70,7 +71,7 @@
         text: message.text,
         imageDataUrl: message.imageDataUrl || "",
         fileName: message.fileName || "oferta.png",
-        clipboardPrepared: clipboardPrepared || Boolean(message.clipboardPrepared),
+        clipboardPrepared,
       });
       if (!result?.ok) throw new Error(result?.error || `Nao foi possivel enviar para ${groupName}.`);
       results.push({ groupName, ok: true });

@@ -13,7 +13,9 @@ function parsePrice(value) {
   if (decimalIndex === -1) return Number(raw);
   const decimals = raw.slice(decimalIndex + 1);
   const integer = raw.slice(0, decimalIndex).replace(/[.,]/g, "");
-  const normalized = decimals.length === 2 ? `${integer}.${decimals}` : `${integer}${decimals}`;
+  const normalized = decimals.length >= 1 && decimals.length <= 2
+    ? `${integer}.${decimals}`
+    : `${integer}${decimals}`;
   return Number(normalized);
 }
 

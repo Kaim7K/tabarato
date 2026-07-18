@@ -35,6 +35,12 @@ test("product identity ignores accents, punctuation and casing", () => {
   assert.equal(normalizeProductIdentity("  Tênis Redley! Preto  "), "tenis redley preto");
 });
 
+test("database parses prices with one decimal place correctly", () => {
+  const params = toDbParams({ ...validOffer, currentPrice: "4847.8", previousPrice: "4999.9" });
+  assert.equal(params.current_price, 4847.8);
+  assert.equal(params.previous_price, 4999.9);
+});
+
 test("database params never keep a previous price below the current price", () => {
   const params = toDbParams({ ...validOffer, currentPrice: "79.92", previousPrice: "78.99" });
   assert.equal(params.current_price, 79.92);

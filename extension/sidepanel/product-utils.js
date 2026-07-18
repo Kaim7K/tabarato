@@ -17,7 +17,9 @@
     if (separator < 0) return Number(raw);
     const decimals = raw.slice(separator + 1);
     const integer = raw.slice(0, separator).replace(/[.,]/g, "");
-    return Number(decimals.length === 2 ? `${integer}.${decimals}` : `${integer}${decimals}`);
+    return Number(decimals.length >= 1 && decimals.length <= 2
+      ? `${integer}.${decimals}`
+      : `${integer}${decimals}`);
   }
 
   function formatPrice(value) {

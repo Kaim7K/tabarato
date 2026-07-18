@@ -55,6 +55,7 @@
       await panel.api.authenticate(elements.username.value, elements.password.value, elements.baseUrl.value);
       elements.password.value = "";
       panel.api.renderAuth();
+      await captureCurrentPageAfterAuth();
       showToast("Extensao conectada ao painel.", "success");
     } catch (error) {
       runtime.reportError("admin-login", error);
@@ -122,18 +123,11 @@
     return request?.at > Date.now() - 15000 && comparableUrl(request.url) === comparableUrl(tab?.url);
   }
 
-  async function initialize() {
-    renderThemeControl();
-    bindEvents();
-    const stored = await chrome.storage.local.get(Object.values(STORAGE));
-    await panel.api.restoreSession(stored);
-    elements.whatsappGroups.value = stored[STORAGE.groups] || "";
-    panel.product.restoreDraft(stored[STORAGE.productDraft]);
-    panel.api.renderAuth();
+  async function captureCurrentPageAfterAuth(stored = null) {
     if (!panel.api.sessionIsValid()) return;
-
     const tab = await activeTab().catch(() => null);
-    const captureRequest = stored[STORAGE.captureRequest];
+    const saved = stored || await chrome.storage.local.get(STORAGE.captureRequest);
+    const captureRequest = saved?.[STORAGE.captureRequest];
     if (freshCaptureRequest(captureRequest, tab)) {
       await chrome.storage.local.remove(STORAGE.captureRequest);
       await panel.capture.current();
@@ -146,6 +140,17 @@
       && (!state.activeProduct || comparableUrl(tab.url) !== state.capturedPageUrl)) {
       await panel.capture.current();
     }
+  }
+
+  async function initialize() {
+    renderThemeControl();
+    bindEvents();
+    const stored = await chrome.storage.local.get(Object.values(STORAGE));
+    await panel.api.restoreSession(stored);
+    elements.whatsappGroups.value = stored[STORAGE.groups] || "";
+    panel.product.restoreDraft(stored[STORAGE.productDraft]);
+    panel.api.renderAuth();
+    await captureCurrentPageAfterAuth(stored);
   }
 
   initialize().catch((error) => {

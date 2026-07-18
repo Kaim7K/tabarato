@@ -17,8 +17,7 @@
     return value;
   };
 
-  const visibleControl = (pattern) => [...document.querySelectorAll("button, a, [role='button']")]
-    .find((element) => tools.visible(element) && pattern.test(tools.clean(`${element.textContent} ${element.getAttribute("aria-label") || ""} ${element.getAttribute("title") || ""}`)));
+  const controlLabel = (element) => tools.clean(`${element?.textContent || ""} ${element?.getAttribute?.("aria-label") || ""} ${element?.getAttribute?.("title") || ""}`);
 
   const productRoot = () => document.querySelector(".ui-pdp--sticky-wrapper-right")
     || document.querySelector(".ui-pdp-container--column-right")
@@ -27,7 +26,7 @@
     || document;
 
   const productControl = (pattern) => [...productRoot().querySelectorAll("button, a, [role='button']")]
-    .find((element) => tools.visible(element) && pattern.test(tools.clean(`${element.textContent} ${element.getAttribute("aria-label") || ""} ${element.getAttribute("title") || ""}`)));
+    .find((element) => tools.visible(element) && pattern.test(controlLabel(element)));
 
   const visibleDialog = (pattern) => [...document.querySelectorAll("[role='dialog'], .andes-modal, [class*='modal']")]
     .find((element) => tools.visible(element) && pattern.test(tools.clean(element.textContent)));
@@ -61,7 +60,7 @@
     const field = productLinkField(dialog);
     const copyControl = [...(field?.parentElement?.querySelectorAll("button, [role='button']") || [])]
       .filter(tools.visible)
-      .find((element) => /copiar|copy/i.test(tools.clean(`${element.textContent} ${element.getAttribute("aria-label") || ""} ${element.getAttribute("title") || ""}`)));
+      .find((element) => /copiar|copy/i.test(controlLabel(element)));
     if (copyControl) {
       copyControl.click();
       return;
@@ -100,7 +99,7 @@
 
   const shareControl = () => [...document.querySelectorAll("button, a, [role='button']")]
     .filter((element) => element.id !== "tabarato-launcher")
-    .filter((element) => /^compartilhar$/i.test(tools.clean(element.textContent)))
+    .filter((element) => /(?:^|\s)compartilhar(?:\s|$)/i.test(controlLabel(element)))
     .filter(tools.visible)
     .filter(affiliateShareContext)
     .sort((left, right) => (right.getBoundingClientRect().top < 180 ? 20 : 0) - (left.getBoundingClientRect().top < 180 ? 20 : 0))[0];

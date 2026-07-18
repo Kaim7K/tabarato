@@ -153,6 +153,50 @@ test("extension never embeds admin secrets or captured HTML", () => {
   assert.match(source, /RASCUNHO/);
 });
 
+test("login captures the current product without requiring a manual refresh", () => {
+  const app = readFileSync(join(extensionRoot, "sidepanel", "app.js"), "utf8");
+  assert.match(app, /panel\.api\.renderAuth\(\);\s*await captureCurrentPageAfterAuth\(\);/);
+  assert.match(app, /async function captureCurrentPageAfterAuth\(stored = null\)/);
+  assert.match(app, /await captureCurrentPageAfterAuth\(stored\);/);
+  assert.match(app, /freshCaptureRequest\(captureRequest, tab\)/);
+});
+
+test("Mercado Livre opens an icon-only affiliate share control", () => {
+  const source = readFileSync(join(extensionRoot, "content", "stores", "mercado-livre.js"), "utf8");
+  let clicked = false;
+  const affiliateContainer = {
+    textContent: "Programa de afiliados Ganhos extras 10%",
+    parentElement: null,
+    getBoundingClientRect: () => ({ height: 80, top: 100 }),
+  };
+  const shareButton = {
+    id: "share-icon",
+    textContent: "",
+    parentElement: affiliateContainer,
+    getAttribute: (name) => name === "aria-label" ? "Compartilhar" : "",
+    getBoundingClientRect: () => ({ height: 32, top: 120 }),
+    click: () => { clicked = true; },
+  };
+  const context = {
+    Date,
+    location: { href: "https://produto.mercadolivre.com.br/MLB-123456789-produto_JM", hostname: "produto.mercadolivre.com.br" },
+    navigator: {},
+    document: {
+      querySelector: () => null,
+      querySelectorAll: (selector) => selector.includes("role='dialog'") ? [] : [shareButton],
+    },
+    TaBaratoCapture: {
+      clean: (value = "") => String(value).replace(/\s+/g, " ").trim(),
+      visible: () => true,
+    },
+    TaBaratoStores: [],
+  };
+  context.globalThis = context;
+  vm.runInNewContext(source, context, { filename: "mercado-livre.js" });
+  assert.equal(context.TaBaratoStores[0].prepareAffiliateLink(), true);
+  assert.equal(clicked, true);
+});
+
 test("capture extracts requested product fields and closes store popups", () => {
   const couponCode = readFileSync(join(extensionRoot, "shared", "coupon-code.js"), "utf8");
   const shared = readFileSync(join(extensionRoot, "content", "shared.js"), "utf8");
@@ -185,6 +229,10 @@ test("capture extracts requested product fields and closes store popups", () => 
   assert.match(meli, /Number\(basePrice\) >= Number\(currentPrice\)/);
   assert.match(meli, /priceInfo\.method === "Pix"/);
   assert.match(meli, /affiliateLinkType: affiliateLink \? "mercado-livre-generated" : "missing"/);
+  assert.match(meli, /const controlLabel =/);
+  assert.match(meli, /getAttribute\?\.\("aria-label"\)/);
+  assert.match(meli, /getAttribute\?\.\("title"\)/);
+  assert.match(meli, /compartilhar.*controlLabel\(element\)/);
   assert.doesNotMatch(meli, /affiliateLink: affiliateLink \|\| tools\.affiliateLink\(\)/);
   assert.doesNotMatch(meli, /promotionSummary/);
   assert.match(couponCode, /\(\?:Com\|COM\)/);
@@ -362,6 +410,10 @@ test("WhatsApp artwork is copied and pasted without file attachment inputs", () 
   assert.match(backgroundSource, /chrome\.offscreen\.createDocument/);
   assert.match(backgroundSource, /TABARATO_OFFSCREEN_WRITE_IMAGE/);
   assert.ok(existsSync(join(extensionRoot, "offscreen", "clipboard.html")));
+  const whatsappBackground = readFileSync(join(extensionRoot, "background", "whatsapp.js"), "utf8");
+  assert.match(whatsappBackground, /let clipboardPrepared = Boolean\(message\.clipboardPrepared\)/);
+  assert.match(whatsappBackground, /if \(!clipboardPrepared && message\.imageDataUrl\)/);
+  assert.match(whatsappBackground, /clipboardPrepared,\s*\n/);
   assert.match(whatsapp, /clipboardPrepared/);
   assert.match(whatsapp, /execCommand\("paste"\)/);
   assert.match(whatsapp, /Nao foi possivel copiar a imagem para o clipboard/);
@@ -534,6 +586,8 @@ test("side panel product utilities normalize prices and message benefits", () =>
   vm.runInNewContext(couponCodeSource, context, { filename: "coupon-code.js" });
   vm.runInNewContext(source, context, { filename: "product-utils.js" });
   assert.equal(context.TaBaratoProductUtils.parsePrice("R$ 1.234,56"), 1234.56);
+  assert.equal(context.TaBaratoProductUtils.parsePrice("4847.8"), 4847.8);
+  assert.equal(context.TaBaratoProductUtils.parsePrice("1.234"), 1234);
   assert.equal(context.TaBaratoProductUtils.previousPriceFor("79,92", "78,99", "99,90"), "99.9");
   assert.equal(context.TaBaratoProductUtils.previousPriceFor("79,92", "129,90", "99,90"), "129.9");
   assert.equal(context.TaBaratoProductUtils.normalizeCouponCode("Fralda"), "");
