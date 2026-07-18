@@ -49,7 +49,7 @@ const previewBenefits = (value = "") => {
   const lines = [];
   source.split(/(?<=[.!?])\s+/).forEach((sentence) => {
     const clean = sentence.replace(/promo[cç][aã]o\s*:[^.!?]*/gi, "").replace(/\b\d{1,3}(?:[.,]\d+)?%\s*(?:off|de desconto)\b/gi, "").replace(/\s+/g, " ").trim();
-    if (!clean || /pre[cç]o principal no pix/i.test(clean)) return;
+    if (!clean || !/[\p{L}\p{N}]/u.test(clean) || /pre[cç]o principal no pix/i.test(clean)) return;
     if (/frete gr[aá]tis/i.test(clean)) lines.push("🚚 Frete grátis.");
     else if (/sem juros|parcel(?:a|e|amento)|\b\d{1,2}x\b/i.test(clean)) lines.push(`💳 ${clean.replace(/^no cart[aã]o\s*:?\s*/i, "")}`);
     else if (!/promo[cç][aã]o|\boff\b/i.test(clean)) lines.push(clean);

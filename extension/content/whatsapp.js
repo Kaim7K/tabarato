@@ -18,8 +18,7 @@
     const plainCandidate = plainGroupName(candidate);
     const plainExpected = plainGroupName(groupName);
     return candidateName === expectedName
-      || candidateName.includes(expectedName)
-      || (plainExpected && plainCandidate.includes(plainExpected));
+      || (plainExpected && plainCandidate === plainExpected);
   };
 
   const aborted = (signal) => {
@@ -100,7 +99,9 @@
       .find(visible);
 
   const currentGroupIs = (groupName) => [...document.querySelectorAll("#main header, header [data-testid*='conversation'], header")]
-    .some((header) => visible(header) && sameGroupName(header.textContent, groupName));
+    .filter(visible)
+    .some((header) => [...header.querySelectorAll("span[title], [dir='auto']")]
+      .some((element) => visible(element) && sameGroupName(element.getAttribute("title") || element.textContent, groupName)));
 
   const exactGroup = (groupName) => [...document.querySelectorAll("#pane-side span[title], #pane-side [data-testid='cell-frame-title']")]
     .find((element) => {

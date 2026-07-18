@@ -199,8 +199,6 @@
     return candidates.sort((left, right) => right.score - left.score);
   };
 
-  const bestImage = (...selectors) => imageCandidates(...selectors)[0]?.url || "";
-
   const commerceBenefits = (value = "") => {
     const source = clean(value);
     const benefits = [];
@@ -294,10 +292,7 @@
   };
 
   globalThis.TaBaratoCapture = {
-    absoluteUrl,
     affiliateLink,
-    attribute,
-    bestImage,
     canonicalUrl,
     clean,
     closeTransientDialogs,
@@ -305,13 +300,10 @@
     couponCandidates,
     couponPriceDetails,
     description,
-    findAffiliateLink,
     firstUsefulParagraph,
     imageCandidates,
     jsonProduct,
     meta,
-    normalizePrice,
-    normalized,
     price,
     priceDetails,
     productImages,
@@ -320,7 +312,6 @@
     text,
     visible,
     waitFor,
-    words,
   };
   globalThis.TaBaratoStores = [];
 })();

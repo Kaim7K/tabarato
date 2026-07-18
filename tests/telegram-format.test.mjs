@@ -45,4 +45,5 @@ test("Telegram message keeps benefits concise and places Pix beside the price", 
   assert.match(message, /💳/u);
   assert.match(message, /🚚 Frete grátis/u);
   assert.doesNotMatch(message, /Promo(?:ção|cao)|43%|OFF/i);
+  assert.doesNotMatch(message, /^\.$/m);
 });

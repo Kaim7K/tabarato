@@ -23,7 +23,7 @@ export function formatOfferBenefits(value = "") {
       .replace(/\s+/g, " ")
       .replace(/^[,;:\s-]+|[,;:\s-]+$/g, "")
       .trim();
-    if (!clean || /pre[cç]o principal no pix/i.test(clean)) return;
+    if (!clean || !/[\p{L}\p{N}]/u.test(clean) || /pre[cç]o principal no pix/i.test(clean)) return;
     if (/frete gr[aá]tis/i.test(clean)) {
       if (!lines.includes("🚚 Frete grátis.")) lines.push("🚚 Frete grátis.");
       return;

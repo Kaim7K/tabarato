@@ -20,11 +20,13 @@ test("extension manifest is Manifest V3 and references existing files", () => {
   assert.equal(manifest.manifest_version, 3);
   assert.equal(manifest.background.service_worker, "background/service-worker.js");
   assert.equal(manifest.side_panel.default_path, "sidepanel/index.html");
+  assert.equal(manifest.minimum_chrome_version, "116");
   assert.ok(manifest.permissions.includes("sidePanel"));
   assert.ok(manifest.permissions.includes("clipboardWrite"));
   assert.ok(manifest.host_permissions.includes("https://*/*"));
-  assert.ok(manifest.content_scripts[0].js.includes("content/stores/generic.js"));
+  assert.ok(manifest.content_scripts.some((entry) => entry.js.includes("content/stores/generic.js")));
   assert.ok(manifest.content_scripts.some((entry) => entry.matches.includes("https://web.whatsapp.com/*")));
+  assert.ok(manifest.content_scripts.every((entry) => !entry.matches.includes("https://*/*")));
   const referencedFiles = [
     manifest.background.service_worker,
     manifest.side_panel.default_path,
@@ -32,6 +34,7 @@ test("extension manifest is Manifest V3 and references existing files", () => {
     ...manifest.content_scripts.flatMap((entry) => entry.js),
   ];
   assert.ok(referencedFiles.every((path) => existsSync(join(extensionRoot, path))));
+  assert.match(readFileSync(join(extensionRoot, "sidepanel", "index.html"), "utf8"), /product-utils\.js/);
 });
 
 test("extension action and launcher stay hidden outside allowed pages", () => {
@@ -40,10 +43,16 @@ test("extension action and launcher stay hidden outside allowed pages", () => {
   assert.match(background, /builtInAllowedHost/);
   assert.match(background, /tabarato_connected_store_hosts/);
   assert.match(background, /configuredOrigin/);
+  assert.match(background, /registerContentScripts/);
+  assert.match(background, /tabarato-connected-stores/);
+  assert.match(background, /scheduleExtensionInitialization/);
+  assert.match(background, /Promise\.allSettled/);
   assert.match(background, /chrome\.action\.disable/);
   assert.match(background, /chrome\.sidePanel\.setOptions/);
+  assert.match(background, /typeof chrome\.sidePanel\.close === "function"/);
   assert.match(background, /chrome\.sidePanel\.close\(\{ windowId: tab\.windowId \}\)/);
   assert.match(background, /chrome\.sidePanel\.open\(\{ windowId: sender\.tab\.windowId \}\)/);
+  assert.match(background, /openPanelOnActionClick: true/);
   assert.doesNotMatch(background, /setOptions\(\{ tabId, path:/);
   assert.match(content, /TABARATO_IS_ALLOWED_PAGE/);
   assert.match(content, /existing\?\.(?:remove|remove\(\))/);
@@ -55,6 +64,14 @@ test("all extension JavaScript files have valid syntax", () => {
   listFiles(extensionRoot, ".js").forEach((path) => {
     assert.doesNotThrow(() => new vm.Script(readFileSync(path, "utf8"), { filename: path }));
   });
+});
+
+test("every side panel selector references an existing element", () => {
+  const html = readFileSync(join(extensionRoot, "sidepanel", "index.html"), "utf8");
+  const app = readFileSync(join(extensionRoot, "sidepanel", "app.js"), "utf8");
+  const ids = new Set([...html.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]));
+  const requested = [...app.matchAll(/getElementById\("([^"]+)"\)/g)].map((match) => match[1]);
+  assert.deepEqual(requested.filter((id) => !ids.has(id)), []);
 });
 
 test("extension never embeds admin secrets or captured HTML", () => {
@@ -188,6 +205,31 @@ test("extension offers coupon activation and compact icon actions", () => {
   assert.match(sidePanelHtml, /action-icon-button/);
   assert.match(coupons, /TABARATO_ACTIVATE_COUPONS/);
   assert.match(sidePanelStyles, /Montserrat/);
+});
+
+test("side panel supports persistent light and dark themes", () => {
+  const html = readFileSync(join(extensionRoot, "sidepanel", "index.html"), "utf8");
+  const styles = readFileSync(join(extensionRoot, "sidepanel", "styles.css"), "utf8");
+  const theme = readFileSync(join(extensionRoot, "sidepanel", "theme.js"), "utf8");
+
+  assert.match(html, /id="theme-toggle"/);
+  assert.match(html, /src="theme\.js"/);
+  assert.match(styles, /:root\[data-theme="dark"\]/);
+  assert.match(theme, /tabarato_extension_theme/);
+  assert.match(theme, /prefers-color-scheme: dark/);
+  assert.doesNotMatch(styles, /font-weight:\s*(?:8|9)00/);
+});
+
+test("side panel product utilities normalize prices and message benefits", () => {
+  const source = readFileSync(join(extensionRoot, "sidepanel", "product-utils.js"), "utf8");
+  const context = { Intl, Number, Set, String, URL };
+  context.globalThis = context;
+  vm.runInNewContext(source, context, { filename: "product-utils.js" });
+  assert.equal(context.TaBaratoProductUtils.parsePrice("R$ 1.234,56"), 1234.56);
+  assert.equal(context.TaBaratoProductUtils.firstUsefulParagraph("Muito curto.\nEste segundo paragrafo possui palavras suficientes para ser utilizado na oferta."), "Este segundo paragrafo possui palavras suficientes para ser utilizado na oferta.");
+  const benefits = context.TaBaratoProductUtils.messageBenefits("Promocao: 43% OFF. Preco principal no Pix. 10x sem juros. Frete gratis.");
+  assert.equal(benefits.pix, true);
+  assert.deepEqual([...benefits.lines], ["💳 10x sem juros.", "🚚 Frete grátis."]);
 });
 
 test("extension runtime releases timed out operations", async () => {

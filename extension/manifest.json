@@ -3,7 +3,7 @@
   "name": "Ta Barato - Central de Ofertas",
   "description": "Capture ofertas, gere artes e publique no site, Telegram e WhatsApp somente nas lojas conectadas.",
   "version": "2.0.0",
-  "minimum_chrome_version": "141",
+  "minimum_chrome_version": "116",
   "icons": {
     "128": "assets/icon.png"
   },
@@ -35,14 +35,23 @@
   "content_scripts": [
     {
       "matches": [
-        "https://*/*",
-        "http://localhost/*",
-        "http://127.0.0.1/*"
+        "https://*.mercadolivre.com.br/*",
+        "https://*.mercadolibre.com/*"
       ],
       "js": [
         "shared/runtime.js",
         "content/shared.js",
         "content/stores/mercado-livre.js",
+        "content/stores/generic.js",
+        "content/index.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://*.shopee.com.br/*"],
+      "js": [
+        "shared/runtime.js",
+        "content/shared.js",
         "content/stores/shopee.js",
         "content/stores/generic.js",
         "content/index.js"
@@ -50,8 +59,28 @@
       "run_at": "document_idle"
     },
     {
+      "matches": [
+        "https://tabaratoofertas.vercel.app/*",
+        "http://localhost/*",
+        "http://127.0.0.1/*"
+      ],
+      "js": [
+        "shared/runtime.js",
+        "content/shared.js",
+        "content/stores/generic.js",
+        "content/index.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
       "matches": ["https://web.whatsapp.com/*"],
-      "js": ["shared/runtime.js", "content/whatsapp.js"],
+      "js": [
+        "shared/runtime.js",
+        "content/shared.js",
+        "content/stores/generic.js",
+        "content/index.js",
+        "content/whatsapp.js"
+      ],
       "run_at": "document_idle"
     }
   ],
@@ -59,7 +88,7 @@
     "extension_pages": "script-src 'self'; object-src 'self'"
   },
   "web_accessible_resources": [{
-    "resources": ["assets/*"],
+    "resources": ["assets/icon.png"],
     "matches": ["https://*/*", "http://localhost/*", "http://127.0.0.1/*"]
   }]
 }

@@ -44,6 +44,27 @@
     }
   };
 
+  const waitForTabComplete = (tabId, milliseconds = 30000, message = "A pagina demorou para carregar.") => new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (callback, value) => {
+      if (settled) return;
+      settled = true;
+      globalThis.clearTimeout(timer);
+      chrome.tabs.onUpdated.removeListener(onUpdated);
+      callback(value);
+    };
+    const onUpdated = (updatedId, changeInfo, tab) => {
+      if (updatedId === tabId && changeInfo.status === "complete") finish(resolve, tab);
+    };
+    const timer = globalThis.setTimeout(() => finish(reject, new Error(message)), milliseconds);
+    chrome.tabs.onUpdated.addListener(onUpdated);
+    chrome.tabs.get(tabId)
+      .then((tab) => {
+        if (tab.status === "complete") finish(resolve, tab);
+      })
+      .catch((error) => finish(reject, error));
+  });
+
   const reportError = (scope, error) => {
     const entry = {
       scope: String(scope || "extension").slice(0, 80),
@@ -58,11 +79,11 @@
   };
 
   globalThis.TaBaratoRuntime = {
-    DEFAULT_TIMEOUT,
     delay,
     errorMessage,
     fetchWithTimeout,
     reportError,
+    waitForTabComplete,
     withTimeout,
   };
 })();

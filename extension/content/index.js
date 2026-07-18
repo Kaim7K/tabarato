@@ -69,12 +69,22 @@
     button.addEventListener("mouseenter", () => { button.style.transform = "translateY(-1px)"; });
     button.addEventListener("mouseleave", () => { button.style.transform = ""; });
     button.addEventListener("click", async () => {
-      const adapter = await currentAdapter();
-      if (adapter?.isProduct?.()) {
-        adapter.prepareAffiliateLink?.();
-        await chrome.storage.local.set({ tabarato_capture_request: { url: location.href, at: Date.now() } });
+      if (button.disabled) return;
+      button.disabled = true;
+      try {
+        const adapter = await currentAdapter();
+        if (adapter?.isProduct?.()) {
+          adapter.prepareAffiliateLink?.();
+          await chrome.storage.local.set({ tabarato_capture_request: { url: location.href, at: Date.now() } });
+        }
+        const result = await chrome.runtime.sendMessage({ type: "TABARATO_OPEN_PANEL" });
+        if (!result?.ok) throw new Error(result?.error || "Nao foi possivel abrir a extensao.");
+      } catch (error) {
+        runtime.reportError("open-panel-launcher", error);
+        button.title = runtime.errorMessage(error, "Nao foi possivel abrir a extensao.");
+      } finally {
+        button.disabled = false;
       }
-      chrome.runtime.sendMessage({ type: "TABARATO_OPEN_PANEL" }).catch(() => {});
     });
     document.documentElement.appendChild(button);
   }

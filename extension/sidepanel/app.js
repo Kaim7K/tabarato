@@ -6,6 +6,15 @@ const PRODUCT_DRAFT_KEY = "tabarato_product_draft";
 const CAPTURE_REQUEST_KEY = "tabarato_capture_request";
 const runtime = globalThis.TaBaratoRuntime;
 const artwork = globalThis.TaBaratoArtwork;
+const theme = globalThis.TaBaratoTheme;
+const {
+  comparableUrl,
+  firstUsefulParagraph,
+  formatPrice,
+  messageBenefits,
+  normalizeText,
+  parsePrice,
+} = globalThis.TaBaratoProductUtils;
 const REQUEST_TIMEOUT = 22000;
 const CAPTURE_TIMEOUT = 38000;
 const WHATSAPP_TIMEOUT = 120000;
@@ -21,6 +30,7 @@ const elements = {
   password: document.getElementById("password"),
   loginButton: document.getElementById("login-button"),
   adminPanelButton: document.getElementById("admin-panel-button"),
+  themeToggle: document.getElementById("theme-toggle"),
   groupsToggle: document.getElementById("groups-toggle"),
   groupsPanel: document.getElementById("groups-panel"),
   whatsappGroups: document.getElementById("whatsapp-groups"),
@@ -45,6 +55,7 @@ const elements = {
   previewImage: document.getElementById("preview-image"),
   previewName: document.getElementById("preview-name"),
   previewPrice: document.getElementById("preview-price"),
+  previewPreviousPrice: document.getElementById("preview-previous-price"),
   previewCategory: document.getElementById("preview-category"),
   platformBadge: document.getElementById("platform-badge"),
   batchLimit: document.getElementById("batch-limit"),
@@ -60,6 +71,8 @@ const elements = {
   customWhatsapp: document.getElementById("custom-whatsapp"),
   customSendButton: document.getElementById("custom-send-button"),
   couponLimit: document.getElementById("coupon-limit"),
+  couponDecrease: document.getElementById("coupon-decrease"),
+  couponIncrease: document.getElementById("coupon-increase"),
   activateCouponsButton: document.getElementById("activate-coupons-button"),
   fields: {
     affiliateLink: document.getElementById("affiliate-link"),
@@ -99,39 +112,6 @@ function normalizeBaseUrl(value) {
   return url.origin;
 }
 
-function normalizeText(value = "") {
-  return String(value).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
-}
-
-function parsePrice(value) {
-  const raw = String(value || "").replace(/[^\d.,]/g, "");
-  if (!raw) return NaN;
-  const comma = raw.lastIndexOf(",");
-  const dot = raw.lastIndexOf(".");
-  const separator = Math.max(comma, dot);
-  if (separator < 0) return Number(raw);
-  const decimals = raw.slice(separator + 1);
-  const integer = raw.slice(0, separator).replace(/[.,]/g, "");
-  return Number(decimals.length === 2 ? `${integer}.${decimals}` : `${integer}${decimals}`);
-}
-
-function formatPrice(value) {
-  const number = Number(value);
-  return Number.isFinite(number) && number > 0
-    ? new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(number)
-    : "Preco nao identificado";
-}
-
-function comparableUrl(value) {
-  try {
-    const url = new URL(value);
-    url.hash = "";
-    return url.href.replace(/\/$/, "");
-  } catch {
-    return String(value || "").trim().replace(/\/$/, "");
-  }
-}
-
 function groupNames() {
   return [...new Set(String(elements.whatsappGroups.value || "")
     .split(/\r?\n/)
@@ -140,8 +120,23 @@ function groupNames() {
 }
 
 function setStatus(label, tone = "neutral") {
-  elements.status.textContent = label;
+  const indicator = document.createElement("i");
+  indicator.setAttribute("aria-hidden", "true");
+  elements.status.replaceChildren(indicator, document.createTextNode(label));
   elements.status.dataset.tone = tone;
+}
+
+function renderThemeControl() {
+  const dark = theme?.current() === "dark";
+  const label = dark ? "Usar modo claro" : "Usar modo escuro";
+  elements.themeToggle.title = label;
+  elements.themeToggle.setAttribute("aria-label", label);
+  elements.themeToggle.setAttribute("aria-pressed", String(dark));
+}
+
+function changeCouponLimit(delta) {
+  const current = Number(elements.couponLimit.value) || 5;
+  elements.couponLimit.value = String(Math.max(1, Math.min(100, current + delta)));
 }
 
 function showToast(message, tone = "neutral") {
@@ -298,16 +293,8 @@ function suggestCategory(product) {
   return scored[0]?.score > 0 ? scored[0].category : availableCategories[0] || "";
 }
 
-function firstUsefulParagraph(value = "") {
-  const paragraphs = String(value || "").split(/\r?\n+/).map((item) => item.replace(/\s+/g, " ").trim()).filter(Boolean);
-  if (!paragraphs.length) return "";
-  if (paragraphs[0].split(/\s+/).filter(Boolean).length >= 10 || !paragraphs[1]) return paragraphs[0];
-  return paragraphs[1];
-}
-
-function fillForm(product) {
-  activeProduct = product;
-  const values = {
+function productFormValues(product) {
+  return {
     affiliateLink: product.affiliateLink || product.sourceUrl || "",
     productName: product.productName || "",
     currentPrice: product.currentPrice || "",
@@ -319,6 +306,11 @@ function fillForm(product) {
     imageUrl: product.imageUrl || product.imageCandidates?.[0]?.url || "",
     extraText: [product.pricePaymentMethod === "Pix" ? "Preco principal no Pix." : "", product.extraText || ""].filter(Boolean).join(" "),
   };
+}
+
+function fillForm(product) {
+  activeProduct = product;
+  const values = productFormValues(product);
   Object.entries(values).forEach(([key, value]) => {
     elements.fields[key].value = value;
   });
@@ -387,6 +379,7 @@ function updatePreview() {
   const payload = formPayload();
   elements.previewName.textContent = payload.productName || "Nome do produto";
   elements.previewPrice.textContent = `${formatPrice(payload.currentPrice)}${activeProduct?.pricePaymentMethod === "Pix" ? " (Pix)" : ""}`;
+  elements.previewPreviousPrice.textContent = payload.previousPrice ? formatPrice(payload.previousPrice) : "";
   elements.previewCategory.textContent = payload.category || "Categoria";
   elements.platformBadge.textContent = payload.platform || "Loja";
   elements.previewImage.src = payload.imageUrl || "";
@@ -439,25 +432,14 @@ async function reconcileExistingOffer(product) {
 }
 
 function productToPayload(product, status = "RASCUNHO") {
-  const previousActive = activeProduct;
-  activeProduct = product;
+  const values = productFormValues(product);
   const payload = {
-    productName: product.productName || "",
-    shortDescription: firstUsefulParagraph(product.shortDescription || ""),
-    currentPrice: product.currentPrice || "",
-    previousPrice: product.previousPrice || "",
-    coupon: product.coupon || "Cupom disponivel no anuncio. Ative antes de comprar.",
+    ...values,
     couponDiscountPercent: 0,
-    category: suggestCategory(product),
-    imageUrl: product.imageUrl || product.imageCandidates?.[0]?.url || "",
-    affiliateLink: product.affiliateLink || product.sourceUrl || "",
     sourceProductId: product.externalProductId || product.sourceProductId || "",
-    platform: product.platform || "Loja conectada",
-    extraText: [product.pricePaymentMethod === "Pix" ? "Preco principal no Pix." : "", product.extraText || ""].filter(Boolean).join(" "),
     status,
     scheduledAt: null,
   };
-  activeProduct = previousActive;
   return payload;
 }
 
@@ -469,13 +451,21 @@ async function activeTab() {
 function captureScriptsForUrl(value) {
   try {
     const hostname = new URL(value).hostname;
-    if (/mercadolivre|mercadolibre|shopee/i.test(hostname)) {
-      return ["content/shared.js", "content/stores/mercado-livre.js", "content/stores/shopee.js", "content/stores/generic.js", "content/index.js"];
-    }
+    if (/mercadolivre|mercadolibre/i.test(hostname)) return ["content/shared.js", "content/stores/mercado-livre.js", "content/stores/generic.js", "content/index.js"];
+    if (/shopee/i.test(hostname)) return ["content/shared.js", "content/stores/shopee.js", "content/stores/generic.js", "content/index.js"];
     return ["content/shared.js", "content/stores/generic.js", "content/index.js"];
   } catch {
     return [];
   }
+}
+
+async function ensureCaptureScripts(tab) {
+  const availability = await chrome.runtime.sendMessage({ type: "TABARATO_IS_ALLOWED_PAGE", url: tab.url });
+  if (!availability?.allowed) throw new Error("Abra uma pagina permitida pelo Ta Barato.");
+  const files = captureScriptsForUrl(tab.url);
+  if (!files.length) throw new Error("Esta pagina nao oferece captura de produtos.");
+  await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["shared/runtime.js", ...files] });
+  await runtime.delay(200);
 }
 
 async function extractProductFromTab(tab) {
@@ -488,12 +478,41 @@ async function extractProductFromTab(tab) {
   } catch (error) {
     const missingReceiver = /receiving end does not exist|could not establish connection/i.test(error?.message || "");
     if (!missingReceiver) throw error;
-    const files = captureScriptsForUrl(tab.url);
-    if (!files.length) throw new Error("Abra uma pagina permitida pelo Ta Barato.");
-    await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["shared/runtime.js", ...files] });
-    await runtime.delay(200);
+    await ensureCaptureScripts(tab);
     return runtime.withTimeout(chrome.tabs.sendMessage(tab.id, { type: "TABARATO_EXTRACT_PRODUCT" }), CAPTURE_TIMEOUT);
   }
+}
+
+async function enrichCapturedProduct(product) {
+  const complete = product.productName && product.currentPrice && product.imageUrl;
+  if (complete || !product.affiliateLink) return product;
+  try {
+    const preview = await requestApi("/api/admin/product-preview", {
+      method: "POST",
+      body: { link: product.affiliateLink },
+    });
+    return { ...preview.product, ...product, imageUrl: product.imageUrl || preview.product?.imageUrl };
+  } catch {
+    return product;
+  }
+}
+
+async function applyCapturedProduct(product, tab, reconcile) {
+  fillForm(product);
+  capturedTabId = tab.id;
+  capturedPageUrl = comparableUrl(tab.url);
+  await persistProductDraft();
+  elements.refreshButton.classList.remove("needs-refresh");
+  if (reconcile) await reconcileExistingOffer(product).catch((error) => runtime.reportError("reconcile-product", error));
+}
+
+function showCaptureFailure(error) {
+  const message = runtime.reportError("capture-product", error);
+  elements.empty.querySelector("p").textContent = message;
+  elements.empty.classList.remove("hidden");
+  elements.captureSource.textContent = "Falha na captura.";
+  elements.refreshButton.classList.add("needs-refresh");
+  if (activeProduct) elements.offerForm.classList.remove("hidden");
 }
 
 async function captureProduct({ reconcile = true } = {}) {
@@ -508,34 +527,33 @@ async function captureProduct({ reconcile = true } = {}) {
     if (!tab?.id) throw new Error("Nenhuma aba ativa encontrada.");
     const result = await extractProductFromTab(tab);
     if (!result?.ok) throw new Error(result?.error || "Produto nao encontrado.");
-    let product = result.product;
-    if ((!product.productName || !product.currentPrice || !product.imageUrl) && product.affiliateLink) {
-      try {
-        const preview = await requestApi("/api/admin/product-preview", { method: "POST", body: { link: product.affiliateLink } });
-        product = { ...preview.product, ...product, imageUrl: product.imageUrl || preview.product?.imageUrl };
-      } catch { /* DOM capture remains enough when preview is blocked. */ }
-    }
+    const product = await enrichCapturedProduct(result.product);
     await catalogRequest;
     if (runId !== captureSequence) return;
-    fillForm(product);
-    capturedTabId = tab.id;
-    capturedPageUrl = comparableUrl(tab.url);
-    await persistProductDraft();
-    elements.refreshButton.classList.remove("needs-refresh");
-    if (reconcile) await reconcileExistingOffer(product).catch((error) => runtime.reportError("reconcile-product", error));
+    await applyCapturedProduct(product, tab, reconcile);
   } catch (error) {
     if (runId !== captureSequence) return;
-    const message = runtime.reportError("capture-product", error);
-    elements.empty.querySelector("p").textContent = message;
-    elements.empty.classList.remove("hidden");
-    elements.captureSource.textContent = "Falha na captura.";
-    elements.refreshButton.classList.add("needs-refresh");
-    if (activeProduct) elements.offerForm.classList.remove("hidden");
+    showCaptureFailure(error);
   } finally {
     if (runId === captureSequence) {
       elements.loading.classList.add("hidden");
       setBusy(elements.refreshButton, false);
     }
+  }
+}
+
+async function evaluateImageCandidate(source) {
+  const response = await runtime.fetchWithTimeout(source, {}, 15000, "A imagem demorou para carregar.");
+  if (!response.ok) return null;
+  const blob = await response.blob();
+  if (!/^image\/(?:png|jpe?g|webp)$/i.test(blob.type) || blob.size > 12 * 1024 * 1024) return null;
+  const bitmap = await createImageBitmap(blob);
+  try {
+    const aspectRatio = bitmap.width / Math.max(1, bitmap.height);
+    if (aspectRatio > 3.2 || aspectRatio < 0.32 || Math.min(bitmap.width, bitmap.height) < 180) return null;
+    return { blob, score: imageSceneScore(bitmap, source) };
+  } finally {
+    bitmap.close?.();
   }
 }
 
@@ -548,21 +566,10 @@ async function productImageBlob(payload) {
   let bestScore = -Infinity;
   for (const source of [...new Set(candidates)].slice(0, 8)) {
     try {
-      const response = await runtime.fetchWithTimeout(source, {}, 15000, "A imagem demorou para carregar.");
-      if (!response.ok) continue;
-      const blob = await response.blob();
-      if (!/^image\/(?:png|jpe?g|webp)$/i.test(blob.type) || blob.size > 12 * 1024 * 1024) continue;
-      const bitmap = await createImageBitmap(blob);
-      const aspectRatio = bitmap.width / Math.max(1, bitmap.height);
-      if (aspectRatio > 3.2 || aspectRatio < 0.32 || Math.min(bitmap.width, bitmap.height) < 180) {
-        bitmap.close?.();
-        continue;
-      }
-      const score = imageSceneScore(bitmap, source);
-      bitmap.close?.();
-      if (score > bestScore) {
-        best = blob;
-        bestScore = score;
+      const candidate = await evaluateImageCandidate(source);
+      if (candidate && candidate.score > bestScore) {
+        best = candidate.blob;
+        bestScore = candidate.score;
       }
     } catch { /* Try next image candidate. */ }
   }
@@ -657,29 +664,6 @@ function whatsappMessage(payload) {
   if (benefits.lines.length) lines.push("", ...benefits.lines);
   lines.push("", "Preco e disponibilidade podem mudar.", "", "Comprar:", payload.affiliateLink);
   return lines.join("\n");
-}
-
-function messageBenefits(value = "") {
-  const source = String(value || "").replace(/\s+/g, " ").trim();
-  const pix = /\b(?:no|via|pelo|preco principal no)\s+pix\b/i.test(normalizeText(source));
-  const lines = [];
-  source.split(/(?<=[.!?])\s+/).forEach((sentence) => {
-    const clean = sentence
-      .replace(/promo[cç][aã]o\s*:[^.!?]*/gi, "")
-      .replace(/\b\d{1,3}(?:[.,]\d+)?%\s*(?:off|de desconto)\b/gi, "")
-      .replace(/\s+/g, " ")
-      .replace(/^[,;:\s-]+|[,;:\s-]+$/g, "")
-      .trim();
-    if (!clean || /pre[cç]o principal no pix/i.test(clean)) return;
-    if (/frete gr[aá]tis/i.test(clean)) {
-      if (!lines.includes("🚚 Frete grátis.")) lines.push("🚚 Frete grátis.");
-    } else if (/sem juros|parcel(?:a|e|amento)|\b\d{1,2}x\b/i.test(clean)) {
-      lines.push(`💳 ${clean.replace(/^no cart[aã]o\s*:?\s*/i, "")}`);
-    } else if (!/promo[cç][aã]o|\boff\b/i.test(clean)) {
-      lines.push(clean);
-    }
-  });
-  return { pix, lines: [...new Set(lines)] };
 }
 
 async function sendOfferToWhatsApp(payload, onProgress = () => {}) {
@@ -785,32 +769,11 @@ function logBatch(message, tone = "neutral") {
   item.scrollIntoView({ block: "nearest" });
 }
 
-async function waitForTabComplete(tabId, timeout = 35000) {
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    const finish = (callback, value) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      chrome.tabs.onUpdated.removeListener(listener);
-      callback(value);
-    };
-    const timer = setTimeout(() => finish(reject, new Error("A pagina demorou para carregar.")), timeout);
-    const listener = (id, changeInfo, tab) => {
-      if (id === tabId && changeInfo.status === "complete") finish(resolve, tab);
-    };
-    chrome.tabs.get(tabId).then((tab) => {
-      if (tab.status === "complete") finish(resolve, tab);
-    }).catch((error) => finish(reject, error));
-    chrome.tabs.onUpdated.addListener(listener);
-  });
-}
-
 async function visibleProductUrls(limit) {
   const tab = await activeTab();
   if (!tab?.id) throw new Error("Nenhuma aba ativa encontrada.");
   const result = await chrome.tabs.sendMessage(tab.id, { type: "TABARATO_LIST_VISIBLE_PRODUCTS", limit }).catch(async () => {
-    await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["shared/runtime.js", ...captureScriptsForUrl(tab.url)] });
+    await ensureCaptureScripts(tab);
     return chrome.tabs.sendMessage(tab.id, { type: "TABARATO_LIST_VISIBLE_PRODUCTS", limit });
   });
   if (!result?.ok) throw new Error(result?.error || "Nao foi possivel listar produtos na tela.");
@@ -820,7 +783,7 @@ async function visibleProductUrls(limit) {
 async function captureUrlInTempTab(url) {
   const tab = await chrome.tabs.create({ url, active: false });
   try {
-    await waitForTabComplete(tab.id);
+    await runtime.waitForTabComplete(tab.id, 35000);
     await runtime.delay(600);
     const result = await extractProductFromTab(tab);
     if (!result?.ok) throw new Error(result?.error || "Produto nao encontrado.");
@@ -849,13 +812,14 @@ async function startBatch() {
           logBatch(`Pulou produto com dados incertos: ${product.productName || url}`, "error");
           continue;
         }
+        activeProduct = product;
         const existing = findExistingOffer(product);
         if (existing) {
-          logBatch(`Ja cadastrado: ${product.productName}`, "error");
+          await reconcileExistingOffer(product);
+          logBatch(`Produto cadastrado revisado: ${product.productName}`, "success");
           continue;
         }
         const payload = productToPayload(product, "APROVADO");
-        activeProduct = product;
         const created = await requestApi("/api/admin/ofertas", { method: "POST", body: payload });
         await publishOfferId(created.offer.id, payload, { notifyWhatsApp: true });
         synchronizedOffers.unshift(created.offer);
@@ -889,6 +853,10 @@ async function sendCustomMessage() {
     showToast("Escreva a mensagem personalizada.", "error");
     return;
   }
+  if (!elements.customTelegram.checked && !elements.customWhatsapp.checked) {
+    showToast("Selecione Telegram ou WhatsApp.", "error");
+    return;
+  }
   const imageUrl = await fileInputDataUrl() || elements.customImageUrl.value.trim();
   setActionsBusy(elements.customSendButton, true, "Enviando...");
   try {
@@ -905,16 +873,19 @@ async function sendCustomMessage() {
       let imageDataUrl = imageUrl;
       if (imageUrl && /^https:\/\//i.test(imageUrl)) {
         const response = await runtime.fetchWithTimeout(imageUrl, {}, 15000);
+        if (!response.ok) throw new Error("Nao foi possivel carregar a imagem personalizada.");
         const blob = await response.blob();
+        if (!/^image\//i.test(blob.type)) throw new Error("A URL informada nao retornou uma imagem valida.");
         imageDataUrl = await fileToDataUrl(new File([blob], "mensagem.png", { type: blob.type || "image/png" }));
       }
-      await chrome.runtime.sendMessage({
+      const result = await chrome.runtime.sendMessage({
         type: "TABARATO_SHARE_WHATSAPP",
         groupNames: groups,
         text: message,
         imageDataUrl,
         fileName: "mensagem.png",
       });
+      if (!result?.ok) throw new Error(result?.error || "Nao foi possivel enviar a mensagem ao WhatsApp.");
     }
     showToast("Mensagem enviada.", "success");
   } catch (error) {
@@ -987,6 +958,8 @@ elements.offerForm.addEventListener("submit", (event) => {
 elements.publishButton.addEventListener("click", publishOffer);
 elements.whatsappButton.addEventListener("click", shareOnWhatsApp);
 elements.adminPanelButton.addEventListener("click", () => openAdminPanel().catch((error) => showToast(runtime.errorMessage(error), "error")));
+elements.themeToggle.addEventListener("click", () => theme?.toggle());
+window.addEventListener("tabarato-theme-change", renderThemeControl);
 elements.groupsToggle.addEventListener("click", () => elements.groupsPanel.classList.toggle("hidden"));
 elements.saveGroupsButton.addEventListener("click", async () => {
   await chrome.storage.local.set({ [GROUPS_KEY]: elements.whatsappGroups.value });
@@ -995,6 +968,9 @@ elements.saveGroupsButton.addEventListener("click", async () => {
 elements.stopMacroButton.addEventListener("click", stopMacros);
 elements.batchStopButton.addEventListener("click", stopMacros);
 elements.refreshButton.addEventListener("click", () => captureProduct());
+elements.couponDecrease.addEventListener("click", () => changeCouponLimit(-1));
+elements.couponIncrease.addEventListener("click", () => changeCouponLimit(1));
+elements.couponLimit.addEventListener("change", () => changeCouponLimit(0));
 elements.activateCouponsButton.addEventListener("click", async () => {
   setBusy(elements.activateCouponsButton, true, "Ativando...");
   try {
@@ -1031,22 +1007,42 @@ chrome.tabs.onActivated.addListener(async ({ tabId }) => {
   } catch { /* Closed tabs are ignored. */ }
 });
 
-chrome.storage.local.get([STORAGE_KEY, GROUPS_KEY, LAST_BASE_URL_KEY, PRODUCT_DRAFT_KEY, CAPTURE_REQUEST_KEY]).then(async (stored) => {
+function isPrimarySiteUrl(value) {
+  try {
+    return Boolean(session?.baseUrl) && new URL(value).origin === new URL(session.baseUrl).origin;
+  } catch {
+    return false;
+  }
+}
+
+function freshCaptureRequest(request, tab) {
+  return request?.at > Date.now() - 15000
+    && comparableUrl(request.url) === comparableUrl(tab?.url);
+}
+
+async function initializePanel() {
+  renderThemeControl();
+  const stored = await chrome.storage.local.get([STORAGE_KEY, GROUPS_KEY, LAST_BASE_URL_KEY, PRODUCT_DRAFT_KEY, CAPTURE_REQUEST_KEY]);
   session = stored[STORAGE_KEY] || null;
   elements.whatsappGroups.value = stored[GROUPS_KEY] || "";
   elements.baseUrl.value = session?.baseUrl || stored[LAST_BASE_URL_KEY] || "";
-  if (session?.expiresAt && new Date(session.expiresAt).getTime() <= Date.now()) session = null;
+  if (session?.expiresAt && new Date(session.expiresAt).getTime() <= Date.now()) {
+    session = null;
+    await chrome.storage.local.remove(STORAGE_KEY);
+  }
   restoreProductDraft(stored[PRODUCT_DRAFT_KEY]);
   renderAuth();
   const captureRequest = stored[CAPTURE_REQUEST_KEY];
   const tab = await activeTab().catch(() => null);
-  if (session && captureRequest?.at > Date.now() - 15000 && comparableUrl(captureRequest.url) === comparableUrl(tab?.url)) {
+  if (session && freshCaptureRequest(captureRequest, tab)) {
     await chrome.storage.local.remove(CAPTURE_REQUEST_KEY);
     captureProduct();
-  } else if (session && !activeProduct && tab?.url && !/web\.whatsapp\.com/i.test(tab.url)) {
+  } else if (session && !activeProduct && tab?.url && !isPrimarySiteUrl(tab.url) && !/web\.whatsapp\.com/i.test(tab.url)) {
     captureProduct();
   }
-}).catch((error) => {
+}
+
+initializePanel().catch((error) => {
   runtime.reportError("load-settings", error);
   renderAuth();
   showToast("Nao foi possivel carregar as configuracoes.", "error");

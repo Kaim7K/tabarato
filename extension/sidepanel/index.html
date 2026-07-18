@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Ta Barato | Extensao</title>
+    <script src="theme.js"></script>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -16,6 +17,11 @@
         </div>
       </div>
       <div class="topbar-actions">
+        <span id="connection-status" class="status" data-tone="neutral"><i></i>Desconectado</span>
+        <button id="theme-toggle" class="icon-button theme-toggle" type="button" title="Usar modo escuro" aria-label="Usar modo escuro">
+          <svg class="sun-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10Zm0-5h1v3h-2V2h1Zm0 17h1v3h-2v-3h1ZM2 11h3v2H2v-2Zm17 0h3v2h-3v-2ZM4.22 5.64l1.42-1.42 2.12 2.12-1.42 1.42-2.12-2.12Zm12.02 12.02 1.42-1.42 2.12 2.12-1.42 1.42-2.12-2.12ZM4.22 18.36l2.12-2.12 1.42 1.42-2.12 2.12-1.42-1.42ZM16.24 6.34l2.12-2.12 1.42 1.42-2.12 2.12-1.42-1.42Z"/></svg>
+          <svg class="moon-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 15.2A8.2 8.2 0 0 1 8.8 3.5 9 9 0 1 0 20.5 15.2ZM11.1 21A7 7 0 0 1 6.2 9a10.2 10.2 0 0 0 8.8 8.8A7 7 0 0 1 11.1 21Z"/></svg>
+        </button>
         <button id="groups-toggle" class="icon-button" type="button" title="Registrar grupos" aria-label="Registrar grupos">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 11c1.66 0 3-1.57 3-3.5S17.66 4 16 4s-3 1.57-3 3.5 1.34 3.5 3 3.5Zm-8 0c1.66 0 3-1.57 3-3.5S9.66 4 8 4 5 5.57 5 7.5 6.34 11 8 11Zm0 2c-2.67 0-5 1.34-5 3v2h10v-2c0-1.66-2.33-3-5-3Zm8 0c-.39 0-.78.03-1.14.09 1.31.95 2.14 2.22 2.14 3.91v1h4v-2c0-1.66-2.33-3-5-3Z"/></svg>
         </button>
@@ -26,7 +32,11 @@
     </header>
 
     <main>
-      <section id="setup-view" class="panel">
+      <section id="setup-view" class="panel login-panel">
+        <div class="section-heading">
+          <span>ACESSO ADMINISTRATIVO</span>
+          <h2>Conecte sua conta</h2>
+        </div>
         <form id="login-form" class="form-stack">
           <label>
             <span>Endereco do site</span>
@@ -47,20 +57,29 @@
       </section>
 
       <section id="editor-view" class="hidden">
-        <div class="control-strip">
-          <span id="connection-status" class="status" data-tone="neutral">Desconectado</span>
-          <div class="segmented" role="group" aria-label="Modo da extensao">
-            <button id="mode-single" type="button" class="active">Produto</button>
-            <button id="mode-batch" type="button">Lote</button>
+        <section class="command-bar" aria-label="Controles da extensao">
+          <div class="quantity-control">
+            <span>Quantidade</span>
+            <div class="quantity-stepper">
+              <button id="coupon-decrease" type="button" aria-label="Diminuir quantidade">&minus;</button>
+              <input id="coupon-limit" type="number" min="1" max="100" value="5" aria-label="Quantidade de cupons" />
+              <button id="coupon-increase" type="button" aria-label="Aumentar quantidade">+</button>
+            </div>
           </div>
-        </div>
-
-        <section class="coupon-tools" aria-label="Ativar cupons">
-          <label><span>Quantidade</span><input id="coupon-limit" type="number" min="1" max="100" value="5" /></label>
-          <button id="activate-coupons-button" class="button button-secondary" type="button" title="Ativar cupons do Mercado Livre">
+          <button id="activate-coupons-button" class="button coupon-button" type="button" title="Ativar cupons do Mercado Livre">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a3 3 0 0 0-3-3V4H6v5a3 3 0 0 0 0 6v5h12v-5a3 3 0 0 0 3-3Zm-5 6H8v-4.17l-.59-.24A1.7 1.7 0 0 1 6.3 12c0-.7.44-1.33 1.11-1.59L8 10.17V6h8v4.17l.59.24A1.7 1.7 0 0 1 17.7 12c0 .7-.44 1.33-1.11 1.59l-.59.24V18Z"/></svg>
-            Ativar cupons
+            <span>Ativar cupons</span>
           </button>
+          <div class="segmented" role="group" aria-label="Modo da extensao">
+            <button id="mode-single" type="button" class="active">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2 9 5v10l-9 5-9-5V7l9-5Zm0 2.3L6 7.63v8.74l5 2.78v-7.57L6.5 9.1l1-1.74 4.5 2.5 4.5-2.5 1 1.74-4.5 2.48v7.57l6-3.33V7.63l-7-3.33Z"/></svg>
+              Produto
+            </button>
+            <button id="mode-batch" type="button">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h14v14H3V5Zm2 2v10h10V7H5Zm14 0h2v14H7v-2h12V7Z"/></svg>
+              Lote
+            </button>
+          </div>
         </section>
 
         <section id="groups-panel" class="panel groups-panel hidden">
@@ -77,7 +96,7 @@
         <section id="single-view">
           <div class="capture-bar">
             <div>
-              <p class="eyebrow">PRODUTO</p>
+              <p class="eyebrow">PRODUTO ATUAL</p>
               <p id="capture-source" class="capture-source" aria-live="polite">Aguardando captura</p>
             </div>
           </div>
@@ -101,7 +120,10 @@
               <div class="preview-copy">
                 <p id="preview-category">Categoria</p>
                 <strong id="preview-name">Produto</strong>
-                <p id="preview-price">R$ 0,00</p>
+                <div class="preview-prices">
+                  <p id="preview-price">R$ 0,00</p>
+                  <p id="preview-previous-price"></p>
+                </div>
               </div>
             </section>
 
@@ -109,29 +131,43 @@
             <div id="capture-quality" class="notice notice-warning hidden" role="status"></div>
 
             <section class="panel fields-panel">
-              <div class="form-stack">
-                <label class="field-wide"><span>Link de afiliado</span><input id="affiliate-link" type="url" required /></label>
-                <label><span>Nome do produto</span><textarea id="product-name" rows="2" maxlength="200" required></textarea></label>
-                <div class="field-grid">
-                  <label><span>Preco atual</span><input id="current-price" type="number" min="0.01" step="0.01" required /></label>
-                  <label><span>Preco anterior</span><input id="previous-price" type="number" min="0.01" step="0.01" /></label>
-                </div>
-                <div class="field-grid">
-                  <label><span>Plataforma</span><select id="platform"><option>Mercado Livre</option><option>Shopee</option><option>Loja conectada</option></select></label>
-                  <label><span>Categoria</span><select id="category"><option>Tecnologia</option><option>Casa e organizacao</option><option>Cozinha</option><option>Ferramentas</option><option>Beleza e cuidados</option></select></label>
-                </div>
-                <label><span>Cupom</span><input id="coupon" type="text" maxlength="100" /></label>
-                <label><span>Descricao curta</span><textarea id="short-description" rows="3" maxlength="1000"></textarea></label>
-                <label><span>URL da imagem</span><input id="image-url" type="url" /></label>
-                <label><span>Texto complementar</span><textarea id="extra-text" rows="2" maxlength="600"></textarea></label>
+              <div class="product-fields">
+                <label class="field-affiliate">
+                  <span class="field-label"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.6 13.4a2 2 0 0 0 2.8 0l4-4a2 2 0 1 0-2.8-2.8l-1.2 1.2L12 6.4l1.2-1.2a4 4 0 0 1 5.6 5.6l-4 4a4 4 0 0 1-5.6 0l-1-1 1.4-1.4 1 1Zm2.8-2.8a2 2 0 0 0-2.8 0l-4 4a2 2 0 1 0 2.8 2.8l1.2-1.2 1.4 1.4-1.2 1.2a4 4 0 0 1-5.6-5.6l4-4a4 4 0 0 1 5.6 0l1 1-1.4 1.4-1-1Z"/></svg>Link de afiliado</span>
+                  <input id="affiliate-link" type="url" required />
+                </label>
+                <label class="field-name">
+                  <span class="field-label"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18v14H3V5Zm2 2v10h14V7H5Zm2 8 3-4 2 2 2-3 3 5H7Z"/></svg>Nome do produto</span>
+                  <textarea id="product-name" rows="2" maxlength="200" required></textarea>
+                </label>
+                <label>
+                  <span class="field-label"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 1 18 0 9 9 0 0 1-18 0Zm2 0a7 7 0 1 0 14 0 7 7 0 0 0-14 0Zm6-5h2v2.1c1.16.3 2 1.14 2 2.4h-2c0-.5-.45-.8-1-.8s-1 .3-1 .8c0 .38.32.63 1.43.95C14.13 12.94 15 13.7 15 15c0 1.26-.84 2.1-2 2.4V19h-2v-1.6c-1.16-.3-2-1.14-2-2.4h2c0 .5.45.8 1 .8s1-.3 1-.8c0-.38-.32-.63-1.43-.95C9.87 13.56 9 12.8 9 11.5c0-1.26.84-2.1 2-2.4V7Z"/></svg>Preco atual</span>
+                  <input id="current-price" type="number" min="0.01" step="0.01" required />
+                </label>
+                <label>
+                  <span class="field-label"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 1 18 0 9 9 0 0 1-18 0Zm2 0a7 7 0 1 0 14 0 7 7 0 0 0-14 0Zm6-5h2v2.1c1.16.3 2 1.14 2 2.4h-2c0-.5-.45-.8-1-.8s-1 .3-1 .8c0 .38.32.63 1.43.95C14.13 12.94 15 13.7 15 15c0 1.26-.84 2.1-2 2.4V19h-2v-1.6c-1.16-.3-2-1.14-2-2.4h2c0 .5.45.8 1 .8s1-.3 1-.8c0-.38-.32-.63-1.43-.95C9.87 13.56 9 12.8 9 11.5c0-1.26.84-2.1 2-2.4V7Z"/></svg>Preco anterior</span>
+                  <input id="previous-price" type="number" min="0.01" step="0.01" />
+                </label>
+                <label>
+                  <span class="field-label"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2 9 5v10l-9 5-9-5V7l9-5Zm0 2.3L6 7.63v8.74l6 3.33 6-3.33V7.63l-6-3.33Z"/></svg>Plataforma</span>
+                  <select id="platform"><option>Mercado Livre</option><option>Shopee</option><option>Loja conectada</option></select>
+                </label>
+                <label>
+                  <span class="field-label"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14v19l-7-4-7 4V3Zm2 2v13.55l5-2.86 5 2.86V5H7Z"/></svg>Categoria</span>
+                  <select id="category"><option>Tecnologia</option><option>Casa e organizacao</option><option>Cozinha</option><option>Ferramentas</option><option>Beleza e cuidados</option></select>
+                </label>
+                <label class="field-wide"><span class="field-label">Cupom</span><input id="coupon" type="text" maxlength="100" /></label>
+                <label class="field-wide"><span class="field-label">Descricao curta</span><textarea id="short-description" rows="3" maxlength="1000"></textarea></label>
+                <label class="field-wide"><span class="field-label">URL da imagem</span><input id="image-url" type="url" /></label>
+                <label class="field-wide"><span class="field-label">Texto complementar</span><textarea id="extra-text" rows="2" maxlength="600"></textarea></label>
               </div>
             </section>
 
             <div class="sticky-actions">
-              <button id="refresh-button" class="action-icon-button" type="button" title="Capturar produto" aria-label="Capturar produto"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17.65 6.35A7.95 7.95 0 0 0 12 4a8 8 0 1 0 7.45 10.93h-2.16A6 6 0 1 1 12 6c1.66 0 3.14.69 4.22 1.78L13 11h8V3l-3.35 3.35Z"/></svg></button>
-              <button id="publish-button" class="action-icon-button primary" type="button" title="Publicar agora" aria-label="Publicar agora"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 5 5h-4v7h-2V8H7l5-5Zm-7 14h14v4H5v-4Z"/></svg></button>
-              <button id="whatsapp-button" class="action-icon-button whatsapp" type="button" title="Enviar pelo WhatsApp" aria-label="Enviar pelo WhatsApp"><img src="../assets/whatsapp.svg" alt="" /></button>
-              <button id="save-button" class="action-icon-button" type="submit" title="Salvar rascunho" aria-label="Salvar rascunho"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h12l2 2v16H5V3Zm2 2v14h10V7.5L14.5 5H7Zm2 8h6v4H9v-4Zm0-8h5v4H9V5Z"/></svg></button>
+              <button id="refresh-button" class="action-icon-button" type="button" title="Capturar produto" aria-label="Capturar produto"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17.65 6.35A7.95 7.95 0 0 0 12 4a8 8 0 1 0 7.45 10.93h-2.16A6 6 0 1 1 12 6c1.66 0 3.14.69 4.22 1.78L13 11h8V3l-3.35 3.35Z"/></svg><span>Atualizar</span></button>
+              <button id="publish-button" class="action-icon-button primary" type="button" title="Publicar agora" aria-label="Publicar agora"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 5 5h-4v7h-2V8H7l5-5Zm-7 14h14v4H5v-4Z"/></svg><span>Publicar</span></button>
+              <button id="whatsapp-button" class="action-icon-button whatsapp" type="button" title="Enviar pelo WhatsApp" aria-label="Enviar pelo WhatsApp"><img src="../assets/whatsapp.svg" alt="" /><span>WhatsApp</span></button>
+              <button id="save-button" class="action-icon-button" type="submit" title="Salvar rascunho" aria-label="Salvar rascunho"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h12l2 2v16H5V3Zm2 2v14h10V7.5L14.5 5H7Zm2 8h6v4H9v-4Zm0-8h5v4H9V5Z"/></svg><span>Salvar</span></button>
             </div>
           </form>
         </section>
@@ -151,9 +187,13 @@
         </section>
 
         <section class="panel custom-panel">
-          <button id="custom-toggle" class="panel-title-button" type="button">Mensagem personalizada</button>
+          <button id="custom-toggle" class="panel-title-button" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v13H8l-4 4V4Zm2 2v10.17L7.17 15H18V6H6Zm2 4h2v2H8v-2Zm3 0h2v2h-2v-2Zm3 0h2v2h-2v-2Z"/></svg>
+            <span>Mensagem personalizada</span>
+            <svg class="chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m7.4 8.6 4.6 4.6 4.6-4.6L18 10l-6 6-6-6 1.4-1.4Z"/></svg>
+          </button>
           <div id="custom-body" class="custom-body hidden">
-            <label><span>Mensagem</span><textarea id="custom-message" rows="4" maxlength="2000"></textarea></label>
+            <label><span>Mensagem</span><textarea id="custom-message" rows="4" maxlength="2000" placeholder="Adicione uma mensagem personalizada para acompanhar sua oferta..."></textarea></label>
             <label><span>Imagem</span><input id="custom-image-url" type="url" placeholder="https://imagem.png" /></label>
             <input id="custom-image-file" class="file-input" type="file" accept="image/png,image/jpeg,image/webp" />
             <div class="channel-grid">
@@ -164,12 +204,16 @@
           </div>
         </section>
 
-        <button id="logout-button" class="text-button" type="button">Desconectar extensao</button>
+        <button id="logout-button" class="text-button" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 2h2v10h-2V2Zm-3.5 2.7 1 1.73A7 7 0 1 0 15.5 6.43l1-1.73A9 9 0 1 1 7.5 4.7Z"/></svg>
+          Desconectar extensao
+        </button>
       </section>
     </main>
 
     <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
     <script src="../shared/runtime.js"></script>
+    <script src="product-utils.js"></script>
     <script src="artwork.js"></script>
     <script src="app.js"></script>
   </body>

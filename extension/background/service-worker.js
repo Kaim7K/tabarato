@@ -13,7 +13,16 @@ const CORE_STORE_HOSTS = [
   "mercadolibre.com",
   "shopee.com.br",
 ];
+const DYNAMIC_CONTENT_SCRIPT_ID = "tabarato-connected-stores";
+const STORE_CONTENT_FILES = [
+  "shared/runtime.js",
+  "content/shared.js",
+  "content/stores/generic.js",
+  "content/index.js",
+];
 let whatsappOperation = null;
+let initializationPromise = null;
+let initializationRequested = false;
 
 function hostMatches(hostname, host) {
   return hostname === host || hostname.endsWith(`.${host}`);
@@ -55,15 +64,19 @@ async function isAllowedUrl(value = "") {
 async function updateTabAvailability(tabId, url = "") {
   if (!tabId) return;
   const allowed = await isAllowedUrl(url);
-  await Promise.all([
+  const results = await Promise.allSettled([
     allowed ? chrome.action.enable(tabId) : chrome.action.disable(tabId),
     chrome.sidePanel.setOptions({ tabId, enabled: allowed }),
-  ]).catch(() => {});
+  ]);
+  results.filter((result) => result.status === "rejected")
+    .forEach((result) => runtime.reportError("tab-availability", result.reason));
 }
 
 async function closePanelIfDisallowed(tab) {
   if (!tab?.id || !tab?.windowId || await isAllowedUrl(tab.url)) return;
-  await chrome.sidePanel.close({ windowId: tab.windowId }).catch(() => {});
+  if (typeof chrome.sidePanel.close === "function") {
+    await chrome.sidePanel.close({ windowId: tab.windowId }).catch(() => {});
+  }
 }
 
 async function refreshAllTabs() {
@@ -71,26 +84,25 @@ async function refreshAllTabs() {
   await Promise.all(tabs.map((tab) => updateTabAvailability(tab.id, tab.url)));
 }
 
-async function waitForTab(tabId, timeout = 30000) {
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    const finish = (callback, value) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      chrome.tabs.onUpdated.removeListener(listener);
-      callback(value);
-    };
-    const timer = setTimeout(() => finish(reject, new Error("O WhatsApp Web demorou para carregar.")), timeout);
-    const listener = (updatedId, changeInfo, tab) => {
-      if (updatedId !== tabId || changeInfo.status !== "complete") return;
-      finish(resolve, tab);
-    };
-    chrome.tabs.get(tabId).then((tab) => {
-      if (tab.status === "complete") finish(resolve, tab);
-    }).catch((error) => finish(reject, error));
-    chrome.tabs.onUpdated.addListener(listener);
-  });
+function validDynamicHost(value) {
+  const host = String(value || "").trim().toLowerCase().replace(/^www\./, "");
+  return /^(?:[a-z0-9-]+\.)+[a-z0-9-]{2,}$/.test(host) ? host : "";
+}
+
+async function syncDynamicContentScripts() {
+  const { configuredOrigin, dynamicHosts } = await extensionConfig();
+  const configuredHost = configuredOrigin ? new URL(configuredOrigin).hostname : "";
+  const hosts = [...new Set([...dynamicHosts, configuredHost].map(validDynamicHost).filter(Boolean))]
+    .filter((host) => !builtInAllowedHost(host) && !OFFICIAL_SITE_ORIGINS.has(`https://${host}`));
+  await chrome.scripting.unregisterContentScripts({ ids: [DYNAMIC_CONTENT_SCRIPT_ID] }).catch(() => {});
+  if (!hosts.length) return;
+  await chrome.scripting.registerContentScripts([{
+    id: DYNAMIC_CONTENT_SCRIPT_ID,
+    matches: hosts.map((host) => `https://*.${host}/*`),
+    js: STORE_CONTENT_FILES,
+    runAt: "document_idle",
+    persistAcrossSessions: true,
+  }]);
 }
 
 async function whatsappTab() {
@@ -135,7 +147,7 @@ async function performWhatsAppSend(message, operation) {
   if (!tab?.id) throw new Error("Nao foi possivel abrir o WhatsApp Web.");
   await chrome.windows.update(tab.windowId, { focused: true });
   await chrome.tabs.update(tab.id, { active: true });
-  await waitForTab(tab.id);
+  await runtime.waitForTabComplete(tab.id, 30000, "O WhatsApp Web demorou para carregar.");
   await runtime.delay(350);
 
   const results = [];
@@ -186,7 +198,7 @@ async function stopWhatsAppSend() {
 
 async function activateMercadoLivreCoupons(limit) {
   const tab = await chrome.tabs.create({ url: "https://www.mercadolivre.com.br/cupons", active: true });
-  await waitForTab(tab.id, 45000);
+  await runtime.waitForTabComplete(tab.id, 45000, "A pagina de cupons demorou para carregar.");
   await runtime.delay(1000);
   await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["content/coupons.js"] });
   return runtime.withTimeout(
@@ -198,8 +210,27 @@ async function activateMercadoLivreCoupons(limit) {
 
 chrome.action.disable().catch(() => {});
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
-chrome.runtime.onInstalled.addListener(() => refreshAllTabs().catch((error) => runtime.reportError("extension-installed", error)));
-chrome.runtime.onStartup.addListener(() => refreshAllTabs().catch((error) => runtime.reportError("extension-startup", error)));
+async function initializeExtension() {
+  await syncDynamicContentScripts();
+  await refreshAllTabs();
+}
+
+function scheduleExtensionInitialization() {
+  initializationRequested = true;
+  if (initializationPromise) return initializationPromise;
+  initializationPromise = (async () => {
+    while (initializationRequested) {
+      initializationRequested = false;
+      await initializeExtension();
+    }
+  })().finally(() => {
+    initializationPromise = null;
+  });
+  return initializationPromise;
+}
+
+chrome.runtime.onInstalled.addListener(() => scheduleExtensionInitialization().catch((error) => runtime.reportError("extension-installed", error)));
+chrome.runtime.onStartup.addListener(() => scheduleExtensionInitialization().catch((error) => runtime.reportError("extension-startup", error)));
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.url || changeInfo.status === "complete") {
     updateTabAvailability(tabId, changeInfo.url || tab.url).catch((error) => runtime.reportError("tab-availability", error));
@@ -214,37 +245,43 @@ chrome.tabs.onActivated.addListener(({ tabId }) => {
 });
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === "local" && STORAGE_KEYS.some((key) => changes[key])) {
-    refreshAllTabs().catch((error) => runtime.reportError("refresh-tabs", error));
+    scheduleExtensionInitialization().catch((error) => runtime.reportError("refresh-tabs", error));
   }
 });
 
+async function handleAllowedPage(message, sender) {
+  const url = message.url || sender.tab?.url || "";
+  const allowed = await isAllowedUrl(url);
+  if (sender.tab?.id) await updateTabAvailability(sender.tab.id, url);
+  return { ok: true, allowed };
+}
+
+function handleOpenPanel(_message, sender) {
+  if (!sender.tab?.id || !sender.tab?.windowId) throw new Error("A aba ativa nao foi identificada.");
+  return chrome.sidePanel.open({ windowId: sender.tab.windowId }).then(() => ({ ok: true }));
+}
+
+const MESSAGE_HANDLERS = {
+  TABARATO_IS_ALLOWED_PAGE: handleAllowedPage,
+  TABARATO_OPEN_PANEL: handleOpenPanel,
+  TABARATO_SHARE_WHATSAPP: (message) => sendToWhatsApp(message),
+  TABARATO_STOP_WHATSAPP: () => stopWhatsAppSend(),
+  TABARATO_ACTIVATE_ML_COUPONS: (message) => activateMercadoLivreCoupons(message.limit),
+};
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message?.type === "TABARATO_IS_ALLOWED_PAGE") {
-    isAllowedUrl(message.url || sender.tab?.url)
-      .then((allowed) => sendResponse({ ok: true, allowed }))
-      .catch(() => sendResponse({ ok: true, allowed: false }));
-    return true;
-  }
-  if (message?.type === "TABARATO_OPEN_PANEL" && sender.tab?.id) {
-    chrome.sidePanel.open({ windowId: sender.tab.windowId }).catch(() => {});
-    return;
-  }
-  if (message?.type === "TABARATO_SHARE_WHATSAPP") {
-    sendToWhatsApp(message)
+  const handler = MESSAGE_HANDLERS[message?.type];
+  if (!handler) return false;
+  try {
+    Promise.resolve(handler(message, sender))
       .then((result) => sendResponse(result || { ok: true }))
-      .catch((error) => sendResponse({ ok: false, error: runtime.errorMessage(error, "Falha ao acessar o WhatsApp Web.") }));
-    return true;
+      .catch((error) => {
+        runtime.reportError(`message-${message.type}`, error);
+        sendResponse({ ok: false, error: runtime.errorMessage(error) });
+      });
+  } catch (error) {
+    runtime.reportError(`message-${message.type}`, error);
+    sendResponse({ ok: false, error: runtime.errorMessage(error) });
   }
-  if (message?.type === "TABARATO_STOP_WHATSAPP") {
-    stopWhatsAppSend()
-      .then(sendResponse)
-      .catch((error) => sendResponse({ ok: false, error: runtime.errorMessage(error) }));
-    return true;
-  }
-  if (message?.type === "TABARATO_ACTIVATE_ML_COUPONS") {
-    activateMercadoLivreCoupons(message.limit)
-      .then(sendResponse)
-      .catch((error) => sendResponse({ ok: false, error: runtime.errorMessage(error) }));
-    return true;
-  }
+  return true;
 });

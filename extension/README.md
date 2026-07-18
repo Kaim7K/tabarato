@@ -1,6 +1,6 @@
 # Extensao Ta Barato
 
-Extensao Manifest V3 para capturar produtos no Mercado Livre e Shopee e criar rascunhos no painel administrativo.
+Extensao Manifest V3 para capturar produtos, gerar artes e publicar ofertas pelo painel lateral. Requer Chrome 116 ou superior.
 
 ## Instalar localmente
 
@@ -8,8 +8,8 @@ Extensao Manifest V3 para capturar produtos no Mercado Livre e Shopee e criar ra
 2. Ative o modo do desenvolvedor.
 3. Clique em **Carregar sem compactacao**.
 4. Selecione a pasta `extension` deste projeto.
-5. Abra uma pagina de produto compativel e clique em **Enviar produto**.
-6. Informe a URL publicada do Ta Barato e entre com o usuario administrativo.
+5. Abra uma pagina permitida e clique no icone flutuante do Ta Barato ou no icone da extensao.
+6. No painel lateral, informe a URL publicada do Ta Barato e entre com o usuario administrativo.
 
 ## Configuracao de producao
 
@@ -28,10 +28,10 @@ Sem essa variavel, o servidor aceita origens com o formato oficial de extensoes 
 - Produtos sao criados como `RASCUNHO`.
 - A acao **Publicar agora** exige confirmacao, cria a oferta como `APROVADO` e envia pelo publicador existente do Telegram.
 - **Enviar ao WhatsApp** reutiliza a aba aberta, entra no grupo configurado, preenche a legenda e cola pelo clipboard a arte gerada a partir da imagem original do produto.
-- Ofertas enviadas pela extensao usam uma arte quadrada com foto, titulo, preco, desconto e as logos do Ta Barato e da loja. A mesma arte e reutilizada no Telegram e no WhatsApp.
+- Ofertas enviadas pela extensao usam uma arte quadrada com foto, precos, desconto e as logos do Ta Barato e da loja. A mesma arte e reutilizada no Telegram, WhatsApp e compartilhamento do site.
 - O botao **Painel** no cabecalho abre ou reutiliza a aba administrativa mesmo quando nenhum produto foi capturado.
 - O botao **Enviar mensagem agendada** busca a proxima mensagem de WhatsApp vencida, envia texto e imagem e confirma o resultado no painel.
-- A extensao pede acesso apenas ao dominio configurado pelo administrador.
+- Scripts de captura so executam nas lojas nativas, no WhatsApp, no site e nos dominios de lojas sincronizados pelo painel.
 - O link capturado deve ser revisado, pois algumas lojas nao disponibilizam automaticamente o link pessoal de afiliado no HTML.
 
 ## Mensagens agendadas
@@ -42,13 +42,19 @@ Sem essa variavel, o servidor aceita origens com o formato oficial de extensoes 
 
 ## Mercado Livre
 
-Ao clicar em **Enviar produto**, a extensao procura o link curto criado pelo programa de afiliados. Se necessario, ela aciona **Compartilhar**, aguarda o modal **Gerar link / ID de produto** e captura o campo no formato `https://meli.la/...`.
+Ao capturar um produto, a extensao procura o link curto criado pelo programa de afiliados. Se necessario, ela aciona **Compartilhar**, aguarda o modal **Gerar link / ID de produto** e captura o campo no formato `https://meli.la/...`.
 
 Ofertas do Mercado Livre nao podem ser salvas pela extensao com a URL comum do produto. Caso a conta ou a pagina nao disponibilize o gerador, abra o modal manualmente e cole o `meli.la` no campo de afiliado.
 
 A descricao capturada usa somente o primeiro paragrafo encontrado na pagina ou nos metadados do produto.
 
-Cupons devem ser informados manualmente. No Mercado Livre, a extensao identifica promocoes de pagamento. Para produtos acima de R$ 500, consulta as opcoes exibidas de parcelamento sem juros e adiciona essas informacoes ao texto complementar da oferta.
+A extensao prioriza o preco final exibido explicitamente como **com cupom**, captura codigos quando disponiveis e mantem uma orientacao de ativacao quando a loja nao revela o codigo. O comando **Ativar cupons** abre a pagina do Mercado Livre e ativa a quantidade escolhida.
+
+## Paginas e painel
+
+- O painel e unico por janela e preserva o produto ao alternar entre paginas permitidas.
+- Em paginas nao permitidas, o botao flutuante e removido, a acao fica desabilitada e o painel e fechado quando a API do navegador permite.
+- Lojas conectadas sao registradas dinamicamente a partir das categorias e ofertas sincronizadas com o site.
 
 ## Recuperacao de erros
 
