@@ -2,18 +2,28 @@
   const tools = globalThis.TaBaratoCapture;
   if (!tools || globalThis.TaBaratoStores?.some((store) => store.id === "shopee")) return;
 
-  const listProducts = (limit = 20) => tools.productLinks([/-i\.\d+\.\d+/i]).slice(0, limit);
+  const listProducts = (limit = 20) => {
+    const products = new Map();
+    tools.productLinks([/-i\.\d+\.\d+/i, /\/product\/\d+\/\d+/i]).forEach((url) => {
+      const ids = new URL(url).pathname.match(/-i\.(\d+)\.(\d+)/i)
+        || new URL(url).pathname.match(/\/product\/(\d+)\/(\d+)/i);
+      if (ids && !products.has(`${ids[1]}.${ids[2]}`)) products.set(`${ids[1]}.${ids[2]}`, url);
+    });
+    return [...products.values()].slice(0, limit);
+  };
 
   globalThis.TaBaratoStores.push({
     id: "shopee",
     platform: "Shopee",
     matches: () => /shopee\.com\.br$/i.test(location.hostname),
     isProduct: () => /-i\.\d+\.\d+/i.test(location.pathname)
+      || /\/product\/\d+\/\d+/i.test(location.pathname)
       || Boolean(document.querySelector("[data-testid='pdp-product-title'], main h1")),
     listProducts,
     extract: async () => {
       const structured = tools.jsonProduct();
-      const ids = location.pathname.match(/-i\.(\d+)\.(\d+)/i);
+      const ids = location.pathname.match(/-i\.(\d+)\.(\d+)/i)
+        || location.pathname.match(/\/product\/(\d+)\/(\d+)/i);
       const priceInfo = tools.priceDetails("[data-testid='pdp-product-price']", "[class*='pqTWkA']", "main [class*='price']");
       const basePrice = priceInfo.value || tools.productPrice(structured);
       const couponPrice = tools.couponPriceDetails(basePrice);

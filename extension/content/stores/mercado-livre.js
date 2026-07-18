@@ -172,7 +172,14 @@
     return benefits.join(" ");
   };
 
-  const listProducts = (limit = 20) => tools.productLinks([/\/MLB-?\d{6,}/i, /\bMLB\d{6,}/i]).slice(0, limit);
+  const listProducts = (limit = 20) => {
+    const products = new Map();
+    tools.productLinks([/\/MLB-?\d{6,}/i, /\bMLB\d{6,}/i]).forEach((url) => {
+      const itemId = url.match(/(?:^|[/?-])(MLB-?\d{6,})(?:$|[/?#-])/i)?.[1]?.replace("-", "").toUpperCase();
+      if (itemId && !products.has(itemId)) products.set(itemId, url);
+    });
+    return [...products.values()].slice(0, limit);
+  };
 
   globalThis.TaBaratoStores.push({
     id: "mercado-livre",

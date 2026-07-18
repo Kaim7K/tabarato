@@ -7,6 +7,7 @@ const CAPTURE_REQUEST_KEY = "tabarato_capture_request";
 const runtime = globalThis.TaBaratoRuntime;
 const artwork = globalThis.TaBaratoArtwork;
 const theme = globalThis.TaBaratoTheme;
+const batchUtils = globalThis.TaBaratoBatchUtils;
 const {
   comparableUrl,
   firstUsefulParagraph,
@@ -103,7 +104,9 @@ let capturedPageUrl = "";
 let shareImagePromise = null;
 let shareImageKey = "";
 let batchAbortController = null;
+let batchWorkerTabId = null;
 let navigationCaptureTimer = null;
+let draftPersistTimer = null;
 const idleButtonContent = new WeakMap();
 
 function normalizeBaseUrl(value) {
@@ -165,7 +168,17 @@ function setBusy(button, busy, label) {
 function setActionsBusy(button, busy, label) {
   actionLockCount = Math.max(0, actionLockCount + (busy ? 1 : -1));
   setBusy(button, busy, label);
-  [elements.saveButton, elements.publishButton, elements.whatsappButton, elements.batchStartButton, elements.customSendButton].forEach((item) => {
+  [
+    elements.saveButton,
+    elements.publishButton,
+    elements.whatsappButton,
+    elements.batchStartButton,
+    elements.customSendButton,
+    elements.activateCouponsButton,
+    elements.refreshButton,
+    elements.modeSingle,
+    elements.modeBatch,
+  ].forEach((item) => {
     item.disabled = actionLockCount > 0;
   });
 }
@@ -351,6 +364,13 @@ async function persistProductDraft() {
   });
 }
 
+function scheduleProductDraftPersist() {
+  window.clearTimeout(draftPersistTimer);
+  draftPersistTimer = window.setTimeout(() => {
+    persistProductDraft().catch(() => {});
+  }, 250);
+}
+
 function restoreProductDraft(draft) {
   if (!draft?.product) return false;
   activeProduct = draft.product;
@@ -398,7 +418,8 @@ function updatePreview() {
   elements.previewPreviousPrice.textContent = payload.previousPrice ? formatPrice(payload.previousPrice) : "";
   elements.previewCategory.textContent = payload.category || "Categoria";
   elements.platformBadge.textContent = payload.platform || "Loja";
-  elements.previewImage.src = payload.imageUrl || "";
+  const previewUrl = payload.imageUrl || "";
+  if ((elements.previewImage.getAttribute("src") || "") !== previewUrl) elements.previewImage.src = previewUrl;
   elements.previewImage.hidden = !payload.imageUrl;
   shareImagePromise = null;
   shareImageKey = "";
@@ -417,33 +438,47 @@ function findExistingOffer(product) {
   }) || null;
 }
 
-async function reconcileExistingOffer(product) {
+async function reconcileExistingOffer(product, options = {}) {
+  const {
+    refreshCatalog = true,
+    notifyWhatsApp = true,
+    notifyUser = true,
+  } = options;
   elements.duplicateWarning.classList.add("hidden");
-  if (!synchronizedOffers.length) return;
+  if (!synchronizedOffers.length) return { action: "none" };
   const existing = findExistingOffer(product);
-  if (!existing) return;
+  if (!existing) return { action: "none" };
 
   const nextPrice = parsePrice(product.currentPrice);
   const oldPrice = parsePrice(existing.currentPrice);
-  if (!Number.isFinite(nextPrice) || !Number.isFinite(oldPrice)) return;
+  if (!Number.isFinite(nextPrice) || !Number.isFinite(oldPrice)) return { action: "invalid", existing };
 
   if (nextPrice < oldPrice) {
     elements.duplicateWarning.textContent = `Ja cadastrado por ${formatPrice(oldPrice)}. Preco melhor detectado; atualizando e republicando.`;
     elements.duplicateWarning.classList.remove("hidden");
     const payload = productToPayload(product, "APROVADO");
     await requestApi(`/api/admin/ofertas/${existing.id}`, { method: "PATCH", body: payload });
-    await publishOfferId(existing.id, payload, { forceRepublish: true, notifyWhatsApp: true });
-    await synchronizeCatalog();
-    showToast("Preco melhor publicado novamente.", "success");
+    const publication = await publishOfferId(existing.id, payload, {
+      forceRepublish: true,
+      notifyWhatsApp,
+      tolerateWhatsAppFailure: !notifyUser,
+    });
+    Object.assign(existing, payload);
+    if (refreshCatalog) await synchronizeCatalog();
+    if (notifyUser) showToast("Preco melhor publicado novamente.", "success");
+    return { action: "updated", existing, publication };
   } else if (nextPrice > oldPrice) {
     elements.duplicateWarning.textContent = `Preco pior detectado: ${formatPrice(nextPrice)}. Oferta removida do site.`;
     elements.duplicateWarning.classList.remove("hidden");
     await requestApi(`/api/admin/ofertas/${existing.id}`, { method: "DELETE" });
-    await synchronizeCatalog();
-    showToast("Oferta removida porque o preco piorou.", "success");
+    synchronizedOffers = synchronizedOffers.filter((offer) => offer.id !== existing.id);
+    if (refreshCatalog) await synchronizeCatalog();
+    if (notifyUser) showToast("Oferta removida porque o preco piorou.", "success");
+    return { action: "deleted", existing };
   } else {
     elements.duplicateWarning.textContent = `Este produto ja esta cadastrado com o mesmo preco em: ${existing.productName}.`;
     elements.duplicateWarning.classList.remove("hidden");
+    return { action: "unchanged", existing };
   }
 }
 
@@ -491,7 +526,6 @@ async function ensureCaptureScripts(tab) {
   const files = captureScriptsForUrl(tab.url);
   if (!files.length) throw new Error("Esta pagina nao oferece captura de produtos.");
   await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["shared/runtime.js", ...files] });
-  await runtime.delay(200);
 }
 
 async function extractProductFromTab(tab) {
@@ -502,7 +536,7 @@ async function extractProductFromTab(tab) {
       "A loja demorou para responder. Recarregue a pagina e tente novamente.",
     );
   } catch (error) {
-    const missingReceiver = /receiving end does not exist|could not establish connection/i.test(error?.message || "");
+    const missingReceiver = /receiving end does not exist|could not establish connection|message port closed|extension context invalidated/i.test(error?.message || "");
     if (!missingReceiver) throw error;
     await ensureCaptureScripts(tab);
     return runtime.withTimeout(chrome.tabs.sendMessage(tab.id, { type: "TABARATO_EXTRACT_PRODUCT" }), CAPTURE_TIMEOUT);
@@ -548,10 +582,10 @@ async function captureProduct({ reconcile = true } = {}) {
   elements.empty.classList.add("hidden");
   if (!activeProduct) elements.offerForm.classList.add("hidden");
   try {
-    const catalogRequest = synchronizeCatalog().catch(() => null);
     const tab = await activeTab();
     if (!tab?.id) throw new Error("Nenhuma aba ativa encontrada.");
     if (isCouponManagementUrl(tab.url)) return;
+    const catalogRequest = synchronizeCatalog().catch(() => null);
     const result = await extractProductFromTab(tab);
     if (!result?.ok) throw new Error(result?.error || "Produto nao encontrado.");
     const product = await enrichCapturedProduct(result.product);
@@ -589,17 +623,20 @@ async function productImageBlob(payload) {
     payload.imageUrl,
     ...(activeProduct?.imageCandidates || []).map((item) => item.url),
   ].filter(Boolean);
-  let best = null;
-  let bestScore = -Infinity;
-  for (const source of [...new Set(candidates)].slice(0, 8)) {
-    try {
-      const candidate = await evaluateImageCandidate(source);
-      if (candidate && candidate.score > bestScore) {
-        best = candidate.blob;
-        bestScore = candidate.score;
+  const sources = [...new Set(candidates)].slice(0, 8);
+  const evaluated = [];
+  for (let index = 0; index < sources.length; index += 4) {
+    evaluated.push(...await Promise.all(sources.slice(index, index + 4).map(async (source) => {
+      try {
+        return await evaluateImageCandidate(source);
+      } catch {
+        return null;
       }
-    } catch { /* Try next image candidate. */ }
+    })));
   }
+  const best = evaluated
+    .filter(Boolean)
+    .sort((left, right) => right.score - left.score)[0]?.blob || null;
   if (!best) throw new Error("Nao foi possivel preparar a imagem do produto.");
   return best;
 }
@@ -715,7 +752,11 @@ async function sendOfferToWhatsApp(payload, onProgress = () => {}) {
   return result;
 }
 
-async function publishOfferId(id, payload, { forceRepublish = false, notifyWhatsApp = true } = {}) {
+async function publishOfferId(id, payload, {
+  forceRepublish = false,
+  notifyWhatsApp = true,
+  tolerateWhatsAppFailure = false,
+} = {}) {
   const shareFile = await prepareShareImage(payload);
   const shareImageDataUrl = await fileToDataUrl(shareFile);
   const result = await requestApi(`/api/admin/ofertas/${id}/publicar`, {
@@ -730,6 +771,7 @@ async function publishOfferId(id, payload, { forceRepublish = false, notifyWhats
       await requestApi(`/api/admin/ofertas/${id}/publicar`, { method: "POST", body: { action: "record-channel", channel: "WHATSAPP", status: "SUCESSO" } }).catch(() => {});
     } catch (error) {
       await requestApi(`/api/admin/ofertas/${id}/publicar`, { method: "POST", body: { action: "record-channel", channel: "WHATSAPP", status: "ERRO", errorMessage: runtime.errorMessage(error) } }).catch(() => {});
+      if (tolerateWhatsAppFailure) return { ...result, whatsappError: runtime.errorMessage(error) };
       throw error;
     }
   }
@@ -754,16 +796,18 @@ async function saveOffer() {
 async function publishOffer() {
   if (!elements.offerForm.reportValidity()) return;
   const payload = formPayload("APROVADO");
+  let createdOffer = null;
   setActionsBusy(elements.publishButton, true, "Publicando...");
   try {
     const created = await requestApi("/api/admin/ofertas", { method: "POST", body: payload });
+    createdOffer = created.offer;
     await publishOfferId(created.offer.id, payload, { notifyWhatsApp: true });
     showToast(groupNames().length ? "Oferta publicada no site, Telegram e WhatsApp." : "Oferta publicada no site e Telegram.", "success");
-    await synchronizeCatalog();
   } catch (error) {
     runtime.reportError("publish-offer", error);
     showToast(runtime.errorMessage(error), "error");
   } finally {
+    if (createdOffer) await synchronizeCatalog().catch((error) => runtime.reportError("sync-after-publish", error));
     setActionsBusy(elements.publishButton, false);
   }
 }
@@ -785,6 +829,9 @@ async function shareOnWhatsApp() {
 
 async function stopMacros() {
   batchAbortController?.abort();
+  const workerTabId = batchWorkerTabId;
+  batchWorkerTabId = null;
+  if (workerTabId) await chrome.tabs.remove(workerTabId).catch(() => {});
   await chrome.runtime.sendMessage({ type: "TABARATO_STOP_WHATSAPP" }).catch(() => {});
   showToast("Macro interrompido.", "success");
 }
@@ -797,72 +844,131 @@ function logBatch(message, tone = "neutral") {
   item.scrollIntoView({ block: "nearest" });
 }
 
-async function visibleProductUrls(limit) {
-  const tab = await activeTab();
+async function visibleProductUrls(limit, sourceTab = null) {
+  const tab = sourceTab || await activeTab();
   if (!tab?.id) throw new Error("Nenhuma aba ativa encontrada.");
   const result = await chrome.tabs.sendMessage(tab.id, { type: "TABARATO_LIST_VISIBLE_PRODUCTS", limit }).catch(async () => {
     await ensureCaptureScripts(tab);
     return chrome.tabs.sendMessage(tab.id, { type: "TABARATO_LIST_VISIBLE_PRODUCTS", limit });
   });
   if (!result?.ok) throw new Error(result?.error || "Nao foi possivel listar produtos na tela.");
-  return result.urls || [];
+  return batchUtils.normalizeProductUrls(result.urls, result.storeId, limit);
 }
 
-async function captureUrlInTempTab(url) {
-  const tab = await chrome.tabs.create({ url, active: false });
-  try {
-    await runtime.waitForTabComplete(tab.id, 35000);
-    await runtime.delay(600);
-    const result = await extractProductFromTab(tab);
-    if (!result?.ok) throw new Error(result?.error || "Produto nao encontrado.");
-    return result.product;
-  } finally {
-    if (tab?.id) await chrome.tabs.remove(tab.id).catch(() => {});
-  }
+async function captureUrlInBatchTab(tabId, url, signal) {
+  if (signal.aborted) throw new Error("Envio interrompido.");
+  let tab = await chrome.tabs.update(tabId, { url, active: false });
+  await runtime.waitForTabComplete(tabId, 40000, "O produto demorou para carregar.");
+  if (signal.aborted) throw new Error("Envio interrompido.");
+  await runtime.delay(300);
+  tab = await chrome.tabs.get(tabId);
+  const result = await extractProductFromTab(tab);
+  if (!result?.ok) throw new Error(result?.error || "Produto nao encontrado.");
+  return result.product;
 }
 
 async function startBatch() {
   const limit = Math.max(1, Math.min(50, Number(elements.batchLimit.value) || 5));
   elements.batchLog.replaceChildren();
-  batchAbortController = new AbortController();
+  const controller = new AbortController();
+  const productBeforeBatch = activeProduct;
+  const duplicateWarningBeforeBatch = {
+    hidden: elements.duplicateWarning.classList.contains("hidden"),
+    text: elements.duplicateWarning.textContent,
+  };
+  batchAbortController = controller;
+  let workerTab = null;
+  let published = 0;
+  let skipped = 0;
+  let failed = 0;
   setActionsBusy(elements.batchStartButton, true, "Enviando...");
   try {
-    await synchronizeCatalog();
-    const urls = (await visibleProductUrls(limit)).slice(0, limit);
+    const sourceTab = await activeTab();
+    if (!sourceTab?.id) throw new Error("Abra a pagina com a lista de produtos antes de iniciar o lote.");
+    const [urls] = await Promise.all([
+      visibleProductUrls(limit, sourceTab),
+      synchronizeCatalog(),
+    ]);
     if (!urls.length) throw new Error("Nenhum produto visivel foi encontrado.");
     logBatch(`${urls.length} produtos encontrados.`);
+    workerTab = await chrome.tabs.create({ url: "about:blank", active: false });
+    batchWorkerTabId = workerTab.id;
+
     for (const [index, url] of urls.entries()) {
-      if (batchAbortController.signal.aborted) break;
+      if (controller.signal.aborted) break;
       try {
         logBatch(`Lendo ${index + 1}/${urls.length}...`);
-        const product = await captureUrlInTempTab(url);
-        if (Number(product.confidence || 0) < MIN_BATCH_CONFIDENCE) {
-          logBatch(`Pulou produto com dados incertos: ${product.productName || url}`, "error");
+        const product = await captureUrlInBatchTab(workerTab.id, url, controller.signal);
+        const reviewReasons = batchUtils.reviewProduct(product, MIN_BATCH_CONFIDENCE, parsePrice);
+        if (reviewReasons.length) {
+          skipped += 1;
+          logBatch(`Ignorado por dados incertos (${reviewReasons.join(", ")}): ${product.productName || url}`, "error");
           continue;
         }
         activeProduct = product;
         const existing = findExistingOffer(product);
         if (existing) {
-          await reconcileExistingOffer(product);
-          logBatch(`Produto cadastrado revisado: ${product.productName}`, "success");
+          const reconciliation = await reconcileExistingOffer(product, {
+            refreshCatalog: false,
+            notifyUser: false,
+            notifyWhatsApp: true,
+          });
+          if (reconciliation.action === "updated") published += 1;
+          else skipped += 1;
+          const labels = {
+            updated: "Preco melhor atualizado e republicado",
+            deleted: "Preco pior removido do site",
+            unchanged: "Ja cadastrado com o mesmo preco",
+            invalid: "Cadastro existente com preco invalido",
+          };
+          logBatch(`${labels[reconciliation.action] || "Produto revisado"}: ${product.productName}`, reconciliation.action === "updated" ? "success" : "neutral");
+          if (reconciliation.publication?.whatsappError) {
+            logBatch(`WhatsApp nao confirmou: ${reconciliation.publication.whatsappError}`, "error");
+          }
           continue;
         }
         const payload = productToPayload(product, "APROVADO");
-        const created = await requestApi("/api/admin/ofertas", { method: "POST", body: payload });
-        await publishOfferId(created.offer.id, payload, { notifyWhatsApp: true });
+        const created = await requestApi("/api/admin/ofertas", {
+          method: "POST",
+          body: payload,
+          signal: controller.signal,
+        });
         synchronizedOffers.unshift(created.offer);
+        const publication = await publishOfferId(created.offer.id, payload, {
+          notifyWhatsApp: true,
+          tolerateWhatsAppFailure: true,
+        });
+        published += 1;
         logBatch(`Publicado: ${payload.productName}`, "success");
+        if (publication.whatsappError) logBatch(`WhatsApp nao confirmou: ${publication.whatsappError}`, "error");
       } catch (error) {
+        if (controller.signal.aborted) break;
+        failed += 1;
         logBatch(runtime.errorMessage(error), "error");
       }
     }
-    showToast("Envio em lote finalizado.", "success");
+    const stopped = controller.signal.aborted;
+    showToast(
+      stopped
+        ? `Lote interrompido. ${published} publicados.`
+        : `Lote finalizado: ${published} publicados, ${skipped} ignorados, ${failed} erros.`,
+      failed ? "neutral" : "success",
+    );
   } catch (error) {
-    runtime.reportError("batch-send", error);
-    showToast(runtime.errorMessage(error), "error");
+    if (!controller.signal.aborted) {
+      runtime.reportError("batch-send", error);
+      showToast(runtime.errorMessage(error), "error");
+    }
   } finally {
+    if (workerTab?.id) await chrome.tabs.remove(workerTab.id).catch(() => {});
+    if (batchWorkerTabId === workerTab?.id) batchWorkerTabId = null;
+    activeProduct = productBeforeBatch;
+    shareImagePromise = null;
+    shareImageKey = "";
+    elements.duplicateWarning.textContent = duplicateWarningBeforeBatch.text;
+    elements.duplicateWarning.classList.toggle("hidden", duplicateWarningBeforeBatch.hidden);
     setActionsBusy(elements.batchStartButton, false);
-    batchAbortController = null;
+    if (batchAbortController === controller) batchAbortController = null;
   }
 }
 
@@ -941,6 +1047,7 @@ function renderAuth() {
 }
 
 function highlightProductChange(tab) {
+  if (batchAbortController) return;
   const nextUrl = comparableUrl(tab?.url);
   if (!session || !tab?.id || !nextUrl || isCouponManagementUrl(tab.url) || !captureScriptsForUrl(nextUrl).length) return;
   if (tab.id === capturedTabId && nextUrl === capturedPageUrl) return;
@@ -1015,7 +1122,8 @@ elements.activateCouponsButton.addEventListener("click", async () => {
     const result = await chrome.runtime.sendMessage({ type: "TABARATO_ACTIVATE_ML_COUPONS", limit: Number(elements.couponLimit.value) || 5 });
     if (!result?.ok) throw new Error(result?.error || "Nao foi possivel ativar os cupons.");
     if (result.activated) {
-      showToast(`${result.activated} cupons ativados.`, "success");
+      const failures = result.failed ? ` ${result.failed} nao foram confirmados.` : "";
+      showToast(`${result.activated} cupons ativados.${failures}`, result.failed ? "neutral" : "success");
     } else {
       showToast("Nenhum cupom com o botao Aplicar foi encontrado.", "neutral");
     }
@@ -1036,7 +1144,7 @@ elements.logoutButton.addEventListener("click", async () => {
 });
 Object.values(elements.fields).forEach((field) => field.addEventListener("input", () => {
   updatePreview();
-  persistProductDraft().catch(() => {});
+  scheduleProductDraftPersist();
 }));
 [elements.fields.currentPrice, elements.fields.previousPrice].forEach((field) => field.addEventListener("change", () => {
   elements.fields.previousPrice.value = previousPriceFor(
@@ -1045,7 +1153,7 @@ Object.values(elements.fields).forEach((field) => field.addEventListener("input"
     activeProduct?.regularPrice || elements.fields.currentPrice.value,
   );
   updatePreview();
-  persistProductDraft().catch(() => {});
+  scheduleProductDraftPersist();
 }));
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {

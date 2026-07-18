@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { sanitizeSocialLink, sanitizeSocialStyle } from "../api/_lib/social.js";
 
@@ -46,4 +47,16 @@ test("social links validate publication windows", () => {
     () => sanitizeSocialLink({ label: "Oferta", url: "https://example.com", startsAt: "2026-08-02T10:00:00Z", endsAt: "2026-08-01T10:00:00Z" }),
     /data final/
   );
+});
+
+test("social page repairs an entirely unpublished tree for an authenticated admin", () => {
+  const api = readFileSync(new URL("../api/_lib/social.js", import.meta.url), "utf8");
+  const page = readFileSync(new URL("../src/pages/SocialPage.jsx", import.meta.url), "utf8");
+  const editor = readFileSync(new URL("../src/features/social/SocialEditor.jsx", import.meta.url), "utf8");
+  assert.match(api, /input\.action === "publish-all"/);
+  assert.match(api, /SET is_active=TRUE, starts_at=NULL, ends_at=NULL/);
+  assert.match(api, /const publicFallback = await query/);
+  assert.match(api, /is_active: true, starts_at: null, ends_at: null/);
+  assert.match(page, /!publicPage\.links\.length && adminPage\.links\.length/);
+  assert.match(editor, /Exibir na página pública/);
 });

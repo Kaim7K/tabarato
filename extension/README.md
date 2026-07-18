@@ -30,15 +30,8 @@ Sem essa variavel, o servidor aceita origens com o formato oficial de extensoes 
 - **Enviar ao WhatsApp** reutiliza a aba aberta, entra no grupo configurado, preenche a legenda e cola pelo clipboard a arte gerada a partir da imagem original do produto.
 - Ofertas enviadas pela extensao usam uma arte quadrada com foto, precos, desconto e as logos do Ta Barato e da loja. A mesma arte e reutilizada no Telegram, WhatsApp e compartilhamento do site.
 - O botao **Painel** no cabecalho abre ou reutiliza a aba administrativa mesmo quando nenhum produto foi capturado.
-- O botao **Enviar mensagem agendada** busca a proxima mensagem de WhatsApp vencida, envia texto e imagem e confirma o resultado no painel.
 - Scripts de captura so executam nas lojas nativas, no WhatsApp, no site e nos dominios de lojas sincronizados pelo painel.
 - O link capturado deve ser revisado, pois algumas lojas nao disponibilizam automaticamente o link pessoal de afiliado no HTML.
-
-## Mensagens agendadas
-
-- Mensagens de Telegram sao enviadas automaticamente pelo cron do site.
-- Mensagens de WhatsApp ficam prontas no horario configurado e precisam do botao manual da extensao, pois usam o WhatsApp Web aberto no navegador.
-- O grupo definido na mensagem tem prioridade; quando estiver vazio, a extensao usa o grupo padrao salvo no painel lateral.
 
 ## Mercado Livre
 
@@ -49,6 +42,8 @@ Ofertas do Mercado Livre nao podem ser salvas pela extensao com a URL comum do p
 A descricao capturada usa somente o primeiro paragrafo encontrado na pagina ou nos metadados do produto.
 
 A extensao prioriza o preco final exibido explicitamente como **com cupom**, captura codigos quando disponiveis e mantem uma orientacao de ativacao quando a loja nao revela o codigo. O comando **Ativar cupons** abre a pagina do Mercado Livre e ativa a quantidade escolhida.
+
+No modo **Lote**, inicie o processo na pagina que exibe os produtos. A extensao fixa essa pagina como origem, elimina rotas duplicadas por ID, reutiliza uma unica aba de leitura e ignora automaticamente produtos sem preco, imagem ou link de afiliado confiavel. O botao **Parar** fecha a aba de leitura e cancela o envio ao WhatsApp em andamento.
 
 ## Paginas e painel
 

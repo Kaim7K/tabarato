@@ -130,9 +130,9 @@
 
     if (message?.type === "TABARATO_LIST_VISIBLE_PRODUCTS") {
       currentAdapter()
-        .then((adapter) => {
-          const urls = adapter?.listProducts?.(Number(message.limit) || 20) || [];
-          sendResponse({ ok: true, urls });
+        .then(async (adapter) => {
+          const urls = await Promise.resolve(adapter?.listProducts?.(Number(message.limit) || 20) || []);
+          sendResponse({ ok: true, urls, storeId: adapter?.id || "" });
         })
         .catch((error) => sendResponse({ ok: false, error: runtime.errorMessage(error), urls: [] }));
       return true;
@@ -142,19 +142,22 @@
   updateButton().catch((error) => runtime.reportError("launcher", error));
   syncAdminMarker().catch(() => {});
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === "local" && changes.tabarato_extension_session) syncAdminMarker().catch(() => {});
+    if (area !== "local") return;
+    if (changes.tabarato_extension_session) syncAdminMarker().catch(() => {});
+    if (changes.tabarato_extension_session || changes.tabarato_connected_store_hosts || changes.tabarato_last_base_url) {
+      updateButton().catch(() => {});
+    }
   });
   let lastUrl = location.href;
   window.setInterval(() => {
     try {
-      if (lastUrl !== location.href) {
-        lastUrl = location.href;
-        extractionPromise = null;
-        extractionUrl = "";
-      }
+      if (lastUrl === location.href) return;
+      lastUrl = location.href;
+      extractionPromise = null;
+      extractionUrl = "";
       updateButton().catch(() => {});
     } catch (error) {
       runtime.reportError("store-button", error);
     }
-  }, 1500);
+  }, 750);
 })();

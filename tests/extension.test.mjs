@@ -22,7 +22,10 @@ test("extension manifest is Manifest V3 and references existing files", () => {
   assert.equal(manifest.side_panel.default_path, "sidepanel/index.html");
   assert.equal(manifest.minimum_chrome_version, "116");
   assert.ok(manifest.permissions.includes("sidePanel"));
+  assert.ok(manifest.permissions.includes("clipboardRead"));
   assert.ok(manifest.permissions.includes("clipboardWrite"));
+  assert.ok(manifest.permissions.includes("debugger"));
+  assert.ok(manifest.permissions.includes("offscreen"));
   assert.ok(manifest.host_permissions.includes("https://*/*"));
   assert.ok(manifest.content_scripts.some((entry) => entry.js.includes("content/stores/generic.js")));
   assert.ok(manifest.content_scripts.some((entry) => entry.matches.includes("https://web.whatsapp.com/*")));
@@ -210,6 +213,50 @@ test("side panel provides groups, admin, modes, batch and custom messages", () =
   assert.match(app, /action=send-custom/);
 });
 
+test("batch mode canonicalizes product routes and reuses one worker tab", () => {
+  const html = readFileSync(join(extensionRoot, "sidepanel", "index.html"), "utf8");
+  const batchSource = readFileSync(join(extensionRoot, "sidepanel", "batch-utils.js"), "utf8");
+  const app = readFileSync(join(extensionRoot, "sidepanel", "app.js"), "utf8");
+  const content = readFileSync(join(extensionRoot, "content", "index.js"), "utf8");
+  const context = { URL };
+  context.globalThis = context;
+  vm.runInNewContext(batchSource, context, { filename: "batch-utils.js" });
+
+  const mercadoLivreRoutes = context.TaBaratoBatchUtils.normalizeProductUrls([
+    "https://produto.mercadolivre.com.br/MLB-123456789-produto_JM?searchVariation=1&utm_source=x",
+    "https://produto.mercadolivre.com.br/MLB-123456789-produto_JM?polycard_client=search",
+    "https://produto.mercadolivre.com.br/MLB-987654321-outro_JM#position=2",
+  ], "mercado-livre", 10);
+  assert.equal(mercadoLivreRoutes.length, 2);
+  assert.equal(mercadoLivreRoutes[0], "https://produto.mercadolivre.com.br/MLB-123456789-produto_JM");
+  const shopeeRoutes = context.TaBaratoBatchUtils.normalizeProductUrls([
+    "https://shopee.com.br/produto-i.123.456?utm_source=x",
+    "https://shopee.com.br/product/123/456?sp_atk=tracking",
+  ], "shopee", 10);
+  assert.equal(shopeeRoutes.length, 1);
+
+  const validProduct = {
+    productName: "Produto completo",
+    currentPrice: "99,90",
+    imageUrl: "https://http2.mlstatic.com/image.jpg",
+    affiliateLink: "https://meli.la/abc123",
+    platform: "Mercado Livre",
+    confidence: 1,
+  };
+  assert.deepEqual(
+    [...context.TaBaratoBatchUtils.reviewProduct(validProduct, 0.8, (value) => Number(String(value).replace(",", ".")))],
+    [],
+  );
+  assert.match(html, /src="batch-utils\.js"/);
+  assert.match(app, /captureUrlInBatchTab/);
+  assert.match(app, /batchWorkerTabId/);
+  assert.match(app, /url: "about:blank"/);
+  assert.match(app, /normalizeProductUrls/);
+  assert.match(app, /reviewProduct/);
+  assert.doesNotMatch(app, /captureUrlInTempTab/);
+  assert.match(content, /storeId: adapter\?\.id/);
+});
+
 test("extension publishes to site, Telegram and sequential WhatsApp groups", () => {
   const app = readFileSync(join(extensionRoot, "sidepanel", "app.js"), "utf8");
   const background = readFileSync(join(extensionRoot, "background", "service-worker.js"), "utf8");
@@ -245,10 +292,18 @@ test("offer artwork matches the requested premium share card", () => {
 });
 
 test("WhatsApp artwork is copied and pasted without file attachment inputs", () => {
+  const background = readFileSync(join(extensionRoot, "background", "service-worker.js"), "utf8");
+  const offscreen = readFileSync(join(extensionRoot, "offscreen", "clipboard.js"), "utf8");
   const whatsapp = readFileSync(join(extensionRoot, "content", "whatsapp.js"), "utf8");
-  assert.match(whatsapp, /navigator\.clipboard\.write/);
-  assert.match(whatsapp, /ClipboardItem/);
+  assert.ok(existsSync(join(extensionRoot, "offscreen", "index.html")));
+  assert.match(background, /chrome\.offscreen\.createDocument/);
+  assert.match(background, /prepareWhatsAppClipboard/);
+  assert.match(offscreen, /navigator\.clipboard\.write/);
+  assert.match(offscreen, /ClipboardItem/);
+  assert.match(whatsapp, /dispatchImagePaste/);
+  assert.match(whatsapp, /clipboardPrepared/);
   assert.match(whatsapp, /execCommand\("paste"\)/);
+  assert.doesNotMatch(whatsapp, /Nao foi possivel copiar a imagem para o clipboard/);
   assert.doesNotMatch(whatsapp, /input\[type=["']file["']\]/);
 });
 
@@ -303,11 +358,20 @@ test("extension offers coupon activation and compact icon actions", () => {
   assert.match(coupons, /filtrar\(\?: e ordenar\)/);
   assert.match(coupons, /nao ativados/);
   assert.match(coupons, /inactiveFilterChipVisible/);
+  assert.match(coupons, /newestFilterChipVisible/);
   assert.match(coupons, /inactiveFilterRoute/);
+  assert.match(coupons, /Nao ativados, Mais novos/);
   assert.match(coupons, /activationControls/);
   assert.match(coupons, /\^\(ativar\|aplicar\|resgatar\)/);
+  assert.match(coupons, /TABARATO_COUPON_TRUSTED_CLICK/);
+  assert.match(coupons, /activationConfirmed/);
+  assert.match(coupons, /trustedClicks/);
   assert.match(background, /globalThis\.__TABARATO_COUPON_AUTOMATION__/);
   assert.match(background, /automation\.activate\(couponLimit\)/);
+  assert.match(background, /Input\.dispatchMouseEvent/);
+  assert.match(background, /chrome\.debugger\.attach/);
+  assert.match(background, /chrome\.debugger\.detach/);
+  assert.match(background, /cupons\/filter\?new=true/);
   assert.match(background, /\^\\\/cupons\(\?:\\\/\|\$\)/);
   assert.match(sidePanelApp, /isCouponManagementUrl/);
   assert.match(background, /chrome\.action\.onClicked/);

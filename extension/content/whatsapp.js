@@ -117,8 +117,29 @@
 
   const dataUrlFile = async (dataUrl, fileName) => {
     const response = await runtime.fetchWithTimeout(dataUrl, {}, 8000, "A imagem demorou para ser aberta no WhatsApp.");
-    const blob = await runtime.withTimeout(response.blob(), 8000, "A imagem demorou para ser lida no WhatsApp.");
-    return new File([blob], fileName || "oferta.png", { type: "image/png" });
+    if (!response.ok) throw new Error("A imagem gerada nao pode ser aberta no WhatsApp.");
+    const sourceBlob = await runtime.withTimeout(response.blob(), 8000, "A imagem demorou para ser lida no WhatsApp.");
+    if (!sourceBlob.size) throw new Error("A imagem gerada esta vazia.");
+    if (sourceBlob.type === "image/png") return new File([sourceBlob], fileName || "oferta.png", { type: "image/png" });
+
+    const bitmap = await runtime.withTimeout(createImageBitmap(sourceBlob), 8000, "A imagem nao pode ser convertida para PNG.");
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = bitmap.width;
+      canvas.height = bitmap.height;
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("O navegador nao conseguiu preparar a imagem.");
+      context.drawImage(bitmap, 0, 0);
+      const pngBlob = await runtime.withTimeout(new Promise((resolve, reject) => {
+        canvas.toBlob(
+          (blob) => blob ? resolve(blob) : reject(new Error("A conversao da imagem falhou.")),
+          "image/png",
+        );
+      }), 8000, "A conversao da imagem demorou demais.");
+      return new File([pngBlob], fileName || "oferta.png", { type: "image/png" });
+    } finally {
+      bitmap.close();
+    }
   };
 
   const clickableGroupRow = (group) => {
@@ -196,48 +217,53 @@
     if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined") return false;
     try {
       window.focus();
-      await navigator.clipboard.write([new ClipboardItem({ "image/png": file })]);
+      const pngBlob = new Blob([await file.arrayBuffer()], { type: "image/png" });
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": pngBlob })]);
       return true;
-    } catch {
+    } catch (error) {
+      runtime.reportError("whatsapp-clipboard-fallback", error);
       return false;
     }
   }
 
-  function pasteImageFromClipboard(composer, file) {
+  function dispatchImagePaste(composer, file) {
     const transfer = new DataTransfer();
     transfer.items.add(file);
     composer.focus();
-    const pasted = composer.dispatchEvent(new ClipboardEvent("paste", {
+    composer.dispatchEvent(new ClipboardEvent("paste", {
       bubbles: true,
       cancelable: true,
       composed: true,
       clipboardData: transfer,
     }));
-    if (pasted) document.execCommand("paste");
   }
 
-  async function pasteOffer(file, caption, signal) {
+  async function pasteOffer(file, caption, signal, clipboardPrepared = false) {
     const composer = await waitFor(messageComposer, 10000, signal);
     if (!composer) throw new Error("O campo de mensagem do WhatsApp nao foi encontrado.");
     const messageCountBefore = outgoingMessages().length;
 
     aborted(signal);
-    if (!await copyImageToClipboard(file)) throw new Error("Nao foi possivel copiar a imagem para o clipboard.");
-    composer.focus();
-    document.execCommand("paste");
-
-    let captionBox = await waitFor(() => captionEditor(composer), 5000, signal);
-    if (!captionBox) {
-      pasteImageFromClipboard(composer, file);
-      captionBox = await waitFor(() => captionEditor(composer), 10000, signal);
+    let captionBox = null;
+    if (clipboardPrepared) {
+      composer.focus();
+      document.execCommand("paste");
+      captionBox = await waitFor(() => captionEditor(composer), 3500, signal);
     }
     if (!captionBox) {
-      throw new Error("A imagem foi copiada, mas o WhatsApp nao abriu a previa de envio.");
+      dispatchImagePaste(composer, file);
+      captionBox = await waitFor(() => captionEditor(composer), 6000, signal);
+    }
+    if (!captionBox && await copyImageToClipboard(file)) {
+      composer.focus();
+      document.execCommand("paste");
+      captionBox = await waitFor(() => captionEditor(composer), 5000, signal);
+    }
+    if (!captionBox) {
+      throw new Error("O WhatsApp bloqueou a colagem da imagem. Mantenha a aba aberta e tente novamente.");
     }
     await new Promise((resolve) => window.setTimeout(resolve, 700));
-    if (!clean(captionBox.innerText || captionBox.textContent)) {
-      await setEditableText(captionBox, caption);
-    }
+    await setEditableText(captionBox, caption);
     await new Promise((resolve) => window.setTimeout(resolve, 250));
 
     const send = await waitFor(() => actionByLabel(["enviar", "send"])
@@ -267,7 +293,10 @@
     if (!clean(message.groupName)) throw new Error("Informe o nome do grupo do WhatsApp.");
     if (!clean(message.text)) throw new Error("A mensagem do WhatsApp esta vazia.");
     await selectGroup(message.groupName, signal);
-    if (message.imageDataUrl) await pasteOffer(await dataUrlFile(message.imageDataUrl, message.fileName), message.text, signal);
+    if (message.imageDataUrl) {
+      const file = await dataUrlFile(message.imageDataUrl, message.fileName);
+      await pasteOffer(file, message.text, signal, Boolean(message.clipboardPrepared));
+    }
     else await sendTextMessage(message.text, signal);
     return { ok: true };
   };

@@ -48,7 +48,10 @@ export default function SocialPage() {
       const authorized = await validateAdminSession();
       setAdmin(authorized);
       if (!authorized || controller.signal.aborted) return;
-      const adminPage = await request("&includeUnpublished=true", { signal: controller.signal });
+      let adminPage = await request("&includeUnpublished=true", { signal: controller.signal });
+      if (!publicPage.links.length && adminPage.links.length) {
+        adminPage = await request("", { method: "PATCH", body: { action: "publish-all" }, signal: controller.signal });
+      }
       setPage({ settings: { ...DEFAULT_PAGE_SETTINGS, ...adminPage.settings }, links: adminPage.links.map(mergeLinkDefaults) });
     };
     loadPage().catch((error) => {

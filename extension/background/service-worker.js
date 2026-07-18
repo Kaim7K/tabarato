@@ -20,9 +20,13 @@ const STORE_CONTENT_FILES = [
   "content/stores/generic.js",
   "content/index.js",
 ];
+const OFFSCREEN_DOCUMENT_PATH = "offscreen/index.html";
 let whatsappOperation = null;
 let initializationPromise = null;
 let initializationRequested = false;
+let offscreenCreationPromise = null;
+let extensionConfigCache = null;
+const trustedCouponTabs = new Set();
 
 function hostMatches(hostname, host) {
   return hostname === host || hostname.endsWith(`.${host}`);
@@ -33,6 +37,7 @@ function builtInAllowedHost(hostname) {
 }
 
 async function extensionConfig() {
+  if (extensionConfigCache) return extensionConfigCache;
   const stored = await chrome.storage.local.get(STORAGE_KEYS);
   const dynamicHosts = Array.isArray(stored.tabarato_connected_store_hosts)
     ? stored.tabarato_connected_store_hosts.map(String).filter(Boolean)
@@ -44,7 +49,8 @@ async function extensionConfig() {
   } catch {
     configuredOrigin = "";
   }
-  return { configuredOrigin, dynamicHosts };
+  extensionConfigCache = { configuredOrigin, dynamicHosts };
+  return extensionConfigCache;
 }
 
 async function isAllowedUrl(value = "") {
@@ -118,6 +124,47 @@ function normalizeGroups(message) {
     .filter(Boolean))];
 }
 
+async function ensureClipboardDocument() {
+  const documentUrl = chrome.runtime.getURL(OFFSCREEN_DOCUMENT_PATH);
+  const contexts = await chrome.runtime.getContexts({
+    contextTypes: ["OFFSCREEN_DOCUMENT"],
+    documentUrls: [documentUrl],
+  });
+  if (contexts.length) return;
+
+  if (!offscreenCreationPromise) {
+    offscreenCreationPromise = chrome.offscreen.createDocument({
+      url: OFFSCREEN_DOCUMENT_PATH,
+      reasons: ["CLIPBOARD"],
+      justification: "Copiar a arte da oferta antes de cola-la no WhatsApp Web.",
+    }).finally(() => {
+      offscreenCreationPromise = null;
+    });
+  }
+  await offscreenCreationPromise;
+}
+
+async function prepareWhatsAppClipboard(imageDataUrl) {
+  if (!imageDataUrl) return false;
+  try {
+    await ensureClipboardDocument();
+    const result = await runtime.withTimeout(
+      chrome.runtime.sendMessage({
+        target: "tabarato-offscreen",
+        type: "TABARATO_COPY_IMAGE",
+        imageDataUrl,
+      }),
+      15000,
+      "A imagem demorou para ser copiada.",
+    );
+    if (!result?.ok) throw new Error(result?.error || "O clipboard recusou a imagem.");
+    return true;
+  } catch (error) {
+    runtime.reportError("whatsapp-clipboard", error);
+    return false;
+  }
+}
+
 async function sendSingleWhatsApp(tab, payload) {
   try {
     return await runtime.withTimeout(
@@ -126,7 +173,7 @@ async function sendSingleWhatsApp(tab, payload) {
       "O WhatsApp nao respondeu. Confirme se esta conectado e tente novamente.",
     );
   } catch (error) {
-    const missingReceiver = /receiving end does not exist|could not establish connection/i.test(error?.message || "");
+    const missingReceiver = /receiving end does not exist|could not establish connection|message port closed|extension context invalidated/i.test(error?.message || "");
     if (!missingReceiver) throw error;
     await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["shared/runtime.js", "content/whatsapp.js"] });
     return runtime.withTimeout(
@@ -142,6 +189,8 @@ async function performWhatsAppSend(message, operation) {
   if (!groups.length) throw new Error("Registre pelo menos um grupo do WhatsApp.");
   if (!String(message?.text || "").trim()) throw new Error("A mensagem do WhatsApp esta vazia.");
   if (String(message?.imageDataUrl || "").length > 17 * 1024 * 1024) throw new Error("A imagem excede o limite permitido para envio.");
+
+  const clipboardPrepared = await prepareWhatsAppClipboard(message.imageDataUrl);
 
   const tab = await whatsappTab();
   if (!tab?.id) throw new Error("Nao foi possivel abrir o WhatsApp Web.");
@@ -162,6 +211,7 @@ async function performWhatsAppSend(message, operation) {
       text: message.text,
       imageDataUrl: message.imageDataUrl || "",
       fileName: message.fileName || "oferta.png",
+      clipboardPrepared,
     };
     const result = await sendSingleWhatsApp(tab, payload);
     if (!result?.ok) throw new Error(result?.error || `Nao foi possivel enviar para ${groupName}.`);
@@ -196,52 +246,114 @@ async function stopWhatsAppSend() {
   return { ok: true };
 }
 
+function isMercadoLivreCouponUrl(value = "") {
+  try {
+    const url = new URL(value);
+    return /(?:^|\.)mercadolivre\.com\.br$/i.test(url.hostname)
+      && /^\/cupons(?:\/|$)/i.test(url.pathname);
+  } catch {
+    return false;
+  }
+}
+
+async function dispatchTrustedCouponClick(message, sender) {
+  const tabId = sender.tab?.id;
+  const x = Number(message.x);
+  const y = Number(message.y);
+  if (!tabId || !trustedCouponTabs.has(tabId) || !isMercadoLivreCouponUrl(sender.tab?.url)) {
+    throw new Error("A sessao segura de ativacao de cupons nao esta disponivel.");
+  }
+  if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0 || x > 10000 || y > 10000) {
+    throw new Error("A posicao do botao Aplicar e invalida.");
+  }
+
+  const target = { tabId };
+  await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", { type: "mouseMoved", x, y });
+  await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", {
+    type: "mousePressed",
+    x,
+    y,
+    button: "left",
+    buttons: 1,
+    clickCount: 1,
+  });
+  await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", {
+    type: "mouseReleased",
+    x,
+    y,
+    button: "left",
+    buttons: 0,
+    clickCount: 1,
+  });
+  return { ok: true };
+}
+
 async function activateMercadoLivreCoupons(limit) {
-  const couponUrl = "https://www.mercadolivre.com.br/cupons";
+  const couponUrl = "https://www.mercadolivre.com.br/cupons/filter?new=true&source_page=int_coupons_shortcut";
   const requestedLimit = Math.max(1, Math.min(100, Number(limit) || 5));
   const tabs = await chrome.tabs.query({});
   let tab = tabs
-    .filter((item) => {
-      try {
-        const url = new URL(item.url || "");
-        return /(?:^|\.)mercadolivre\.com\.br$/i.test(url.hostname) && /^\/cupons(?:\/|$)/i.test(url.pathname);
-      } catch {
-        return false;
-      }
-    })
+    .filter((item) => isMercadoLivreCouponUrl(item.url))
     .sort((left, right) => Number(right.active) - Number(left.active) || (right.lastAccessed || 0) - (left.lastAccessed || 0))[0];
+  let navigationRequested = false;
 
   if (tab?.id) {
     await chrome.windows.update(tab.windowId, { focused: true });
-    tab = await chrome.tabs.update(tab.id, { active: true });
+    const currentUrl = new URL(tab.url);
+    const alreadyFiltered = currentUrl.searchParams.get("new") === "true";
+    navigationRequested = !alreadyFiltered;
+    tab = await chrome.tabs.update(tab.id, alreadyFiltered ? { active: true } : { active: true, url: couponUrl });
   } else {
+    navigationRequested = true;
     tab = await chrome.tabs.create({ url: couponUrl, active: true });
   }
-  if (tab.status !== "complete") {
+  if (navigationRequested || tab.status !== "complete") {
     await runtime.waitForTabComplete(tab.id, 45000, "A pagina de cupons demorou para carregar.");
   }
-  await runtime.delay(450);
-  await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["content/coupons.js"] });
-  const execution = chrome.scripting.executeScript({
-    target: { tabId: tab.id },
-    func: (couponLimit) => {
-      const automation = globalThis.__TABARATO_COUPON_AUTOMATION__;
-      if (!automation?.activate) throw new Error("O automatizador de cupons nao foi carregado.");
-      return automation.activate(couponLimit);
-    },
-    args: [requestedLimit],
-  });
-  const results = await runtime.withTimeout(
-    execution,
-    Math.max(45000, requestedLimit * 6000),
-    "A ativacao de cupons demorou demais.",
-  );
-  const result = results?.[0]?.result;
-  if (!result) throw new Error("A pagina de cupons nao retornou o resultado da ativacao.");
-  return result;
+  await runtime.delay(900);
+
+  let debuggerAttached = false;
+  try {
+    try {
+      await chrome.debugger.attach({ tabId: tab.id }, "1.3");
+      trustedCouponTabs.add(tab.id);
+      debuggerAttached = true;
+    } catch (error) {
+      runtime.reportError("coupon-debugger-attach", error);
+    }
+
+    await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["content/coupons.js"] });
+    const execution = chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: (couponLimit) => {
+        const automation = globalThis.__TABARATO_COUPON_AUTOMATION__;
+        if (!automation?.activate) throw new Error("O automatizador de cupons nao foi carregado.");
+        return automation.activate(couponLimit);
+      },
+      args: [requestedLimit],
+    });
+    const results = await runtime.withTimeout(
+      execution,
+      Math.max(50000, requestedLimit * 7000),
+      "A ativacao de cupons demorou demais.",
+    );
+    const result = results?.[0]?.result;
+    if (!result) throw new Error("A pagina de cupons nao retornou o resultado da ativacao.");
+    const enrichedResult = { ...result, trustedInput: debuggerAttached };
+    if (!enrichedResult.ok && !debuggerAttached) {
+      enrichedResult.error = `${enrichedResult.error} Feche o DevTools da pagina de cupons e tente novamente.`;
+    }
+    return enrichedResult;
+  } finally {
+    trustedCouponTabs.delete(tab.id);
+    if (debuggerAttached) await chrome.debugger.detach({ tabId: tab.id }).catch(() => {});
+  }
 }
 
 chrome.action.disable().catch(() => {});
+chrome.debugger.onDetach.addListener((source) => {
+  if (source.tabId) trustedCouponTabs.delete(source.tabId);
+});
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).catch(() => {});
 chrome.action.onClicked.addListener((tab) => {
   if (!tab?.windowId) return;
@@ -283,6 +395,7 @@ chrome.tabs.onActivated.addListener(({ tabId }) => {
 });
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === "local" && STORAGE_KEYS.some((key) => changes[key])) {
+    extensionConfigCache = null;
     scheduleExtensionInitialization().catch((error) => runtime.reportError("refresh-tabs", error));
   }
 });
@@ -305,6 +418,7 @@ const MESSAGE_HANDLERS = {
   TABARATO_SHARE_WHATSAPP: (message) => sendToWhatsApp(message),
   TABARATO_STOP_WHATSAPP: () => stopWhatsAppSend(),
   TABARATO_ACTIVATE_ML_COUPONS: (message) => activateMercadoLivreCoupons(message.limit),
+  TABARATO_COUPON_TRUSTED_CLICK: dispatchTrustedCouponClick,
 };
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {

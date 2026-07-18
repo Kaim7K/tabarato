@@ -300,8 +300,8 @@
   const closeTransientDialogs = async () => {
     for (let round = 0; round < 5; round += 1) {
       const dialogs = [...document.querySelectorAll("[role='dialog'], [aria-modal='true'], .andes-modal")].filter(visible);
-      const roots = dialogs.length ? dialogs : [document];
-      const controls = roots.flatMap((root) => [...root.querySelectorAll("button, [role='button'], a, [class*='close']")])
+      if (!dialogs.length) return;
+      const controls = dialogs.flatMap((root) => [...root.querySelectorAll("button, [role='button'], a, [class*='close']")])
         .filter(visible)
         .filter((element) => /^(?:(?:fechar|close)(?: modal| janela| dialogo)?|x|×|agora nao|agora n[aã]o|continuar navegando)$/i.test(clean(`${element.textContent} ${element.getAttribute("aria-label") || ""} ${element.getAttribute("title") || ""}`)));
       controls.slice(0, 10).forEach((element) => element.click());
@@ -314,6 +314,7 @@
 
   const productLinks = (patterns = []) => {
     const links = [...document.querySelectorAll("a[href]")]
+      .filter((link) => visible(link) || visible(link.closest("article, li, [class*='card'], [class*='item']")))
       .map((link) => absoluteUrl(link.href))
       .filter((href) => /^https?:\/\//i.test(href))
       .filter((href) => !patterns.length || patterns.some((pattern) => pattern.test(href)))

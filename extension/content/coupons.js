@@ -80,6 +80,11 @@
     return /^nao ativados(?: remover filtro)?$/.test(controlText(element));
   });
 
+  const newestFilterChipVisible = () => controls().some((element) => {
+    if (element.closest("[role='dialog'], [aria-modal='true'], .andes-modal")) return false;
+    return /^(?:mais )?novos(?: remover filtro)?$/.test(controlText(element));
+  });
+
   const inactiveFilterRoute = () => {
     const url = new URL(location.href);
     return /^\/cupons(?:\/filter)?\/?$/i.test(url.pathname) && url.searchParams.get("new") === "true";
@@ -94,16 +99,17 @@
   }
 
   async function applyInactiveFilter() {
-    if (inactiveFilterSelected() || inactiveFilterChipVisible() || inactiveFilterRoute()) {
+    await waitFor(() => inactiveFilterChipVisible() || !inactiveFilterRoute(), 2500, 100);
+    if (inactiveFilterChipVisible() && newestFilterChipVisible()) {
       await waitForCouponGrid();
       return true;
     }
 
     let dialog = visibleDialog();
     if (!dialog || !/status dos cupons|filtrar e ordenar/.test(normalized(dialog.textContent))) {
-      const openFilter = findControl(/^(filtrar(?: e ordenar)?|filtros?)(?: \d+)?$/);
+      const openFilter = findControl(/^(filtrar(?: e ordenar)?|filtros?)(?:\s*\(\d+\)|\s+\d+)?$/);
       if (!openFilter) throw new Error("Nao foi possivel abrir o filtro de cupons.");
-      openFilter.click();
+      await activateControl(openFilter);
       dialog = await waitFor(() => {
         const candidate = visibleDialog();
         return candidate && /status dos cupons|nao ativados/.test(normalized(candidate.textContent)) ? candidate : null;
@@ -111,13 +117,19 @@
     }
     if (!dialog) throw new Error("O filtro de cupons nao carregou.");
 
+    if (!newestFilterChipVisible()) {
+      const newestOption = findControl(/^(?:mais )?novos$/, dialog);
+      if (!newestOption) throw new Error("A ordenacao 'Mais novos' nao foi encontrada.");
+      await activateControl(newestOption);
+    }
+
     if (!inactiveFilterSelected(dialog)) {
       const option = findControl(/nao ativados/, dialog);
       if (!option) throw new Error("A opcao 'Nao ativados' nao foi encontrada.");
       const radio = option.matches?.("input[type='radio'], [role='radio']")
         ? option
         : option.querySelector?.("input[type='radio'], [role='radio']");
-      (radio || option).click();
+      await activateControl(radio || option);
     }
 
     const apply = await waitFor(() => {
@@ -125,8 +137,14 @@
       return button && !disabled(button) ? button : null;
     }, 4000);
     if (!apply) throw new Error("O botao para aplicar o filtro nao foi habilitado.");
-    apply.click();
+    await activateControl(apply);
     await waitFor(() => !visible(dialog), 6000);
+    const filtersApplied = await waitFor(
+      () => inactiveFilterChipVisible() && newestFilterChipVisible(),
+      8000,
+      150,
+    );
+    if (!filtersApplied) throw new Error("O Mercado Livre nao confirmou os filtros 'Nao ativados' e 'Mais novos'.");
     await waitForCouponGrid();
     return true;
   }
@@ -168,19 +186,64 @@
     return false;
   }
 
+  async function requestTrustedClick(element) {
+    const rectangle = element.getBoundingClientRect();
+    const x = Math.round(rectangle.left + rectangle.width / 2);
+    const y = Math.round(rectangle.top + rectangle.height / 2);
+    if (x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight) return false;
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: "TABARATO_COUPON_TRUSTED_CLICK",
+        x,
+        y,
+      });
+      return Boolean(response?.ok);
+    } catch {
+      return false;
+    }
+  }
+
+  function dispatchDomClick(element) {
+    const pointerOptions = { bubbles: true, cancelable: true, composed: true, button: 0, buttons: 1 };
+    element.dispatchEvent(new PointerEvent("pointerover", pointerOptions));
+    element.dispatchEvent(new MouseEvent("mouseover", pointerOptions));
+    element.dispatchEvent(new PointerEvent("pointerdown", pointerOptions));
+    element.dispatchEvent(new MouseEvent("mousedown", pointerOptions));
+    element.dispatchEvent(new PointerEvent("pointerup", { ...pointerOptions, buttons: 0 }));
+    element.dispatchEvent(new MouseEvent("mouseup", { ...pointerOptions, buttons: 0 }));
+    element.click();
+  }
+
+  async function activateControl(element) {
+    element.scrollIntoView({ block: "center", behavior: "instant" });
+    await wait(120);
+    element.focus?.({ preventScroll: true });
+    if (!await requestTrustedClick(element)) dispatchDomClick(element);
+    await wait(180);
+  }
+
   async function clickCouponControl(element) {
     const card = couponCard(element);
     const previousText = controlText(element);
     element.scrollIntoView({ block: "center", behavior: "instant" });
-    await wait(80);
+    await wait(160);
     element.focus?.({ preventScroll: true });
-    element.click();
-    return activationConfirmed(element, card, previousText);
+    dispatchDomClick(element);
+    if (await activationConfirmed(element, card, previousText, 1400)) {
+      return { confirmed: true, trusted: false };
+    }
+    if (!await requestTrustedClick(element)) return { confirmed: false, trusted: false };
+    return {
+      confirmed: await activationConfirmed(element, card, previousText, 6000),
+      trusted: true,
+    };
   }
 
   async function activateCoupons(requestedLimit) {
     const limit = Math.max(1, Math.min(100, Number(requestedLimit) || 5));
     await applyInactiveFilter();
+    window.scrollTo({ top: 0, behavior: "instant" });
+    await wait(350);
     await waitFor(() => activationControls().length > 0 || /nenhum cupom|nao encontramos cupons/.test(normalized(document.body?.innerText || "")), 12000, 160);
 
     let activated = 0;
@@ -188,6 +251,7 @@
     let failed = 0;
     let emptyRounds = 0;
     let found = 0;
+    let trustedClicks = 0;
     const skippedKeys = new Set();
 
     while (activated < limit && emptyRounds < 6) {
@@ -206,7 +270,9 @@
 
       const key = couponKey(target);
       attempted += 1;
-      if (await clickCouponControl(target)) {
+      const clickResult = await clickCouponControl(target);
+      if (clickResult.trusted) trustedClicks += 1;
+      if (clickResult.confirmed) {
         activated += 1;
         emptyRounds = 0;
       } else {
@@ -214,7 +280,7 @@
         skippedKeys.add(key);
         emptyRounds += 1;
       }
-      await wait(220);
+      await wait(320);
     }
 
     if (!activated && failed) {
@@ -226,6 +292,7 @@
         failed,
         found,
         requested: limit,
+        trustedClicks,
       };
     }
 
@@ -236,7 +303,8 @@
       failed,
       found,
       requested: limit,
-      filteredBy: "Nao ativados",
+      filteredBy: "Nao ativados, Mais novos",
+      trustedClicks,
     };
   }
 
@@ -248,6 +316,6 @@
     return true;
   };
 
-  globalThis[AUTOMATION_KEY] = { version: 4, activate: activateCoupons, messageHandler };
+  globalThis[AUTOMATION_KEY] = { version: 6, activate: activateCoupons, messageHandler };
   chrome.runtime.onMessage.addListener(messageHandler);
 })();

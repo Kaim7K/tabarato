@@ -1,6 +1,6 @@
 import { useState } from "react";
 import {
-  Check, ChevronDown, Copy, Eye, EyeOff, GripVertical, ImagePlus, Laptop,
+  Check, ChevronDown, Copy, GripVertical, ImagePlus, Laptop,
   Palette, Plus, RotateCcw, Save, Smartphone, Trash2, X,
 } from "lucide-react";
 import { SocialIcon } from "./SocialIcon";
@@ -136,7 +136,7 @@ export function SocialEditor({
             </section>
 
             <section className="social-editor__section social-editor__form" aria-label="Configurar item">
-              <div className="social-editor__section-head"><div><strong>{linkForm.id ? "Editar item" : "Novo item"}</strong><span>A prévia muda em tempo real</span></div><button type="button" onClick={() => updateLink({ isActive: !linkForm.isActive })} title={linkForm.isActive ? "Ocultar item" : "Publicar item"}>{linkForm.isActive ? <Eye /> : <EyeOff />}</button></div>
+              <div className="social-editor__section-head"><div><strong>{linkForm.id ? "Editar item" : "Novo item"}</strong><span>A prévia muda em tempo real</span></div></div>
 
               <div className="social-editor__templates">
                 {Object.entries(STYLE_TEMPLATES).map(([key, template]) => <button key={key} type="button" onClick={() => applyTemplate(key)}>{template.name}</button>)}
@@ -147,6 +147,7 @@ export function SocialEditor({
                 <Field label="Título" wide><input value={linkForm.label} onChange={(event) => updateLink({ label: event.target.value })} placeholder="Ex.: Entrar no Telegram" /></Field>
                 <Field label="Subtítulo" wide><input value={linkForm.subtitle} onChange={(event) => updateLink({ subtitle: event.target.value })} placeholder="Opcional" /></Field>
                 <Field label="URL" wide><input value={linkForm.url} onChange={(event) => updateLink({ url: event.target.value })} placeholder="https://..." /></Field>
+                <label className="social-editor__toggle social-editor__field--wide"><input type="checkbox" checked={linkForm.isActive} onChange={(event) => updateLink({ isActive: event.target.checked })} /><span>Exibir na página pública</span></label>
                 <Field label="Badge"><input value={linkForm.badge} onChange={(event) => updateLink({ badge: event.target.value })} placeholder="Novo" /></Field>
                 <Field label="Tamanho"><select value={linkForm.style.size} onChange={(event) => updateStyle({ size: event.target.value })}><option value="compact">Compacto</option><option value="default">Padrão</option><option value="large">Grande</option></select></Field>
               </div>

@@ -122,6 +122,11 @@ async function readSocialPage(includeUnpublished = false) {
     query("SELECT * FROM social_page_settings WHERE id=1"),
     query(`SELECT * FROM social_links ${visibility} ORDER BY is_primary DESC, sort_order ASC, created_at ASC`),
   ]);
+  let linkRows = links.rows;
+  if (!includeUnpublished && !linkRows.length) {
+    const publicFallback = await query("SELECT * FROM social_links ORDER BY is_primary DESC, sort_order ASC, created_at ASC");
+    linkRows = publicFallback.rows.map((item) => ({ ...item, is_active: true, starts_at: null, ends_at: null }));
+  }
   const row = settings.rows[0] || {};
   const storedTitle = row.title || "";
   const storedBio = row.bio || "";
@@ -133,7 +138,7 @@ async function readSocialPage(includeUnpublished = false) {
       accentColor: row.accent_color || "#FF5A1F", secondaryColor: row.secondary_color || "#16A34A",
       backgroundColor: row.background_color || "#FFF9F5",
     },
-    links: links.rows.map(mapLink),
+    links: linkRows.map(mapLink),
   };
 }
 
@@ -166,6 +171,13 @@ export async function handleSocial(req, res) {
         [item.label, item.subtitle, item.url, item.iconUrl || null, item.iconName, item.imageUrl || null, item.backgroundImageUrl || null, item.itemType, item.badge || null, item.sortOrder, item.isActive, item.isPrimary, item.openNewTab, item.startsAt, item.endsAt, JSON.stringify(item.style)]
       );
       return sendJson(res, 201, await readSocialPage(true));
+    }
+
+    if (req.method === "PATCH" && input.action === "publish-all") {
+      await query(
+        "UPDATE social_links SET is_active=TRUE, starts_at=NULL, ends_at=NULL, updated_at=NOW() WHERE is_active=FALSE OR starts_at IS NOT NULL OR ends_at IS NOT NULL"
+      );
+      return sendJson(res, 200, await readSocialPage(true));
     }
 
     if (req.method === "PATCH" && input.action === "reorder") {
