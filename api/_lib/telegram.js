@@ -39,25 +39,21 @@ export function formatOfferBenefits(value = "") {
 
 export function formatTelegramMessage(offer) {
   const benefits = formatOfferBenefits(offer.extraText);
+  const headline = String(offer.messageHeadline || "").trim().replace(/^\s*\u{1F525}\s*/u, "") || "T\u00C1 BARATO!";
+  const currentPrice = Number(offer.currentPrice);
+  const previousPrice = Number(offer.previousPrice || offer.currentPrice);
+  const money = (value) => `R$ ${Number(value).toFixed(2).replace(".", ",")}`;
   const lines = [
-    "<b>🔥 TÁ BARATO!</b>",
+    `<b>\u{1F525} ${escapeHtml(headline)}</b>`,
     "",
     `<b>${escapeHtml(offer.productName)}</b>`,
     "",
-    `💰 Agora: <b>R$ ${Number(offer.currentPrice).toFixed(2).replace(".", ",")}</b>${benefits.pix ? " (no Pix)" : ""}`,
+    `\u{1F4B0} <b>${money(currentPrice)}</b>${benefits.pix ? " (no Pix)" : ""}   |   \u{274C} <s>${money(previousPrice)}</s>`,
+    "",
+    `\u{1F39F}\u{FE0F} Cupom:${offer.coupon ? ` <b>${escapeHtml(offer.coupon)}</b>` : ""}`,
   ];
-
-  if (offer.previousPrice) {
-    lines.push(`Antes: <s>R$ ${Number(offer.previousPrice).toFixed(2).replace(".", ",")}</s>`);
-  }
-  if (offer.coupon) {
-    lines.push(/^use o cupom da loja$/i.test(offer.coupon)
-      ? `<b>${escapeHtml(offer.coupon)}</b>`
-      : `Cupom: <b>${escapeHtml(offer.coupon)}</b>`);
-  }
-  if (offer.category) lines.push("", `📦 ${escapeHtml(offer.category)}`);
-  if (benefits.lines.length) lines.push("", ...benefits.lines.map(escapeHtml));
-  lines.push("", "Preço e disponibilidade podem mudar.");
+  if (benefits.lines.length) lines.push(...benefits.lines.map((line) => escapeHtml(line.replace(/\.$/, ""))));
+  lines.push("", "\u{1F447} <b>Compre aqui:</b>", escapeHtml(offer.affiliateLink || ""));
 
   return compactLines(lines);
 }

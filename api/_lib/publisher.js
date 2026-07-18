@@ -2,7 +2,7 @@ import { query } from "./db.js";
 import { findDuplicateOffer, getOffer, mapOffer, validateOffer } from "./offers.js";
 import { sendTelegramOffer } from "./telegram.js";
 
-export async function publishOfferById(id, { shareImageDataUrl = "", forceRepublish = false } = {}) {
+export async function publishOfferById(id, { shareImageDataUrl = "", forceRepublish = false, messageHeadline = "" } = {}) {
   const candidate = await getOffer(id);
   if (!candidate) return { ok: false, status: 404, error: "Oferta não encontrada." };
   const duplicate = await findDuplicateOffer(candidate, id, ["PUBLICADO", "PUBLICANDO"]);
@@ -46,7 +46,7 @@ export async function publishOfferById(id, { shareImageDataUrl = "", forceRepubl
   }
 
   try {
-    const result = await sendTelegramOffer({ ...offer, shareImageDataUrl });
+    const result = await sendTelegramOffer({ ...offer, shareImageDataUrl, messageHeadline });
     const updated = await query(
       `UPDATE telegram_offers
        SET status='PUBLICADO', published_at=NOW(), telegram_message_id=$2, telegram_response=$3, error_message=NULL

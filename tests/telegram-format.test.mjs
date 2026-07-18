@@ -2,26 +2,44 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { formatTelegramMessage } from "../api/_lib/telegram.js";
 
-test("Telegram message strikes through the previous price", () => {
+test("Telegram message keeps current and previous prices on one line", () => {
   const message = formatTelegramMessage({
     productName: "Produto teste",
     currentPrice: "24.90",
     previousPrice: "47.90",
-    category: "Tecnologia",
+    affiliateLink: "https://meli.la/teste",
   });
 
-  assert.match(message, /Agora: <b>R\$ 24,90<\/b>/);
-  assert.match(message, /Antes: <s>R\$ 47,90<\/s>/);
+  assert.match(message, /💰 <b>R\$ 24,90<\/b>\s+\|\s+❌ <s>R\$ 47,90<\/s>/u);
+  assert.match(message, /👇 <b>Compre aqui:<\/b>\nhttps:\/\/meli\.la\/teste/u);
 });
 
-test("Telegram message presents a store coupon as an instruction", () => {
+test("Telegram message displays the coupon in the requested format", () => {
   const message = formatTelegramMessage({
     productName: "Produto",
     currentPrice: 50,
-    coupon: "Use o cupom da loja",
+    coupon: "MELIMODA",
   });
-  assert.match(message, /<b>Use o cupom da loja<\/b>/);
-  assert.doesNotMatch(message, /Cupom: <b>Use o cupom da loja/);
+  assert.match(message, /🎟️ Cupom: <b>MELIMODA<\/b>/u);
+});
+
+test("Telegram message falls back to the current price when there is no previous price", () => {
+  const message = formatTelegramMessage({
+    productName: "Produto",
+    currentPrice: 50,
+    coupon: "Disponível no anúncio. Ative antes de comprar.",
+  });
+  assert.match(message, /❌ <s>R\$ 50,00<\/s>/u);
+});
+
+test("Telegram message uses the custom headline", () => {
+  const message = formatTelegramMessage({
+    productName: "Produto",
+    currentPrice: 50,
+    messageHeadline: "OFERTA RELAMPAGO!",
+  });
+  assert.match(message, /🔥 OFERTA RELAMPAGO!/u);
+  assert.doesNotMatch(message, /TÁ BARATO/u);
 });
 
 test("Telegram message never invents a final coupon price", () => {

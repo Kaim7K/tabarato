@@ -197,9 +197,29 @@ async function stopWhatsAppSend() {
 }
 
 async function activateMercadoLivreCoupons(limit) {
-  const tab = await chrome.tabs.create({ url: "https://www.mercadolivre.com.br/cupons", active: true });
-  await runtime.waitForTabComplete(tab.id, 45000, "A pagina de cupons demorou para carregar.");
-  await runtime.delay(1000);
+  const couponUrl = "https://www.mercadolivre.com.br/cupons";
+  const tabs = await chrome.tabs.query({});
+  let tab = tabs
+    .filter((item) => {
+      try {
+        const url = new URL(item.url || "");
+        return /(?:^|\.)mercadolivre\.com\.br$/i.test(url.hostname) && /^\/cupons\/?$/i.test(url.pathname);
+      } catch {
+        return false;
+      }
+    })
+    .sort((left, right) => Number(right.active) - Number(left.active) || (right.lastAccessed || 0) - (left.lastAccessed || 0))[0];
+
+  if (tab?.id) {
+    await chrome.windows.update(tab.windowId, { focused: true });
+    tab = await chrome.tabs.update(tab.id, { active: true });
+  } else {
+    tab = await chrome.tabs.create({ url: couponUrl, active: true });
+  }
+  if (tab.status !== "complete") {
+    await runtime.waitForTabComplete(tab.id, 45000, "A pagina de cupons demorou para carregar.");
+  }
+  await runtime.delay(450);
   await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["content/coupons.js"] });
   return runtime.withTimeout(
     chrome.tabs.sendMessage(tab.id, { type: "TABARATO_ACTIVATE_COUPONS", limit }),
@@ -209,7 +229,12 @@ async function activateMercadoLivreCoupons(limit) {
 }
 
 chrome.action.disable().catch(() => {});
-chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
+chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).catch(() => {});
+chrome.action.onClicked.addListener((tab) => {
+  if (!tab?.windowId) return;
+  chrome.sidePanel.open({ windowId: tab.windowId })
+    .catch((error) => runtime.reportError("action-open-panel", error));
+});
 async function initializeExtension() {
   await syncDynamicContentScripts();
   await refreshAllTabs();

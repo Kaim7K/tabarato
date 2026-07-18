@@ -77,6 +77,7 @@ const elements = {
   fields: {
     affiliateLink: document.getElementById("affiliate-link"),
     productName: document.getElementById("product-name"),
+    messageHeadline: document.getElementById("message-headline"),
     currentPrice: document.getElementById("current-price"),
     previousPrice: document.getElementById("previous-price"),
     platform: document.getElementById("platform"),
@@ -101,6 +102,7 @@ let capturedPageUrl = "";
 let shareImagePromise = null;
 let shareImageKey = "";
 let batchAbortController = null;
+let navigationCaptureTimer = null;
 const idleButtonContent = new WeakMap();
 
 function normalizeBaseUrl(value) {
@@ -294,14 +296,16 @@ function suggestCategory(product) {
 }
 
 function productFormValues(product) {
+  const currentPrice = product.currentPrice || "";
   return {
     affiliateLink: product.affiliateLink || product.sourceUrl || "",
     productName: product.productName || "",
-    currentPrice: product.currentPrice || "",
-    previousPrice: product.previousPrice || "",
+    messageHeadline: product.messageHeadline || "",
+    currentPrice,
+    previousPrice: product.previousPrice || product.regularPrice || currentPrice,
     platform: product.platform || "Loja conectada",
     category: suggestCategory(product),
-    coupon: product.coupon || "Cupom disponivel no anuncio. Ative antes de comprar.",
+    coupon: product.coupon || "",
     shortDescription: firstUsefulParagraph(product.shortDescription || ""),
     imageUrl: product.imageUrl || product.imageCandidates?.[0]?.url || "",
     extraText: [product.pricePaymentMethod === "Pix" ? "Preco principal no Pix." : "", product.extraText || ""].filter(Boolean).join(" "),
@@ -357,11 +361,13 @@ function restoreProductDraft(draft) {
 }
 
 function formPayload(status = "RASCUNHO") {
+  const currentPrice = elements.fields.currentPrice.value;
   return {
     productName: elements.fields.productName.value.trim(),
+    messageHeadline: elements.fields.messageHeadline.value.trim(),
     shortDescription: elements.fields.shortDescription.value.trim(),
-    currentPrice: elements.fields.currentPrice.value,
-    previousPrice: elements.fields.previousPrice.value,
+    currentPrice,
+    previousPrice: elements.fields.previousPrice.value || activeProduct?.regularPrice || currentPrice,
     coupon: elements.fields.coupon.value.trim(),
     couponDiscountPercent: 0,
     category: elements.fields.category.value,
@@ -651,18 +657,20 @@ async function prepareShareImage(payload) {
 
 function whatsappMessage(payload) {
   const benefits = messageBenefits(payload.extraText);
+  const headline = String(payload.messageHeadline || "").trim().replace(/^\s*\u{1F525}\s*/u, "") || "T\u00C1 BARATO!";
+  const previousPrice = payload.previousPrice || payload.currentPrice;
+  const pixLabel = activeProduct?.pricePaymentMethod === "Pix" || benefits.pix ? " (no Pix)" : "";
   const lines = [
-    "*TA BARATO!*",
+    `\u{1F525} *${headline}*`,
     "",
     `*${payload.productName}*`,
     "",
-    `Agora: *${formatPrice(payload.currentPrice)}*${activeProduct?.pricePaymentMethod === "Pix" || benefits.pix ? " *(no Pix)*" : ""}`,
+    `\u{1F4B0} *${formatPrice(payload.currentPrice)}*${pixLabel}   |   \u{274C} ~${formatPrice(previousPrice)}~`,
+    "",
+    `\u{1F39F}\u{FE0F} Cupom:${payload.coupon ? ` *${payload.coupon}*` : ""}`,
   ];
-  if (payload.previousPrice) lines.push(`Antes: ~${formatPrice(payload.previousPrice)}~`);
-  if (payload.coupon) lines.push("", `Cupom: *${payload.coupon}*`);
-  if (payload.category) lines.push("", `Categoria: ${payload.category}`);
-  if (benefits.lines.length) lines.push("", ...benefits.lines);
-  lines.push("", "Preco e disponibilidade podem mudar.", "", "Comprar:", payload.affiliateLink);
+  if (benefits.lines.length) lines.push(...benefits.lines.map((line) => line.replace(/\.$/, "")));
+  lines.push("", "\u{1F447} *Compre aqui:*", payload.affiliateLink);
   return lines.join("\n");
 }
 
@@ -692,7 +700,7 @@ async function publishOfferId(id, payload, { forceRepublish = false, notifyWhats
   const shareImageDataUrl = await fileToDataUrl(shareFile);
   const result = await requestApi(`/api/admin/ofertas/${id}/publicar`, {
     method: "POST",
-    body: { shareImageDataUrl, forceRepublish },
+    body: { shareImageDataUrl, forceRepublish, messageHeadline: payload.messageHeadline || "" },
     timeout: 45000,
   });
   if (!result?.ok) throw new Error(result?.error || "Nao foi possivel publicar no Telegram.");
@@ -916,8 +924,18 @@ function highlightProductChange(tab) {
   const nextUrl = comparableUrl(tab?.url);
   if (!session || !tab?.id || !nextUrl || !captureScriptsForUrl(nextUrl).length) return;
   if (tab.id === capturedTabId && nextUrl === capturedPageUrl) return;
-  elements.captureSource.textContent = "Pagina mudou. Capture o novo produto.";
+  elements.captureSource.textContent = "Pagina mudou. Capturando o novo produto...";
   elements.refreshButton.classList.add("needs-refresh");
+  const marketplaceProduct = /mercadolivre|mercadolibre/i.test(tab.url || "")
+    ? /(?:^|[/?-])MLB-?\d{6,}(?:$|[/?#-])/i.test(tab.url || "")
+    : /shopee/i.test(tab.url || "") && /(?:\/product\/|[-.]i\.\d+\.\d+)/i.test(tab.url || "");
+  if (!marketplaceProduct || isPrimarySiteUrl(tab.url) || /web\.whatsapp\.com/i.test(tab.url || "")) return;
+  window.clearTimeout(navigationCaptureTimer);
+  navigationCaptureTimer = window.setTimeout(async () => {
+    const current = await activeTab().catch(() => null);
+    if (current?.id !== tab.id || comparableUrl(current?.url) !== nextUrl) return;
+    captureProduct().catch((error) => showCaptureFailure(error));
+  }, 550);
 }
 
 elements.loginForm.addEventListener("submit", async (event) => {
@@ -998,8 +1016,8 @@ Object.values(elements.fields).forEach((field) => field.addEventListener("input"
 }));
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  if (!changeInfo.url || !tab.active) return;
-  highlightProductChange({ ...tab, id: tabId, url: changeInfo.url });
+  if ((!changeInfo.url && changeInfo.status !== "complete") || !tab.active) return;
+  highlightProductChange({ ...tab, id: tabId, url: changeInfo.url || tab.url });
 });
 chrome.tabs.onActivated.addListener(async ({ tabId }) => {
   try {
@@ -1037,7 +1055,11 @@ async function initializePanel() {
   if (session && freshCaptureRequest(captureRequest, tab)) {
     await chrome.storage.local.remove(CAPTURE_REQUEST_KEY);
     captureProduct();
-  } else if (session && !activeProduct && tab?.url && !isPrimarySiteUrl(tab.url) && !/web\.whatsapp\.com/i.test(tab.url)) {
+  } else if (session
+    && tab?.url
+    && !isPrimarySiteUrl(tab.url)
+    && !/web\.whatsapp\.com/i.test(tab.url)
+    && (!activeProduct || comparableUrl(tab.url) !== capturedPageUrl)) {
     captureProduct();
   }
 }

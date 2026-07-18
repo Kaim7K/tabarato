@@ -65,7 +65,7 @@
   const closeDialog = (dialog) => {
     const close = [...dialog.querySelectorAll("button, [role='button'], a")].find((element) => {
       const label = tools.clean(`${element.getAttribute("aria-label") || ""} ${element.getAttribute("title") || ""} ${element.textContent || ""}`);
-      return tools.visible(element) && /^(fechar|close|x|×)$/i.test(label);
+      return tools.visible(element) && /^(?:(?:fechar|close)(?: modal| janela| dialogo)?|x|×)$/i.test(label);
     });
     close?.click();
   };
@@ -147,6 +147,33 @@
     return [...new Set(options.map((item) => `${item.charAt(0).toUpperCase()}${item.slice(1)}.`))];
   };
 
+  const couponDialog = () => visibleDialog(/cupons do mercado livre|cupom dispon[ií]vel|conferir produtos|com\s+[A-Z][A-Z0-9_-]{3,24}/i);
+
+  const usefulCoupon = () => tools.couponCandidates()
+    .find((item) => !/cupom disponivel no anuncio/i.test(item.value))?.value || "";
+
+  const captureCoupon = async (hasCouponPrice) => {
+    const existing = usefulCoupon();
+    if (existing) return existing;
+    const control = visibleControl(/ver cupons dispon[ií]veis|ver.*cupons?|cupons? dispon[ií]veis/i);
+    let dialog = couponDialog();
+    if (!dialog && control) {
+      control.click();
+      dialog = await tools.waitFor(couponDialog, 6000);
+    }
+    try {
+      const explicit = usefulCoupon();
+      if (explicit) return explicit;
+      const context = tools.clean(`${control?.textContent || ""} ${dialog?.textContent || ""}`);
+      return hasCouponPrice || /cupom/i.test(context)
+        ? "Dispon\u00EDvel no an\u00FAncio. Ative antes de comprar."
+        : "";
+    } finally {
+      if (dialog && tools.visible(dialog)) closeDialog(dialog);
+      await tools.closeTransientDialogs();
+    }
+  };
+
   const paymentBenefits = async (priceMethod) => {
     const pagePaymentText = [...document.querySelectorAll(".ui-pdp-payment, [class*='installment'], [class*='payment'], [class*='price']")]
       .filter(tools.visible)
@@ -179,11 +206,12 @@
     id: "mercado-livre",
     platform: "Mercado Livre",
     matches: () => /mercadolivre|mercadolibre/i.test(location.hostname),
-    isProduct: () => /\bMLB-?\d{6,}\b/i.test(location.href)
+    isProduct: () => /(?:^|[/?-])MLB-?\d{6,}(?:$|[/?#-])/i.test(location.href)
       || Boolean(document.querySelector(".ui-pdp-title, .ui-pdp-price__second-line")),
     prepareAffiliateLink,
     listProducts,
     extract: async () => {
+      try {
       let affiliateLink = "";
       try {
         affiliateLink = await captureAffiliateLink();
@@ -195,13 +223,15 @@
       const priceInfo = tools.priceDetails(".ui-pdp-price__second-line .andes-money-amount", ".ui-pdp-price__main-container .andes-money-amount");
       const basePrice = priceInfo.value || tools.productPrice(structured);
       const couponPrice = tools.couponPriceDetails(basePrice);
-      const coupon = tools.couponCandidates()[0]?.value || "Cupom disponivel no anuncio. Ative antes de comprar.";
+      const coupon = await captureCoupon(Boolean(couponPrice.value));
+      const previousPrice = tools.price(".ui-pdp-price__original-value .andes-money-amount", ".andes-money-amount--previous") || basePrice;
       const product = {
         productName: tools.text(".ui-pdp-title", "h1") || tools.clean(structured.name) || tools.meta("og:title"),
         shortDescription: tools.description(".ui-pdp-description__content", ".ui-pdp-description") || tools.firstUsefulParagraph(structured.description) || tools.firstUsefulParagraph(tools.meta("og:description")),
         sourceCategory: tools.text(".andes-breadcrumb__container", ".ui-pdp-breadcrumb"),
         currentPrice: couponPrice.value || basePrice,
-        previousPrice: tools.price(".ui-pdp-price__original-value .andes-money-amount", ".andes-money-amount--previous"),
+        previousPrice,
+        regularPrice: basePrice,
         coupon,
         imageUrl: "",
         imageCandidates: [
@@ -220,8 +250,11 @@
       product.extraText = await paymentBenefits(product.pricePaymentMethod);
       const required = [product.productName, product.currentPrice, product.imageUrl, product.externalProductId, MELI_LINK_PATTERN.test(product.affiliateLink)];
       product.confidence = required.filter(Boolean).length / required.length;
-      await tools.closeTransientDialogs();
       return product;
+      } finally {
+        await closeAffiliateDialog().catch(() => {});
+        await tools.closeTransientDialogs();
+      }
     },
   });
 })();

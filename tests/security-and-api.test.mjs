@@ -146,7 +146,7 @@ test("extension publication sends a transient branded image to Telegram", () => 
   assert.match(route, /shareImageDataUrl/);
   assert.match(route, /3_500_000/);
   assert.match(route, /data:image\\\/png;base64/);
-  assert.match(publisher, /sendTelegramOffer\(\{ \.\.\.offer, shareImageDataUrl \}\)/);
+  assert.match(publisher, /sendTelegramOffer\(\{ \.\.\.offer, shareImageDataUrl, messageHeadline \}\)/);
   assert.match(telegram, /imageDataUrl\(offer\.shareImageDataUrl\)/);
   assert.match(telegram, /body = new FormData\(\)/);
   assert.match(telegram, /body\.set\("reply_markup", JSON\.stringify\(reply_markup\)\)/);

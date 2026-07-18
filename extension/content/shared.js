@@ -215,6 +215,7 @@
   const couponCandidates = () => {
     const pageText = document.body.innerText || "";
     const candidates = [];
+    const ignoredCodes = new Set(["CUPOM", "DESCONTO", "FRETE", "GRATIS", "JUROS", "MERCADO", "PRODUTOS", "CARTAO", "PAGAMENTO", "PARCELAMENTO"]);
     const push = (value, confidence = 0.7) => {
       const coupon = clean(value).replace(/^cupom[:\s-]*/i, "").replace(/["']/g, "");
       if (!coupon || coupon.length > 40) return;
@@ -224,6 +225,9 @@
 
     [...pageText.matchAll(/cupom(?:\s+de\s+desconto)?[:\s-]+([A-Z0-9][A-Z0-9_-]{3,24})/gi)]
       .forEach((match) => push(match[1], 0.95));
+    [...pageText.matchAll(/\b(?:Com|COM)\s+([A-Z][A-Z0-9_-]{3,24})\b/g)]
+      .filter((match) => !ignoredCodes.has(match[1]))
+      .forEach((match) => push(match[1], 0.99));
     [...document.querySelectorAll("button, [role='button'], input, textarea, [class*='coupon'], [class*='cupom']")]
       .filter(visible)
       .forEach((element) => {
@@ -266,14 +270,16 @@
   const canonicalUrl = () => attribute("href", 'link[rel="canonical"]') || location.href;
 
   const closeTransientDialogs = async () => {
-    for (let round = 0; round < 3; round += 1) {
-      const controls = [...document.querySelectorAll("button, [role='button'], a")]
+    for (let round = 0; round < 5; round += 1) {
+      const dialogs = [...document.querySelectorAll("[role='dialog'], [aria-modal='true'], .andes-modal")].filter(visible);
+      const roots = dialogs.length ? dialogs : [document];
+      const controls = roots.flatMap((root) => [...root.querySelectorAll("button, [role='button'], a, [class*='close']")])
         .filter(visible)
-        .filter((element) => /^(fechar|close|x|×|agora nao|agora n[aã]o|continuar navegando)$/i.test(clean(`${element.textContent} ${element.getAttribute("aria-label") || ""} ${element.getAttribute("title") || ""}`)));
-      controls.slice(0, 6).forEach((element) => element.click());
+        .filter((element) => /^(?:(?:fechar|close)(?: modal| janela| dialogo)?|x|×|agora nao|agora n[aã]o|continuar navegando)$/i.test(clean(`${element.textContent} ${element.getAttribute("aria-label") || ""} ${element.getAttribute("title") || ""}`)));
+      controls.slice(0, 10).forEach((element) => element.click());
       document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true }));
       document.dispatchEvent(new KeyboardEvent("keyup", { key: "Escape", code: "Escape", bubbles: true }));
-      await new Promise((resolve) => window.setTimeout(resolve, 220));
+      await new Promise((resolve) => window.setTimeout(resolve, 260));
       if (![...document.querySelectorAll("[role='dialog'], [aria-modal='true'], .andes-modal")].some(visible)) break;
     }
   };

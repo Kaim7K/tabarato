@@ -52,7 +52,8 @@ test("extension action and launcher stay hidden outside allowed pages", () => {
   assert.match(background, /typeof chrome\.sidePanel\.close === "function"/);
   assert.match(background, /chrome\.sidePanel\.close\(\{ windowId: tab\.windowId \}\)/);
   assert.match(background, /chrome\.sidePanel\.open\(\{ windowId: sender\.tab\.windowId \}\)/);
-  assert.match(background, /openPanelOnActionClick: true/);
+  assert.match(background, /openPanelOnActionClick: false/);
+  assert.match(background, /chrome\.action\.onClicked/);
   assert.doesNotMatch(background, /setOptions\(\{ tabId, path:/);
   assert.match(content, /TABARATO_IS_ALLOWED_PAGE/);
   assert.match(content, /existing\?\.(?:remove|remove\(\))/);
@@ -97,7 +98,9 @@ test("capture extracts requested product fields and closes store popups", () => 
   assert.match(meli, /MELI_LINK_PATTERN/);
   assert.match(meli, /pricePaymentMethod/);
   assert.match(meli, /couponPrice\.value \|\| basePrice/);
-  assert.match(meli, /Cupom disponivel no anuncio/);
+  assert.match(meli, /captureCoupon/);
+  assert.match(meli, /regularPrice: basePrice/);
+  assert.match(shared, /\(\?:Com\|COM\)/);
   assert.match(meli, /await tools\.closeTransientDialogs/);
   assert.match(shopee, /couponCandidates/);
   assert.match(shopee, /confidence/);
@@ -198,12 +201,22 @@ test("extension persists the active product and exposes admin mode to the site",
 });
 
 test("extension offers coupon activation and compact icon actions", () => {
+  const background = readFileSync(join(extensionRoot, "background", "service-worker.js"), "utf8");
   const sidePanelHtml = readFileSync(join(extensionRoot, "sidepanel", "index.html"), "utf8");
+  const sidePanelApp = readFileSync(join(extensionRoot, "sidepanel", "app.js"), "utf8");
   const sidePanelStyles = readFileSync(join(extensionRoot, "sidepanel", "styles.css"), "utf8");
   const coupons = readFileSync(join(root, "extension", "content", "coupons.js"), "utf8");
   assert.match(sidePanelHtml, /activate-coupons-button/);
+  assert.match(sidePanelHtml, /id="message-headline"/);
   assert.match(sidePanelHtml, /action-icon-button/);
   assert.match(coupons, /TABARATO_ACTIVATE_COUPONS/);
+  assert.match(coupons, /applyInactiveFilter/);
+  assert.match(coupons, /filtrar\(\?: e ordenar\)/);
+  assert.match(coupons, /nao ativados/);
+  assert.match(background, /chrome\.action\.onClicked/);
+  assert.match(background, /chrome\.tabs\.query\(\{\}\)/);
+  assert.match(sidePanelApp, /Capturando o novo produto/);
+  assert.match(sidePanelStyles, /position: fixed/);
   assert.match(sidePanelStyles, /Montserrat/);
 });
 
