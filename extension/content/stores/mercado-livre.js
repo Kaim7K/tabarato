@@ -280,8 +280,36 @@
 
   const usefulCoupon = (root = productRoot()) => tools.couponCandidates(root)[0]?.value || "";
 
+  const couponDialogCodes = (root) => {
+    if (!root) return [];
+    const codes = [];
+    const pushText = (value = "") => {
+      globalThis.TaBaratoCouponCode.extractExplicitComCodes(value).forEach((code) => {
+        if (!codes.includes(code)) codes.push(code);
+      });
+    };
+    const rootText = root.innerText || root.textContent || "";
+    const knownCouponSurface = root.matches?.("[role='dialog'], [aria-modal='true'], .andes-modal, [class*='modal' i]")
+      || /cupons? do mercado livre|ver todos os meus cupons|conferir produtos/i.test(rootText);
+    if (!knownCouponSurface) return [];
+
+    // O modal pode ser grande. Leia o texto completo primeiro para capturar
+    // rótulos como "Com MELIMODA" e "Com VALEDESCONTO" mesmo quando os
+    // cartões não possuem classes com a palavra coupon/cupom.
+    pushText(rootText);
+    [...root.querySelectorAll("span, p, strong, b, label, small, div")]
+      .filter(tools.visible)
+      .map((element) => tools.clean(element.innerText || element.textContent || ""))
+      .filter((text) => text && text.length <= 96 && /^com(?:\s+|(?:\.{2,}|:|-)\s*)[A-Z0-9]/i.test(text))
+      .forEach(pushText);
+    return codes;
+  };
+
   const explicitCouponCode = (root = productRoot()) => {
     if (!root) return "";
+    const modalCode = couponDialogCodes(root)[0] || "";
+    if (modalCode) return modalCode;
+
     const selectors = [
       ".ui-vpp-coupons",
       "[class*='coupon' i]",
@@ -330,7 +358,7 @@
       const code = await tools.waitFor(() => {
         const activeDialog = couponDialog() || dialog;
         return explicitCouponCode(activeDialog) || usefulCoupon(activeDialog);
-      }, 1800) || "";
+      }, 3600) || "";
       if (code) return { code, status: "code" };
       const dialogState = globalThis.TaBaratoCouponCode.classify(dialog.innerText || dialog.textContent || "", { hasCouponPrice });
       return dialogState.status === "none" && (hasCouponPrice || control)

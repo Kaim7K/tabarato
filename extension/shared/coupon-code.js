@@ -39,7 +39,7 @@
     const matches = [];
     const patterns = [
       /(?:cupom|c[o\u00f3]digo)(?:\s+de\s+desconto)?\s*[:#-]\s*([A-Za-z0-9][A-Za-z0-9_-]{3,24})\b/gi,
-      /\b(?:Com|COM)\s*(?:\.{2,}|:|-)?\s*([A-Z][A-Z0-9_-]{3,24})\b(?=[\s\S]{0,60}(?:\d{1,3}(?:[.,]\d+)?\s*%\s*OFF|R\$\s*[\d.,]+|compra\s+m[i\u00ed]nima|limite\s+de|cupom))/g,
+      /\bcom(?:\s+|(?:\.{2,}|:|-)\s*)([A-Z][A-Z0-9_-]{3,24})\b(?=[\s\S]{0,60}(?:\d{1,3}(?:[.,]\d+)?\s*%\s*OFF|R\$\s*[\d.,]+|compra\s+m[i\u00ed]nima|limite\s+de|cupom))/gi,
     ];
     patterns.forEach((pattern) => {
       for (const match of text.matchAll(pattern)) {
@@ -50,13 +50,18 @@
     return matches;
   }
 
-  function extractExplicitComCode(value = "") {
+  function extractExplicitComCodes(value = "") {
     const text = String(value || "");
-    for (const match of text.matchAll(/\b(?:Com|COM)\s*(?:\.{2,}|:|-)?\s*([A-Z][A-Z0-9_-]{3,24})\b/g)) {
+    const codes = [];
+    for (const match of text.matchAll(/\bcom(?:\s+|(?:\.{2,}|:|-)\s*)([A-Z][A-Z0-9_-]{3,24})\b/gi)) {
       const code = normalize(match[1]);
-      if (code) return code;
+      if (code && !codes.includes(code)) codes.push(code);
     }
-    return "";
+    return codes;
+  }
+
+  function extractExplicitComCode(value = "") {
+    return extractExplicitComCodes(value)[0] || "";
   }
 
   function classify(value = "", options = {}) {
@@ -86,6 +91,7 @@
     classify,
     extract,
     extractExplicitComCode,
+    extractExplicitComCodes,
     normalize,
   });
 })();

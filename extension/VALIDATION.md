@@ -79,3 +79,10 @@ A versao somente deve ser considerada totalmente validada em producao depois des
 - O Mercado Livre reconhece codigos visiveis no formato `Com CODIGO` dentro da area de preco ou cupom.
 - Quando existe preco com cupom ou cupom selecionavel, mas nenhum codigo aparece, a mensagem usa `disponível no anúncio. Ative antes de comprar.`.
 - O mesmo aviso e usado quando o cupom ja esta aplicado, mas o Mercado Livre nao revela o codigo.
+
+## v3.1.5 - códigos no modal de cupons
+
+- O modal completo de cupons agora é lido mesmo quando os cartões não possuem classes contendo `coupon` ou `cupom`.
+- Rótulos no padrão `Com MELIMODA`, `Com VALEDESCONTO` e equivalentes são reconhecidos em qualquer elemento visível do modal.
+- Quando existem vários códigos, o primeiro cupom exibido de cima para baixo é usado na mensagem.
+- `R$ 51,84 com Cupom` continua sendo tratado como cupom sem código, sem inventar a palavra `CUPOM` como código.
