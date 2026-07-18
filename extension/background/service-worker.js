@@ -1,13 +1,14 @@
-importScripts("../shared/runtime.js");
+importScripts("../shared/runtime.js", "../shared/config.js");
 
 const runtime = globalThis.TaBaratoRuntime;
+const brandConfig = globalThis.TaBaratoConfig;
 
 const STORAGE_KEYS = [
   "tabarato_extension_session",
   "tabarato_last_base_url",
   "tabarato_connected_store_hosts",
 ];
-const OFFICIAL_SITE_ORIGINS = new Set(["https://tabaratoofertas.vercel.app"]);
+const OFFICIAL_SITE_ORIGINS = new Set(brandConfig.officialSiteOrigins);
 const CORE_STORE_HOSTS = [
   "mercadolivre.com.br",
   "mercadolibre.com",
@@ -51,6 +52,21 @@ async function extensionConfig() {
   }
   extensionConfigCache = { configuredOrigin, dynamicHosts };
   return extensionConfigCache;
+}
+
+async function migrateStoredBaseUrl() {
+  const stored = await chrome.storage.local.get(["tabarato_extension_session", "tabarato_last_base_url"]);
+  const updates = {};
+  const session = stored.tabarato_extension_session;
+  if (session?.baseUrl) {
+    const baseUrl = brandConfig.migrateBaseUrl(session.baseUrl);
+    if (baseUrl !== session.baseUrl) updates.tabarato_extension_session = { ...session, baseUrl };
+  }
+  const lastBaseUrl = brandConfig.migrateBaseUrl(stored.tabarato_last_base_url);
+  if (lastBaseUrl !== stored.tabarato_last_base_url) updates.tabarato_last_base_url = lastBaseUrl;
+  if (!Object.keys(updates).length) return;
+  await chrome.storage.local.set(updates);
+  extensionConfigCache = null;
 }
 
 async function isAllowedUrl(value = "") {
@@ -361,6 +377,7 @@ chrome.action.onClicked.addListener((tab) => {
     .catch((error) => runtime.reportError("action-open-panel", error));
 });
 async function initializeExtension() {
+  await migrateStoredBaseUrl();
   await syncDynamicContentScripts();
   await refreshAllTabs();
 }

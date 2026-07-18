@@ -5,6 +5,7 @@ const CONNECTED_HOSTS_KEY = "tabarato_connected_store_hosts";
 const PRODUCT_DRAFT_KEY = "tabarato_product_draft";
 const CAPTURE_REQUEST_KEY = "tabarato_capture_request";
 const runtime = globalThis.TaBaratoRuntime;
+const brandConfig = globalThis.TaBaratoConfig;
 const artwork = globalThis.TaBaratoArtwork;
 const theme = globalThis.TaBaratoTheme;
 const batchUtils = globalThis.TaBaratoBatchUtils;
@@ -1183,8 +1184,15 @@ async function initializePanel() {
   renderThemeControl();
   const stored = await chrome.storage.local.get([STORAGE_KEY, GROUPS_KEY, LAST_BASE_URL_KEY, PRODUCT_DRAFT_KEY, CAPTURE_REQUEST_KEY]);
   session = stored[STORAGE_KEY] || null;
+  const migratedBaseUrl = brandConfig.migrateBaseUrl(session?.baseUrl || stored[LAST_BASE_URL_KEY]);
+  if (session?.baseUrl && session.baseUrl !== migratedBaseUrl) {
+    session = { ...session, baseUrl: migratedBaseUrl };
+    await chrome.storage.local.set({ [STORAGE_KEY]: session, [LAST_BASE_URL_KEY]: migratedBaseUrl });
+  } else if (stored[LAST_BASE_URL_KEY] !== migratedBaseUrl) {
+    await chrome.storage.local.set({ [LAST_BASE_URL_KEY]: migratedBaseUrl });
+  }
   elements.whatsappGroups.value = stored[GROUPS_KEY] || "";
-  elements.baseUrl.value = session?.baseUrl || stored[LAST_BASE_URL_KEY] || "";
+  elements.baseUrl.value = migratedBaseUrl;
   if (session?.expiresAt && new Date(session.expiresAt).getTime() <= Date.now()) {
     session = null;
     await chrome.storage.local.remove(STORAGE_KEY);

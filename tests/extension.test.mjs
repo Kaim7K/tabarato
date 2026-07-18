@@ -29,6 +29,9 @@ test("extension manifest is Manifest V3 and references existing files", () => {
   assert.ok(manifest.host_permissions.includes("https://*/*"));
   assert.ok(manifest.content_scripts.some((entry) => entry.js.includes("content/stores/generic.js")));
   assert.ok(manifest.content_scripts.some((entry) => entry.matches.includes("https://web.whatsapp.com/*")));
+  assert.ok(manifest.content_scripts.some((entry) => entry.matches.includes("https://www.tabaratoofertas.shop/*")));
+  assert.ok(manifest.content_scripts.some((entry) => entry.matches.includes("https://tabaratoofertas.shop/*")));
+  assert.ok(manifest.content_scripts.every((entry) => !entry.matches.includes("https://tabaratoofertas.vercel.app/*")));
   assert.ok(manifest.content_scripts.every((entry) => !entry.matches.includes("https://*/*")));
   const referencedFiles = [
     manifest.background.service_worker,
@@ -38,6 +41,16 @@ test("extension manifest is Manifest V3 and references existing files", () => {
   ];
   assert.ok(referencedFiles.every((path) => existsSync(join(extensionRoot, path))));
   assert.match(readFileSync(join(extensionRoot, "sidepanel", "index.html"), "utf8"), /product-utils\.js/);
+});
+
+test("extension uses the official domain and migrates the former Vercel address", () => {
+  const config = readFileSync(join(extensionRoot, "shared", "config.js"), "utf8");
+  const background = readFileSync(join(extensionRoot, "background", "service-worker.js"), "utf8");
+  const panel = readFileSync(join(extensionRoot, "sidepanel", "app.js"), "utf8");
+  assert.match(config, /https:\/\/www\.tabaratoofertas\.shop/);
+  assert.match(config, /https:\/\/tabaratoofertas\.vercel\.app/);
+  assert.match(background, /migrateStoredBaseUrl/);
+  assert.match(panel, /brandConfig\.migrateBaseUrl/);
 });
 
 test("extension action and launcher stay hidden outside allowed pages", () => {
