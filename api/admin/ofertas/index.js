@@ -2,6 +2,21 @@ import { handleExtensionCors, requireAdmin, sendJson, methodNotAllowed, readJson
 import { createOffer, listOffers, validateOffer } from "../../_lib/offers.js";
 import { createCategory, listCategories, removeCategory } from "../../_lib/categories.js";
 
+function connectedStoreHostsFromOffers(offers) {
+  const hosts = new Set();
+  offers.forEach((offer) => {
+    [offer.affiliateLink, offer.imageUrl].forEach((value) => {
+      try {
+        const host = new URL(value).hostname.replace(/^www\./, "");
+        if (host && !/mercadolivre|mercadolibre|shopee|mlstatic|susercontent/i.test(host)) hosts.add(host);
+      } catch {
+        // Invalid offer URLs must not block the admin catalog.
+      }
+    });
+  });
+  return [...hosts].slice(0, 80);
+}
+
 export default async function handler(req, res) {
   if (handleExtensionCors(req, res, ["GET", "POST", "DELETE"])) return;
   if (!requireAdmin(req, res, { allowExtension: true })) return;
@@ -14,7 +29,7 @@ export default async function handler(req, res) {
         category: req.query.category || "",
       });
       const categories = await listCategories();
-      return sendJson(res, 200, { offers, categories });
+      return sendJson(res, 200, { offers, categories, connectedStoreHosts: connectedStoreHostsFromOffers(offers) });
     }
 
     if (req.method === "POST") {

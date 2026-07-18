@@ -2,7 +2,7 @@ import { query } from "./db.js";
 import { findDuplicateOffer, getOffer, mapOffer, validateOffer } from "./offers.js";
 import { sendTelegramOffer } from "./telegram.js";
 
-export async function publishOfferById(id, { shareImageDataUrl = "" } = {}) {
+export async function publishOfferById(id, { shareImageDataUrl = "", forceRepublish = false } = {}) {
   const candidate = await getOffer(id);
   if (!candidate) return { ok: false, status: 404, error: "Oferta não encontrada." };
   const duplicate = await findDuplicateOffer(candidate, id, ["PUBLICADO", "PUBLICANDO"]);
@@ -10,21 +10,29 @@ export async function publishOfferById(id, { shareImageDataUrl = "" } = {}) {
     return { ok: false, status: 409, error: "Este produto já foi publicado com o mesmo preço." };
   }
 
-  const locked = await query(
-    `UPDATE telegram_offers
-     SET status='PUBLICANDO', error_message=NULL
-     WHERE id=$1
-       AND status IN ('APROVADO', 'AGENDADO', 'ERRO')
-       AND telegram_message_id IS NULL
-     RETURNING *`,
-    [id]
-  );
+  const locked = forceRepublish
+    ? await query(
+      `UPDATE telegram_offers
+       SET status='PUBLICANDO', error_message=NULL
+       WHERE id=$1
+       RETURNING *`,
+      [id]
+    )
+    : await query(
+      `UPDATE telegram_offers
+       SET status='PUBLICANDO', error_message=NULL
+       WHERE id=$1
+         AND status IN ('APROVADO', 'AGENDADO', 'ERRO')
+         AND telegram_message_id IS NULL
+       RETURNING *`,
+      [id]
+    );
 
   if (!locked.rows[0]) {
     const current = await query("SELECT * FROM telegram_offers WHERE id=$1", [id]);
     const offer = mapOffer(current.rows[0]);
     if (!offer) return { ok: false, status: 404, error: "Oferta não encontrada." };
-    if (offer.telegramMessageId || offer.status === "PUBLICADO") {
+    if (!forceRepublish && (offer.telegramMessageId || offer.status === "PUBLICADO")) {
       return { ok: false, status: 409, error: "Oferta já publicada." };
     }
     return { ok: false, status: 409, error: `Oferta não pode ser publicada com status ${offer.status}.` };

@@ -1,10 +1,12 @@
 (() => {
   if (globalThis.TaBaratoArtwork) return;
 
-  const SIZE = 720;
+  const SIZE = 1080;
 
-  const fit = (width, height, area) => {
-    const scale = Math.min(area.width / width, area.height / height);
+  const fitCoverOrContain = (width, height, area, mode = "contain") => {
+    const scale = mode === "cover"
+      ? Math.max(area.width / width, area.height / height)
+      : Math.min(area.width / width, area.height / height);
     const targetWidth = Math.max(1, width * scale);
     const targetHeight = Math.max(1, height * scale);
     return {
@@ -20,57 +22,17 @@
     context.roundRect(x, y, width, height, radius);
   };
 
-  const ellipsize = (context, value, maxWidth) => {
-    let text = String(value || "").trim();
-    while (text && context.measureText(`${text}...`).width > maxWidth) text = text.slice(0, -1).trimEnd();
-    return `${text || "Produto"}...`;
-  };
-
-  const wrapTitle = (context, value, maxWidth, maxLines = 2) => {
-    const words = String(value || "Produto em oferta").trim().split(/\s+/);
-    const lines = [];
-    let line = "";
-    words.forEach((word) => {
-      const candidate = line ? `${line} ${word}` : word;
-      if (!line || context.measureText(candidate).width <= maxWidth) {
-        line = candidate;
-        return;
-      }
-      lines.push(line);
-      line = word;
-    });
-    if (line) lines.push(line);
-    if (lines.length > maxLines) {
-      lines[maxLines - 1] = ellipsize(context, lines.slice(maxLines - 1).join(" "), maxWidth);
-      return lines.slice(0, maxLines);
-    }
-    return lines;
-  };
-
   const drawContainedImage = (context, image, area) => {
     if (!image?.width || !image?.height) return;
-    const target = fit(image.width, image.height, area);
+    const target = fitCoverOrContain(image.width, image.height, area, "contain");
     context.drawImage(image, target.x, target.y, target.width, target.height);
-  };
-
-  const drawStoreBrand = (context, image, platform) => {
-    const box = { x: 482, y: 654, width: 210, height: 48 };
-    context.fillStyle = "rgba(255,255,255,.96)";
-    roundedRect(context, box.x, box.y, box.width, box.height, 7);
-    context.fill();
-    if (image) drawContainedImage(context, image, { x: box.x + 10, y: box.y + 8, width: 34, height: 32 });
-    context.fillStyle = "#171717";
-    context.font = "700 18px Arial, sans-serif";
-    context.textBaseline = "middle";
-    const label = String(platform || "Loja").slice(0, 22);
-    context.fillText(label, box.x + 54, box.y + box.height / 2, box.width - 64);
   };
 
   const canvasBlob = (canvas) => new Promise((resolve, reject) => {
     canvas.toBlob((blob) => {
       if (blob) resolve(blob);
       else reject(new Error("Nao foi possivel gerar a arte da oferta."));
-    }, "image/png");
+    }, "image/png", 0.92);
   });
 
   const formatPrice = (value) => {
@@ -80,7 +42,19 @@
       : "Preco indisponivel";
   };
 
-  async function createOfferArtwork({ productBlob, siteLogoBlob, storeLogoBlob, productName, currentPrice, previousPrice, platform }) {
+  const discountPercent = (currentPrice, previousPrice) => {
+    const current = Number(currentPrice);
+    const previous = Number(previousPrice);
+    if (!Number.isFinite(current) || !Number.isFinite(previous) || previous <= current) return 0;
+    return Math.max(1, Math.round((1 - current / previous) * 100));
+  };
+
+  const drawLogo = (context, image, area) => {
+    if (!image) return;
+    drawContainedImage(context, image, area);
+  };
+
+  async function createOfferArtwork({ productBlob, siteLogoBlob, storeLogoBlob, currentPrice, previousPrice }) {
     const [productImage, siteLogo, storeLogo] = await Promise.all([
       createImageBitmap(productBlob),
       siteLogoBlob ? createImageBitmap(siteLogoBlob) : null,
@@ -93,45 +67,70 @@
     context.imageSmoothingEnabled = true;
     context.imageSmoothingQuality = "high";
 
-    context.fillStyle = "#eef0f2";
+    const gradient = context.createLinearGradient(0, 0, 0, SIZE);
+    gradient.addColorStop(0, "#f8faf8");
+    gradient.addColorStop(1, "#eef1ee");
+    context.fillStyle = gradient;
     context.fillRect(0, 0, SIZE, SIZE);
+
     context.fillStyle = "#ffffff";
-    context.fillRect(8, 8, 704, 704);
+    roundedRect(context, 36, 36, 1008, 1008, 38);
+    context.fill();
 
-    context.fillStyle = "#f8f9fa";
-    context.fillRect(34, 28, 652, 360);
-    drawContainedImage(context, productImage, { x: 54, y: 42, width: 612, height: 332 });
+    drawContainedImage(context, productImage, { x: 74, y: 70, width: 932, height: 790 });
 
-    context.fillStyle = "#151515";
-    context.font = "700 31px Arial, sans-serif";
-    context.textBaseline = "alphabetic";
-    const titleLines = wrapTitle(context, productName, 608, 2);
-    titleLines.forEach((line, index) => context.fillText(line, 56, 438 + index * 39));
-
-    const priceY = 438 + titleLines.length * 39 + 42;
-    context.font = "700 46px Arial, sans-serif";
-    context.fillText(formatPrice(currentPrice), 56, priceY);
-
-    const current = Number(currentPrice);
-    const previous = Number(previousPrice);
-    if (Number.isFinite(current) && Number.isFinite(previous) && previous > current) {
-      const discount = Math.max(1, Math.round((1 - current / previous) * 100));
-      context.fillStyle = "#14965f";
-      roundedRect(context, 56, priceY + 18, 122, 40, 2);
+    const discount = discountPercent(currentPrice, previousPrice);
+    if (discount > 0) {
+      context.fillStyle = "#15965d";
+      roundedRect(context, 754, 76, 246, 76, 38);
       context.fill();
       context.fillStyle = "#ffffff";
-      context.font = "700 21px Arial, sans-serif";
+      context.font = "800 38px Arial, sans-serif";
       context.textBaseline = "middle";
-      context.fillText(`-${discount}%`, 78, priceY + 38);
+      context.textAlign = "center";
+      context.fillText(`-${discount}%`, 877, 114);
+      context.textAlign = "start";
     }
 
-    context.fillStyle = "#ff6534";
-    context.fillRect(8, 642, 704, 70);
-    context.fillStyle = "rgba(255,255,255,.96)";
-    roundedRect(context, 24, 654, 154, 48, 7);
+    const bar = { x: 70, y: 842, width: 940, height: 154 };
+    context.shadowColor = "rgba(17,17,17,.18)";
+    context.shadowBlur = 28;
+    context.shadowOffsetY = 12;
+    context.fillStyle = "#ffffff";
+    roundedRect(context, bar.x, bar.y, bar.width, bar.height, 77);
     context.fill();
-    if (siteLogo) drawContainedImage(context, siteLogo, { x: 34, y: 658, width: 134, height: 40 });
-    drawStoreBrand(context, storeLogo, platform);
+    context.shadowColor = "transparent";
+    context.shadowBlur = 0;
+    context.shadowOffsetY = 0;
+
+    context.fillStyle = "#111111";
+    context.font = "900 58px Arial, sans-serif";
+    context.textBaseline = "alphabetic";
+    context.fillText(formatPrice(currentPrice), 112, 930, 360);
+
+    if (discount > 0) {
+      const oldPrice = formatPrice(previousPrice);
+      context.fillStyle = "#8d8d8d";
+      context.font = "700 28px Arial, sans-serif";
+      context.fillText(oldPrice, 112, 966, 260);
+      const measure = context.measureText(oldPrice);
+      context.strokeStyle = "#8d8d8d";
+      context.lineWidth = 4;
+      context.beginPath();
+      context.moveTo(112, 956);
+      context.lineTo(112 + Math.min(measure.width, 260), 944);
+      context.stroke();
+    }
+
+    context.strokeStyle = "rgba(17,17,17,.16)";
+    context.lineWidth = 2;
+    context.beginPath();
+    context.moveTo(704, 876);
+    context.lineTo(704, 962);
+    context.stroke();
+
+    drawLogo(context, storeLogo, { x: 598, y: 884, width: 70, height: 70 });
+    drawLogo(context, siteLogo, { x: 732, y: 878, width: 224, height: 82 });
 
     productImage.close?.();
     siteLogo?.close?.();

@@ -2,17 +2,34 @@
   if (globalThis.__TABARATO_STORE_CONTENT__) return;
   globalThis.__TABARATO_STORE_CONTENT__ = true;
 
-  const BUTTON_ID = "tabarato-send-product";
+  const BUTTON_ID = "tabarato-launcher";
   const runtime = globalThis.TaBaratoRuntime;
   let extractionPromise = null;
   let extractionUrl = "";
+  let allowedPage = false;
 
-  const currentAdapter = () => globalThis.TaBaratoStores.find((adapter) => adapter.matches());
+  async function currentAdapter() {
+    const stores = globalThis.TaBaratoStores || [];
+    for (const adapter of stores) {
+      if (adapter.matches?.()) return adapter;
+      if (adapter.matchesAsync && await adapter.matchesAsync()) return adapter;
+    }
+    return null;
+  }
 
-  const updateButton = () => {
-    const adapter = currentAdapter();
+  async function updateAllowedPage() {
+    try {
+      const result = await chrome.runtime.sendMessage({ type: "TABARATO_IS_ALLOWED_PAGE", url: location.href });
+      allowedPage = Boolean(result?.allowed);
+    } catch {
+      allowedPage = false;
+    }
+  }
+
+  async function updateButton() {
+    await updateAllowedPage();
     const existing = document.getElementById(BUTTON_ID);
-    if (!adapter?.isProduct()) {
+    if (!allowedPage) {
       existing?.remove();
       return;
     }
@@ -21,45 +38,44 @@
     const button = document.createElement("button");
     button.id = BUTTON_ID;
     button.type = "button";
-    button.textContent = "Enviar produto";
-    button.setAttribute("aria-label", "Enviar produto para o Ta Barato");
+    button.setAttribute("aria-label", "Abrir Ta Barato");
     Object.assign(button.style, {
       position: "fixed",
-      right: "20px",
-      bottom: "20px",
+      right: "18px",
+      bottom: "18px",
       zIndex: "2147483647",
-      minHeight: "46px",
-      padding: "0 18px",
-      border: "1px solid rgba(255,255,255,.22)",
-      borderRadius: "7px",
-      background: "#111111",
-      color: "#ffffff",
-      boxShadow: "0 10px 30px rgba(0,0,0,.22)",
-      font: "600 14px/1 system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+      width: "52px",
+      height: "52px",
+      padding: "0",
+      border: "1px solid rgba(17,17,17,.14)",
+      borderRadius: "50%",
+      background: "#ffffff",
+      backgroundImage: `url("${chrome.runtime.getURL("assets/icon.png")}")`,
+      backgroundPosition: "center",
+      backgroundRepeat: "no-repeat",
+      backgroundSize: "34px 34px",
+      boxShadow: "0 16px 42px rgba(17,17,17,.24)",
       cursor: "pointer",
     });
-    button.addEventListener("mouseenter", () => { button.style.background = "#ff6b35"; });
-    button.addEventListener("mouseleave", () => { button.style.background = "#111111"; });
-    button.addEventListener("click", () => {
-      adapter.prepareAffiliateLink?.();
+    button.addEventListener("mouseenter", () => { button.style.transform = "translateY(-1px)"; });
+    button.addEventListener("mouseleave", () => { button.style.transform = ""; });
+    button.addEventListener("click", async () => {
+      const adapter = await currentAdapter();
+      if (adapter?.isProduct?.()) adapter.prepareAffiliateLink?.();
       chrome.runtime.sendMessage({ type: "TABARATO_OPEN_PANEL" }).catch(() => {});
     });
-    document.body.appendChild(button);
-  };
+    document.documentElement.appendChild(button);
+  }
 
-  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-    if (message?.type !== "TABARATO_EXTRACT_PRODUCT") return;
-    const adapter = currentAdapter();
-    if (!adapter?.isProduct()) {
-      sendResponse({ ok: false, error: "Abra a pagina exata de um produto compativel." });
-      return;
-    }
+  async function extractCurrentProduct() {
+    const adapter = await currentAdapter();
+    if (!adapter?.isProduct?.()) throw new Error("Abra a pagina exata de um produto compativel.");
     const currentUrl = location.href;
     if (!extractionPromise || extractionUrl !== currentUrl) {
       extractionUrl = currentUrl;
       const pendingExtraction = runtime.withTimeout(
         Promise.resolve().then(() => adapter.extract()),
-        28000,
+        35000,
         "A leitura desta pagina demorou demais. Recarregue o produto e tente novamente.",
       );
       extractionPromise = pendingExtraction;
@@ -69,21 +85,41 @@
         extractionUrl = "";
       }).catch(() => {});
     }
-    extractionPromise
-      .then((product) => sendResponse({ ok: true, product }))
-      .catch((error) => {
-        runtime.reportError("store-extraction", error);
-        sendResponse({ ok: false, error: runtime.errorMessage(error, "Nao foi possivel ler os dados desta pagina.") });
-      });
-    return true;
+    return extractionPromise;
+  }
+
+  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    if (message?.type === "TABARATO_EXTRACT_PRODUCT") {
+      extractCurrentProduct()
+        .then((product) => sendResponse({ ok: true, product }))
+        .catch((error) => {
+          runtime.reportError("store-extraction", error);
+          sendResponse({ ok: false, error: runtime.errorMessage(error, "Nao foi possivel ler os dados desta pagina.") });
+        });
+      return true;
+    }
+
+    if (message?.type === "TABARATO_LIST_VISIBLE_PRODUCTS") {
+      currentAdapter()
+        .then((adapter) => {
+          const urls = adapter?.listProducts?.(Number(message.limit) || 20) || [];
+          sendResponse({ ok: true, urls });
+        })
+        .catch((error) => sendResponse({ ok: false, error: runtime.errorMessage(error), urls: [] }));
+      return true;
+    }
   });
 
-  updateButton();
+  updateButton().catch((error) => runtime.reportError("launcher", error));
   let lastUrl = location.href;
   window.setInterval(() => {
     try {
-      if (lastUrl !== location.href) lastUrl = location.href;
-      updateButton();
+      if (lastUrl !== location.href) {
+        lastUrl = location.href;
+        extractionPromise = null;
+        extractionUrl = "";
+      }
+      updateButton().catch(() => {});
     } catch (error) {
       runtime.reportError("store-button", error);
     }

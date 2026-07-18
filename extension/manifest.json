@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Ta Barato - Captura de ofertas",
-  "description": "Capture produtos das lojas e envie ofertas para o painel administrativo do Ta Barato.",
-  "version": "1.5.0",
+  "name": "Ta Barato - Central de Ofertas",
+  "description": "Capture ofertas, gere artes e publique no site, Telegram e WhatsApp somente nas lojas conectadas.",
+  "version": "2.0.0",
   "minimum_chrome_version": "114",
   "icons": {
     "128": "assets/icon.png"
@@ -15,21 +15,16 @@
     "sidePanel",
     "tabs"
   ],
-  "optional_host_permissions": [
+  "host_permissions": [
     "https://*/*",
     "http://localhost/*",
     "http://127.0.0.1/*"
-  ],
-  "host_permissions": [
-    "https://*.mlstatic.com/*",
-    "https://*.img.susercontent.com/*",
-    "https://web.whatsapp.com/*"
   ],
   "background": {
     "service_worker": "background/service-worker.js"
   },
   "action": {
-    "default_title": "Enviar produto para o Ta Barato",
+    "default_title": "Abrir Ta Barato",
     "default_icon": {
       "128": "assets/icon.png"
     }
@@ -40,15 +35,16 @@
   "content_scripts": [
     {
       "matches": [
-        "https://*.mercadolivre.com.br/*",
-        "https://*.mercadolibre.com/*",
-        "https://*.shopee.com.br/*"
+        "https://*/*",
+        "http://localhost/*",
+        "http://127.0.0.1/*"
       ],
       "js": [
         "shared/runtime.js",
         "content/shared.js",
         "content/stores/mercado-livre.js",
         "content/stores/shopee.js",
+        "content/stores/generic.js",
         "content/index.js"
       ],
       "run_at": "document_idle"

@@ -3,6 +3,7 @@
   globalThis.__TABARATO_WHATSAPP_AUTOMATION__ = true;
   const runtime = globalThis.TaBaratoRuntime;
   let activeSend = null;
+  let activeController = null;
 
   const clean = (value = "") => String(value).replace(/\s+/g, " ").trim();
   const normalized = (value = "") => clean(value)
@@ -274,12 +275,18 @@
   };
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    if (message?.type === "TABARATO_WHATSAPP_CANCEL") {
+      activeController?.abort();
+      sendResponse({ ok: true });
+      return;
+    }
     if (message?.type !== "TABARATO_WHATSAPP_SEND") return;
     if (activeSend) {
       sendResponse({ ok: false, error: "Ja existe um envio para o WhatsApp em andamento." });
       return;
     }
     const controller = new AbortController();
+    activeController = controller;
     activeSend = runtime.withTimeout(
       performSend(message, controller.signal),
       62000,
@@ -287,6 +294,7 @@
     ).finally(() => {
       controller.abort();
       activeSend = null;
+      if (activeController === controller) activeController = null;
     });
     activeSend
       .then(sendResponse)

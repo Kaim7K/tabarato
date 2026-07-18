@@ -1,11 +1,12 @@
 import { claimDueWhatsAppMessage, completeWhatsAppMessage, createAutoMessage, deleteAutoMessage, listAutoMessages, sendAutoMessageNow, updateAutoMessage, validateAutoMessage } from "../../_lib/autoMessages.js";
 import { handleExtensionCors, requireAdmin, requireUuid, sendJson, methodNotAllowed, readJson, publicError } from "../../_lib/http.js";
+import { sendTelegramText } from "../../_lib/telegram.js";
 
 export default async function handler(req, res) {
   if (handleExtensionCors(req, res, ["GET", "POST", "PATCH", "DELETE"])) return;
   const fromExtension = /^chrome-extension:\/\//.test(String(req.headers.origin || ""));
   const extensionActionAllowed = (req.method === "GET" && req.query.action === "pending-whatsapp")
-    || (req.method === "POST" && req.query.action === "complete-whatsapp");
+    || (req.method === "POST" && ["complete-whatsapp", "send-custom"].includes(String(req.query.action || "")));
   if (fromExtension && !extensionActionAllowed) return sendJson(res, 403, { error: "Acao nao permitida para a extensao." });
   if (!requireAdmin(req, res, { allowExtension: true })) return;
 
@@ -34,6 +35,11 @@ export default async function handler(req, res) {
         if (!result) return sendJson(res, 404, { error: "Mensagem nao encontrada." });
         if (!result.ok) return sendJson(res, 500, { error: result.error || "Erro ao enviar mensagem.", message: result.message });
         return sendJson(res, 200, { ok: true, message: result.message });
+      }
+      if (req.query.action === "send-custom") {
+        const input = await readJson(req);
+        const result = await sendTelegramText(input.message, input.imageUrl);
+        return sendJson(res, 200, { ok: true, result });
       }
 
       const input = await readJson(req);

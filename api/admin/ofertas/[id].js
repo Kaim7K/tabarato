@@ -1,9 +1,10 @@
 import { query } from "../../_lib/db.js";
-import { requireAdmin, requireUuid, sendJson, methodNotAllowed, readJson, publicError } from "../../_lib/http.js";
+import { handleExtensionCors, requireAdmin, requireUuid, sendJson, methodNotAllowed, readJson, publicError } from "../../_lib/http.js";
 import { getOffer, updateOffer, validateOffer } from "../../_lib/offers.js";
 
 export default async function handler(req, res) {
-  if (!requireAdmin(req, res)) return;
+  if (handleExtensionCors(req, res, ["GET", "PATCH", "DELETE"])) return;
+  if (!requireAdmin(req, res, { allowExtension: true })) return;
   const { id } = req.query;
   if (!requireUuid(id, res)) return;
 

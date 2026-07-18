@@ -3,125 +3,162 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Enviar produto | T&aacute; Barato</title>
+    <title>Ta Barato | Extensao</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <header class="topbar">
-      <div>
-        <p class="eyebrow">T&Aacute; BARATO</p>
-        <h1>Enviar produto</h1>
+      <div class="brand-mark">
+        <img src="../assets/icon.png" alt="" />
+        <div>
+          <p>TA BARATO</p>
+          <h1>Central de ofertas</h1>
+        </div>
       </div>
       <div class="topbar-actions">
-        <button id="admin-panel-button" class="admin-panel-button" type="button"><span aria-hidden="true">&#8599;</span> Painel</button>
-        <span id="connection-status" class="status" data-tone="neutral">Desconectado</span>
+        <button id="groups-toggle" class="icon-button" type="button" title="Registrar grupos" aria-label="Registrar grupos">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 11c1.66 0 3-1.57 3-3.5S17.66 4 16 4s-3 1.57-3 3.5 1.34 3.5 3 3.5Zm-8 0c1.66 0 3-1.57 3-3.5S9.66 4 8 4 5 5.57 5 7.5 6.34 11 8 11Zm0 2c-2.67 0-5 1.34-5 3v2h10v-2c0-1.66-2.33-3-5-3Zm8 0c-.39 0-.78.03-1.14.09 1.31.95 2.14 2.22 2.14 3.91v1h4v-2c0-1.66-2.33-3-5-3Z"/></svg>
+        </button>
+        <button id="admin-panel-button" class="icon-button" type="button" title="Abrir painel" aria-label="Abrir painel">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3h7v7h-2V6.41l-9.29 9.3-1.42-1.42 9.3-9.29H14V3ZM5 5h6v2H7v10h10v-4h2v6H5V5Z"/></svg>
+        </button>
       </div>
     </header>
 
     <main>
       <section id="setup-view" class="panel">
-        <div class="section-heading">
-          <span class="step">1</span>
-          <div>
-            <h2>Conectar ao painel</h2>
-            <p>Use o endere&ccedil;o e as mesmas credenciais do administrador.</p>
-          </div>
-        </div>
-
         <form id="login-form" class="form-stack">
           <label>
-            <span>Endere&ccedil;o do site</span>
+            <span>Endereco do site</span>
             <input id="base-url" type="url" placeholder="https://seu-dominio.com.br" autocomplete="url" required />
           </label>
-          <label>
-            <span>Usu&aacute;rio</span>
-            <input id="username" type="text" value="admin" autocomplete="username" required />
-          </label>
-          <label>
-            <span>Senha</span>
-            <input id="password" type="password" autocomplete="current-password" required />
-          </label>
-          <button id="login-button" class="button button-primary" type="submit">Entrar e capturar</button>
+          <div class="field-grid">
+            <label>
+              <span>Usuario</span>
+              <input id="username" type="text" value="admin" autocomplete="username" required />
+            </label>
+            <label>
+              <span>Senha</span>
+              <input id="password" type="password" autocomplete="current-password" required />
+            </label>
+          </div>
+          <button id="login-button" class="button button-primary" type="submit">Conectar</button>
         </form>
       </section>
 
       <section id="editor-view" class="hidden">
-        <div class="whatsapp-target scheduled-message-panel">
-          <label><span>Grupo padrão do WhatsApp</span><input id="whatsapp-group" type="text" placeholder="Nome exato do grupo" autocomplete="off" /></label>
-          <button id="scheduled-message-button" class="button button-whatsapp" type="button"><img src="../assets/whatsapp.svg" alt="" aria-hidden="true" /> Enviar mensagem agendada</button>
-          <p>Busca a próxima mensagem de WhatsApp pronta no agendador e envia para o grupo.</p>
-        </div>
-
-        <div class="capture-bar">
-          <div>
-            <p class="eyebrow">PRODUTO DETECTADO</p>
-            <p id="capture-source" class="capture-source" aria-live="polite">Aguardando p&aacute;gina</p>
+        <div class="control-strip">
+          <span id="connection-status" class="status" data-tone="neutral">Desconectado</span>
+          <div class="segmented" role="group" aria-label="Modo da extensao">
+            <button id="mode-single" type="button" class="active">Produto</button>
+            <button id="mode-batch" type="button">Lote</button>
           </div>
-          <button id="refresh-button" class="icon-button" type="button" title="Capturar novamente" aria-label="Capturar novamente">&#8635;</button>
         </div>
 
-        <div id="loading-state" class="panel state-panel hidden" role="status">
-          <span class="spinner"></span>
-          <p>Lendo os dados da loja...</p>
-        </div>
+        <section id="groups-panel" class="panel groups-panel hidden">
+          <label>
+            <span>Grupos do WhatsApp</span>
+            <textarea id="whatsapp-groups" rows="5" placeholder="Um grupo por linha"></textarea>
+          </label>
+          <div class="panel-actions">
+            <button id="save-groups-button" class="button button-primary" type="button">Salvar grupos</button>
+            <button id="stop-macro-button" class="button button-danger" type="button">Parar macro</button>
+          </div>
+        </section>
 
-        <div id="empty-state" class="panel state-panel hidden">
-          <strong>Nenhum produto encontrado</strong>
-          <p>Abra uma p&aacute;gina de produto do Mercado Livre ou Shopee.</p>
-        </div>
-
-        <form id="offer-form" class="hidden">
-          <section class="product-preview">
-            <div class="image-wrap">
-              <img id="preview-image" alt="Imagem do produto capturado" />
-              <span id="platform-badge" class="platform-badge">Loja</span>
+        <section id="single-view">
+          <div class="capture-bar">
+            <div>
+              <p class="eyebrow">PRODUTO</p>
+              <p id="capture-source" class="capture-source" aria-live="polite">Aguardando captura</p>
             </div>
-            <div class="preview-copy">
-              <p id="preview-category" class="preview-category">Categoria</p>
-              <strong id="preview-name">Produto</strong>
-              <p id="preview-price" class="preview-price">R$ 0,00</p>
-            </div>
-          </section>
-
-          <div id="duplicate-warning" class="notice notice-warning hidden" role="alert"></div>
-          <div id="capture-quality" class="notice notice-warning hidden" role="status"></div>
-          <div id="affiliate-warning" class="notice">
-            Confirme se o link abaixo &eacute; o seu link de afiliado antes de salvar.
+            <button id="refresh-button" class="icon-button light" type="button" title="Capturar produto" aria-label="Capturar produto">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17.65 6.35A7.95 7.95 0 0 0 12 4a8 8 0 1 0 7.45 10.93h-2.16A6 6 0 1 1 12 6c1.66 0 3.14.69 4.22 1.78L13 11h8V3l-3.35 3.35Z"/></svg>
+            </button>
           </div>
 
-          <section class="panel fields-panel">
-            <div class="section-heading compact">
-              <span class="step">2</span>
-              <div><h2>Revisar dados</h2><p>Os campos continuam edit&aacute;veis.</p></div>
-            </div>
+          <div id="loading-state" class="state hidden" role="status">
+            <span class="spinner"></span>
+            <p>Lendo produto...</p>
+          </div>
 
-            <div class="form-stack">
-              <label class="field-wide"><span>Link de afiliado *</span><input id="affiliate-link" type="url" required /></label>
-              <label><span>Nome do produto *</span><textarea id="product-name" rows="2" maxlength="200" required></textarea></label>
-              <div class="field-grid">
-                <label><span>Pre&ccedil;o atual *</span><input id="current-price" type="number" min="0.01" step="0.01" required /></label>
-                <label><span>Pre&ccedil;o anterior</span><input id="previous-price" type="number" min="0.01" step="0.01" /></label>
+          <div id="empty-state" class="state hidden">
+            <strong>Nenhum produto identificado</strong>
+            <p>Use uma pagina de produto ou uma loja conectada ao site.</p>
+          </div>
+
+          <form id="offer-form" class="hidden">
+            <section class="preview">
+              <div class="preview-image-wrap">
+                <img id="preview-image" alt="Imagem do produto" />
+                <span id="platform-badge">Loja</span>
               </div>
-              <div class="field-grid">
-                <label><span>Plataforma *</span><select id="platform"><option>Mercado Livre</option><option>Shopee</option></select></label>
-                <label><span>Categoria *</span><select id="category"><option>Casa e organiza&ccedil;&atilde;o</option><option selected>Tecnologia</option><option>Escrit&oacute;rio</option><option>Ferramentas</option><option>Cozinha</option><option>Beleza e cuidados</option></select></label>
+              <div class="preview-copy">
+                <p id="preview-category">Categoria</p>
+                <strong id="preview-name">Produto</strong>
+                <p id="preview-price">R$ 0,00</p>
               </div>
-              <label><span>Cupom</span><input id="coupon" type="text" maxlength="100" /></label>
-              <label><span>Descri&ccedil;&atilde;o curta</span><textarea id="short-description" rows="3" maxlength="1000"></textarea></label>
-              <label><span>URL da imagem</span><input id="image-url" type="url" /></label>
-              <label><span>Texto complementar</span><textarea id="extra-text" rows="2" maxlength="600"></textarea></label>
+            </section>
+
+            <div id="duplicate-warning" class="notice hidden" role="status"></div>
+            <div id="capture-quality" class="notice notice-warning hidden" role="status"></div>
+
+            <section class="panel fields-panel">
+              <div class="form-stack">
+                <label class="field-wide"><span>Link de afiliado</span><input id="affiliate-link" type="url" required /></label>
+                <label><span>Nome do produto</span><textarea id="product-name" rows="2" maxlength="200" required></textarea></label>
+                <div class="field-grid">
+                  <label><span>Preco atual</span><input id="current-price" type="number" min="0.01" step="0.01" required /></label>
+                  <label><span>Preco anterior</span><input id="previous-price" type="number" min="0.01" step="0.01" /></label>
+                </div>
+                <div class="field-grid">
+                  <label><span>Plataforma</span><select id="platform"><option>Mercado Livre</option><option>Shopee</option><option>Loja conectada</option></select></label>
+                  <label><span>Categoria</span><select id="category"><option>Tecnologia</option><option>Casa e organizacao</option><option>Cozinha</option><option>Ferramentas</option><option>Beleza e cuidados</option></select></label>
+                </div>
+                <label><span>Cupom</span><input id="coupon" type="text" maxlength="100" /></label>
+                <label><span>Descricao curta</span><textarea id="short-description" rows="3" maxlength="1000"></textarea></label>
+                <label><span>URL da imagem</span><input id="image-url" type="url" /></label>
+                <label><span>Texto complementar</span><textarea id="extra-text" rows="2" maxlength="600"></textarea></label>
+              </div>
+            </section>
+
+            <div class="sticky-actions">
+              <button id="publish-button" class="button button-primary wide" type="button"><span class="button-icon">↑</span>Publicar agora</button>
+              <button id="whatsapp-button" class="button button-whatsapp" type="button"><img src="../assets/whatsapp.svg" alt="" />WhatsApp</button>
+              <button id="save-button" class="button button-secondary" type="submit"><span class="button-icon">✓</span>Salvar</button>
             </div>
-          </section>
+          </form>
+        </section>
 
-          <div class="sticky-actions">
-            <button id="publish-button" class="button button-publish" type="button">Publicar agora</button>
-            <button id="whatsapp-button" class="button button-whatsapp" type="button"><img src="../assets/whatsapp.svg" alt="" aria-hidden="true" /> Enviar ao WhatsApp</button>
-            <button id="save-button" class="button button-primary" type="submit">Salvar rascunho</button>
-            <button id="save-open-button" class="button button-secondary" type="button">Salvar e abrir painel</button>
+        <section id="batch-view" class="hidden">
+          <div class="panel batch-panel">
+            <label>
+              <span>Quantidade</span>
+              <input id="batch-limit" type="number" min="1" max="50" step="1" value="5" />
+            </label>
+            <div class="panel-actions">
+              <button id="batch-start-button" class="button button-primary" type="button">Enviar lote</button>
+              <button id="batch-stop-button" class="button button-danger" type="button">Parar</button>
+            </div>
+            <ol id="batch-log" class="batch-log"></ol>
           </div>
-        </form>
+        </section>
 
-        <button id="logout-button" class="text-button" type="button">Desconectar extens&atilde;o</button>
+        <section class="panel custom-panel">
+          <button id="custom-toggle" class="panel-title-button" type="button">Mensagem personalizada</button>
+          <div id="custom-body" class="custom-body hidden">
+            <label><span>Mensagem</span><textarea id="custom-message" rows="4" maxlength="2000"></textarea></label>
+            <label><span>Imagem</span><input id="custom-image-url" type="url" placeholder="https://imagem.png" /></label>
+            <input id="custom-image-file" class="file-input" type="file" accept="image/png,image/jpeg,image/webp" />
+            <div class="channel-grid">
+              <label class="check-row"><input id="custom-telegram" type="checkbox" checked /> Telegram</label>
+              <label class="check-row"><input id="custom-whatsapp" type="checkbox" checked /> WhatsApp</label>
+            </div>
+            <button id="custom-send-button" class="button button-primary" type="button">Enviar mensagem</button>
+          </div>
+        </section>
+
+        <button id="logout-button" class="text-button" type="button">Desconectar extensao</button>
       </section>
     </main>
 

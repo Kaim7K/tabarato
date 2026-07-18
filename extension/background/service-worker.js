@@ -1,40 +1,60 @@
 importScripts("../shared/runtime.js");
 
 const runtime = globalThis.TaBaratoRuntime;
-const SITE_URL_KEYS = ["tabarato_extension_session", "tabarato_last_base_url"];
-const OFFICIAL_SITE_ORIGINS = new Set(["https://tabaratoofertas.vercel.app"]);
 
-function allowedStoreHost(hostname) {
-  return hostname === "web.whatsapp.com"
-    || hostname === "mercadolivre.com.br"
-    || hostname.endsWith(".mercadolivre.com.br")
-    || hostname === "mercadolibre.com"
-    || hostname.endsWith(".mercadolibre.com")
-    || hostname === "shopee.com.br"
-    || hostname.endsWith(".shopee.com.br");
+const STORAGE_KEYS = [
+  "tabarato_extension_session",
+  "tabarato_last_base_url",
+  "tabarato_connected_store_hosts",
+];
+const OFFICIAL_SITE_ORIGINS = new Set(["https://tabaratoofertas.vercel.app"]);
+const CORE_STORE_HOSTS = [
+  "mercadolivre.com.br",
+  "mercadolibre.com",
+  "shopee.com.br",
+];
+let whatsappOperation = null;
+
+function hostMatches(hostname, host) {
+  return hostname === host || hostname.endsWith(`.${host}`);
 }
 
-async function configuredSiteOrigin() {
-  const stored = await chrome.storage.local.get(SITE_URL_KEYS);
+function builtInAllowedHost(hostname) {
+  return hostname === "web.whatsapp.com" || CORE_STORE_HOSTS.some((host) => hostMatches(hostname, host));
+}
+
+async function extensionConfig() {
+  const stored = await chrome.storage.local.get(STORAGE_KEYS);
+  const dynamicHosts = Array.isArray(stored.tabarato_connected_store_hosts)
+    ? stored.tabarato_connected_store_hosts.map(String).filter(Boolean)
+    : [];
+  let configuredOrigin = "";
   const candidate = stored.tabarato_extension_session?.baseUrl || stored.tabarato_last_base_url || "";
   try {
-    return new URL(candidate).origin;
+    configuredOrigin = new URL(candidate).origin;
   } catch {
-    return "";
+    configuredOrigin = "";
+  }
+  return { configuredOrigin, dynamicHosts };
+}
+
+async function isAllowedUrl(value = "") {
+  try {
+    const target = new URL(value);
+    if (!["http:", "https:"].includes(target.protocol)) return false;
+    const { configuredOrigin, dynamicHosts } = await extensionConfig();
+    return builtInAllowedHost(target.hostname)
+      || OFFICIAL_SITE_ORIGINS.has(target.origin)
+      || target.origin === configuredOrigin
+      || dynamicHosts.some((host) => hostMatches(target.hostname, host));
+  } catch {
+    return false;
   }
 }
 
 async function updateTabAvailability(tabId, url = "") {
   if (!tabId) return;
-  let allowed = false;
-  try {
-    const target = new URL(url);
-    allowed = ["http:", "https:"].includes(target.protocol)
-      && (allowedStoreHost(target.hostname)
-        || OFFICIAL_SITE_ORIGINS.has(target.origin)
-        || target.origin === await configuredSiteOrigin());
-  } catch { /* Browser internal pages stay disabled. */ }
-
+  const allowed = await isAllowedUrl(url);
   await Promise.all([
     allowed ? chrome.action.enable(tabId) : chrome.action.disable(tabId),
     chrome.sidePanel.setOptions({ tabId, path: "sidepanel/index.html", enabled: allowed }),
@@ -46,29 +66,7 @@ async function refreshAllTabs() {
   await Promise.all(tabs.map((tab) => updateTabAvailability(tab.id, tab.url)));
 }
 
-chrome.action.disable().catch(() => {});
-chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
-chrome.runtime.onInstalled.addListener(() => {
-  refreshAllTabs().catch((error) => runtime.reportError("extension-installed", error));
-});
-chrome.runtime.onStartup.addListener(() => {
-  refreshAllTabs().catch((error) => runtime.reportError("extension-startup", error));
-});
-chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  if (changeInfo.url || changeInfo.status === "complete") {
-    updateTabAvailability(tabId, changeInfo.url || tab.url).catch((error) => runtime.reportError("tab-availability", error));
-  }
-});
-chrome.tabs.onActivated.addListener(({ tabId }) => {
-  chrome.tabs.get(tabId).then((tab) => updateTabAvailability(tabId, tab.url)).catch(() => {});
-});
-chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === "local" && SITE_URL_KEYS.some((key) => changes[key])) {
-    refreshAllTabs().catch((error) => runtime.reportError("refresh-tabs", error));
-  }
-});
-
-function waitForTab(tabId, timeout = 25000) {
+async function waitForTab(tabId, timeout = 30000) {
   return new Promise((resolve, reject) => {
     let settled = false;
     const finish = (callback, value) => {
@@ -96,32 +94,19 @@ async function whatsappTab() {
   return chrome.tabs.create({ url: "https://web.whatsapp.com/" });
 }
 
-let whatsappOperation = null;
+function normalizeGroups(message) {
+  const raw = Array.isArray(message.groupNames) ? message.groupNames : [message.groupName];
+  return [...new Set(raw.flatMap((value) => String(value || "").split(/\r?\n/))
+    .map((value) => value.trim())
+    .filter(Boolean))];
+}
 
-async function performWhatsAppSend(message) {
-  if (!String(message?.groupName || "").trim()) throw new Error("Informe o grupo do WhatsApp.");
-  if (!String(message?.text || "").trim()) throw new Error("A mensagem do WhatsApp esta vazia.");
-  if (String(message?.imageDataUrl || "").length > 17 * 1024 * 1024) throw new Error("A imagem excede o limite permitido para envio.");
-  const tab = await whatsappTab();
-  if (!tab?.id) throw new Error("Nao foi possivel abrir o WhatsApp Web.");
-  await chrome.windows.update(tab.windowId, { focused: true });
-  await chrome.tabs.update(tab.id, { active: true });
-  await waitForTab(tab.id);
-  await runtime.delay(350);
-
-  const payload = {
-    type: "TABARATO_WHATSAPP_SEND",
-    groupName: message.groupName,
-    text: message.text,
-    imageDataUrl: message.imageDataUrl,
-    fileName: message.fileName,
-  };
-
+async function sendSingleWhatsApp(tab, payload) {
   try {
     return await runtime.withTimeout(
       chrome.tabs.sendMessage(tab.id, payload),
-      65000,
-      "O WhatsApp nao respondeu. Confirme se o grupo esta aberto e tente novamente.",
+      70000,
+      "O WhatsApp nao respondeu. Confirme se esta conectado e tente novamente.",
     );
   } catch (error) {
     const missingReceiver = /receiving end does not exist|could not establish connection/i.test(error?.message || "");
@@ -129,28 +114,96 @@ async function performWhatsAppSend(message) {
     await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["shared/runtime.js", "content/whatsapp.js"] });
     return runtime.withTimeout(
       chrome.tabs.sendMessage(tab.id, payload),
-      65000,
-      "O WhatsApp nao respondeu. Confirme se o grupo esta aberto e tente novamente.",
+      70000,
+      "O WhatsApp nao respondeu. Confirme se esta conectado e tente novamente.",
     );
   }
 }
 
+async function performWhatsAppSend(message, operation) {
+  const groups = normalizeGroups(message);
+  if (!groups.length) throw new Error("Registre pelo menos um grupo do WhatsApp.");
+  if (!String(message?.text || "").trim()) throw new Error("A mensagem do WhatsApp esta vazia.");
+  if (String(message?.imageDataUrl || "").length > 17 * 1024 * 1024) throw new Error("A imagem excede o limite permitido para envio.");
+
+  const tab = await whatsappTab();
+  if (!tab?.id) throw new Error("Nao foi possivel abrir o WhatsApp Web.");
+  await chrome.windows.update(tab.windowId, { focused: true });
+  await chrome.tabs.update(tab.id, { active: true });
+  await waitForTab(tab.id);
+  await runtime.delay(350);
+
+  const results = [];
+  for (const groupName of groups) {
+    if (operation.cancelled) {
+      results.push({ groupName, ok: false, stopped: true, error: "Envio interrompido." });
+      break;
+    }
+    const payload = {
+      type: "TABARATO_WHATSAPP_SEND",
+      groupName,
+      text: message.text,
+      imageDataUrl: message.imageDataUrl || "",
+      fileName: message.fileName || "oferta.png",
+    };
+    const result = await sendSingleWhatsApp(tab, payload);
+    if (!result?.ok) throw new Error(result?.error || `Nao foi possivel enviar para ${groupName}.`);
+    results.push({ groupName, ok: true });
+    await runtime.delay(650);
+  }
+  return { ok: true, results, stopped: operation.cancelled };
+}
+
 function sendToWhatsApp(message) {
   if (whatsappOperation) return Promise.reject(new Error("Ja existe um envio para o WhatsApp em andamento."));
-  whatsappOperation = runtime.withTimeout(
-    performWhatsAppSend(message),
-    92000,
+  const operation = { cancelled: false };
+  whatsappOperation = operation;
+  return runtime.withTimeout(
+    performWhatsAppSend(message, operation),
+    Math.max(95000, normalizeGroups(message).length * 90000),
     "O envio para o WhatsApp excedeu o tempo limite. Tente novamente.",
   )
     .catch((error) => {
       runtime.reportError("whatsapp-background", error);
       throw error;
     })
-    .finally(() => { whatsappOperation = null; });
-  return whatsappOperation;
+    .finally(() => {
+      if (whatsappOperation === operation) whatsappOperation = null;
+    });
 }
 
+async function stopWhatsAppSend() {
+  if (whatsappOperation) whatsappOperation.cancelled = true;
+  const tabs = await chrome.tabs.query({ url: "https://web.whatsapp.com/*" });
+  await Promise.all(tabs.map((tab) => chrome.tabs.sendMessage(tab.id, { type: "TABARATO_WHATSAPP_CANCEL" }).catch(() => {})));
+  return { ok: true };
+}
+
+chrome.action.disable().catch(() => {});
+chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
+chrome.runtime.onInstalled.addListener(() => refreshAllTabs().catch((error) => runtime.reportError("extension-installed", error)));
+chrome.runtime.onStartup.addListener(() => refreshAllTabs().catch((error) => runtime.reportError("extension-startup", error)));
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.url || changeInfo.status === "complete") {
+    updateTabAvailability(tabId, changeInfo.url || tab.url).catch((error) => runtime.reportError("tab-availability", error));
+  }
+});
+chrome.tabs.onActivated.addListener(({ tabId }) => {
+  chrome.tabs.get(tabId).then((tab) => updateTabAvailability(tabId, tab.url)).catch(() => {});
+});
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === "local" && STORAGE_KEYS.some((key) => changes[key])) {
+    refreshAllTabs().catch((error) => runtime.reportError("refresh-tabs", error));
+  }
+});
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.type === "TABARATO_IS_ALLOWED_PAGE") {
+    isAllowedUrl(message.url || sender.tab?.url)
+      .then((allowed) => sendResponse({ ok: true, allowed }))
+      .catch(() => sendResponse({ ok: true, allowed: false }));
+    return true;
+  }
   if (message?.type === "TABARATO_OPEN_PANEL" && sender.tab?.id) {
     chrome.sidePanel.open({ tabId: sender.tab.id }).catch(() => {});
     return;
@@ -159,6 +212,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     sendToWhatsApp(message)
       .then((result) => sendResponse(result || { ok: true }))
       .catch((error) => sendResponse({ ok: false, error: runtime.errorMessage(error, "Falha ao acessar o WhatsApp Web.") }));
+    return true;
+  }
+  if (message?.type === "TABARATO_STOP_WHATSAPP") {
+    stopWhatsAppSend()
+      .then(sendResponse)
+      .catch((error) => sendResponse({ ok: false, error: runtime.errorMessage(error) }));
     return true;
   }
 });
