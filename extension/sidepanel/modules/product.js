@@ -68,6 +68,8 @@
   function invalidateShareImage() {
     state.shareImagePromise = null;
     state.shareImageKey = "";
+    state.sharePackagePromise = null;
+    state.sharePackageKey = "";
   }
 
   function updatePreview() {
@@ -111,7 +113,7 @@
 
   async function persistDraft() {
     if (!state.activeProduct) return;
-    await chrome.storage.local.set({
+    await globalThis.TaBaratoExtensionApi.storage.local.set({
       [STORAGE.productDraft]: {
         product: state.activeProduct,
         values: Object.fromEntries(Object.entries(elements.fields).map(([key, field]) => [key, field.value])),

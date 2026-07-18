@@ -64,16 +64,39 @@ test("extension token expires and is limited to explicitly enabled routes", () =
   }
 });
 
-test("extension CORS accepts Chrome extension origins and rejects websites", () => {
+test("extension CORS accepts Chrome, Firefox and Safari extension origins and rejects websites", () => {
   const extensionResponse = mockResponse();
   const handled = handleExtensionCors({ method: "OPTIONS", headers: { origin: `chrome-extension://${"a".repeat(32)}` } }, extensionResponse, ["POST"]);
   assert.equal(handled, true);
   assert.equal(extensionResponse.statusCode, 204);
   assert.equal(extensionResponse.headers["Access-Control-Allow-Origin"], `chrome-extension://${"a".repeat(32)}`);
 
+  for (const origin of ["moz-extension://12345678-1234-1234-1234-123456789abc", "safari-web-extension://com.tabarato.extension"]) {
+    const response = mockResponse();
+    assert.equal(handleExtensionCors({ method: "OPTIONS", headers: { origin } }, response, ["POST"]), true);
+    assert.equal(response.headers["Access-Control-Allow-Origin"], origin);
+  }
+
   const websiteResponse = mockResponse();
   assert.equal(handleExtensionCors({ method: "OPTIONS", headers: { origin: "https://example.com" } }, websiteResponse, ["POST"]), false);
   assert.equal(websiteResponse.headers["Access-Control-Allow-Origin"], undefined);
+});
+
+test("extension CORS supports controlled Firefox and Safari wildcard origins", () => {
+  const previous = process.env.EXTENSION_ORIGIN;
+  process.env.EXTENSION_ORIGIN = "chrome-extension://${'a'.repeat(32)},moz-extension://*,safari-web-extension://*";
+  try {
+    for (const origin of ["moz-extension://12345678-1234-1234-1234-123456789abc", "safari-web-extension://com.tabarato.extension"]) {
+      const response = mockResponse();
+      assert.equal(handleExtensionCors({ method: "OPTIONS", headers: { origin } }, response, ["POST"]), true);
+      assert.equal(response.headers["Access-Control-Allow-Origin"], origin);
+    }
+    const unknownChrome = mockResponse();
+    assert.equal(handleExtensionCors({ method: "OPTIONS", headers: { origin: `chrome-extension://${'b'.repeat(32)}` } }, unknownChrome, ["POST"]), false);
+  } finally {
+    if (previous === undefined) delete process.env.EXTENSION_ORIGIN;
+    else process.env.EXTENSION_ORIGIN = previous;
+  }
 });
 
 test("cron secret is not accepted in the query string", () => {

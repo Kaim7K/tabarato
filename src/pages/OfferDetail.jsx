@@ -26,24 +26,27 @@ export default function OfferDetail() {
   useDocumentMetadata(offer ? `${offer.name} | Tá Barato` : "Oferta | Tá Barato", offer?.description || undefined);
 
   useEffect(() => {
-    let active = true;
+    const controller = new AbortController();
     setLoading(true);
-    Promise.all([
-      getPublicOffer(id),
-      listPublicOffers({ limit: 50 }),
-    ])
-      .then(([currentOffer, allOffers]) => {
-        if (!active) return;
+    setRelated([]);
+    getPublicOffer(id, { signal: controller.signal })
+      .then((currentOffer) => {
+        if (controller.signal.aborted) return;
         setOffer(currentOffer);
-        setRelated(allOffers.filter((item) => item.id !== id && item.category === currentOffer.category).slice(0, 4));
+        setLoading(false);
+        listPublicOffers({ category: currentOffer.category, limit: 5 }, { signal: controller.signal })
+          .then((items) => {
+            if (!controller.signal.aborted) setRelated(items.filter((item) => item.id !== id).slice(0, 4));
+          })
+          .catch(() => {});
       })
-      .catch(() => {
-        if (active) setOffer(null);
+      .catch((error) => {
+        if (error?.name !== "AbortError") setOffer(null);
       })
       .finally(() => {
-        if (active) setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       });
-    return () => { active = false; };
+    return () => controller.abort();
   }, [id]);
 
   useEffect(() => {

@@ -164,18 +164,34 @@ function productKey(data) {
 
 export async function findDuplicateOffer(input, excludeId = "", statuses = []) {
   const data = toDbParams(input);
-  const result = await query(
+  const key = productKey(data);
+  const statusFilter = statuses.length ? statuses : STATUSES;
+  const indexed = await query(
     `SELECT id, product_name, source_product_id, status
      FROM telegram_offers
-     WHERE LOWER(platform)=LOWER($1)
+     WHERE product_key=$1
        AND current_price=$2
-       AND ($3::text='' OR id::text<>$3)`,
-    [data.platform, data.current_price, String(excludeId || "")]
+       AND status=ANY($3::text[])
+       AND ($4::text='' OR id::text<>$4)
+     LIMIT 1`,
+    [key, data.current_price, statusFilter, String(excludeId || "")]
+  );
+  if (indexed.rows[0]) return indexed.rows[0];
+
+  // Compatibilidade com registros antigos criados antes de product_key existir.
+  const legacy = await query(
+    `SELECT id, product_name, source_product_id, status
+     FROM telegram_offers
+     WHERE product_key IS NULL
+       AND LOWER(platform)=LOWER($1)
+       AND current_price=$2
+       AND status=ANY($3::text[])
+       AND ($4::text='' OR id::text<>$4)`,
+    [data.platform, data.current_price, statusFilter, String(excludeId || "")]
   );
   const sourceId = normalizeProductIdentity(data.source_product_id);
   const name = normalizeProductIdentity(data.product_name);
-  return result.rows.find((row) => {
-    if (statuses.length && !statuses.includes(row.status)) return false;
+  return legacy.rows.find((row) => {
     const existingSourceId = normalizeProductIdentity(row.source_product_id);
     if (sourceId && existingSourceId) return sourceId === existingSourceId;
     return name && name === normalizeProductIdentity(row.product_name);
@@ -224,27 +240,67 @@ export async function listPostedProductIds(platform = "", sourceProductIds = [])
   return result.rows.map((row) => String(row.source_product_id || "").trim()).filter(Boolean);
 }
 
-export async function listOffers({ search = "", status = "", category = "" } = {}) {
+export async function listOffers({ search = "", status = "", category = "", compact = false, limit = 500 } = {}) {
   const filters = [];
   const params = [];
   if (search) {
     params.push(`%${search}%`);
-    filters.push(`product_name ILIKE $${params.length}`);
+    filters.push(`immutable_unaccent(offers.product_name) ILIKE immutable_unaccent($${params.length}::text)`);
   }
   if (status) {
     params.push(status);
-    filters.push(`status = $${params.length}`);
+    filters.push(`offers.status = $${params.length}`);
   }
   if (category) {
     params.push(category);
-    filters.push(`category = $${params.length}`);
+    filters.push(`offers.category = $${params.length}`);
   }
   const where = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
-  const result = await query(`SELECT telegram_offers.*,
-    (SELECT COUNT(*) FROM site_analytics_events events WHERE events.offer_id=telegram_offers.id AND events.event_type='click') AS real_clicks,
-    (SELECT COUNT(*) FROM offer_publication_history history WHERE history.offer_id=telegram_offers.id AND history.status='SUCESSO') AS publication_count,
-    (SELECT MAX(published_at) FROM offer_publication_history history WHERE history.offer_id=telegram_offers.id AND history.status='SUCESSO') AS last_published_at
-    FROM telegram_offers ${where} ORDER BY created_at DESC LIMIT 500`, params);
+  const safeLimit = Math.max(1, Math.min(1000, Number(limit) || 500));
+  params.push(safeLimit);
+
+  if (compact) {
+    const result = await query(
+      `SELECT offers.id, offers.product_name, offers.current_price, offers.category,
+              offers.image_url, offers.affiliate_link, offers.source_product_id, offers.platform,
+              offers.status, offers.published_at, offers.telegram_message_id,
+              offers.created_at, offers.updated_at
+       FROM telegram_offers offers
+       ${where}
+       ORDER BY offers.created_at DESC
+       LIMIT $${params.length}`,
+      params,
+    );
+    return result.rows.map(mapOffer);
+  }
+
+  const result = await query(
+    `WITH selected_offers AS MATERIALIZED (
+       SELECT offers.*
+       FROM telegram_offers offers
+       ${where}
+       ORDER BY offers.created_at DESC
+       LIMIT $${params.length}
+     )
+     SELECT offers.*,
+            COALESCE(events.real_clicks, 0) AS real_clicks,
+            COALESCE(publications.publication_count, 0) AS publication_count,
+            publications.last_published_at
+     FROM selected_offers offers
+     LEFT JOIN LATERAL (
+       SELECT COUNT(*) AS real_clicks
+       FROM site_analytics_events event
+       WHERE event.offer_id=offers.id AND event.event_type='click'
+     ) events ON TRUE
+     LEFT JOIN LATERAL (
+       SELECT COUNT(*) FILTER (WHERE history.status='SUCESSO') AS publication_count,
+              MAX(history.published_at) FILTER (WHERE history.status='SUCESSO') AS last_published_at
+       FROM offer_publication_history history
+       WHERE history.offer_id=offers.id
+     ) publications ON TRUE
+     ORDER BY offers.created_at DESC`,
+    params,
+  );
   return result.rows.map((row) => mapOffer({ ...row, clicks: Number(row.real_clicks || 0) }));
 }
 

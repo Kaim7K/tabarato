@@ -28,7 +28,7 @@
 
   async function config() {
     if (configCache) return configCache;
-    const stored = await chrome.storage.local.get(STORAGE_KEYS);
+    const stored = await globalThis.TaBaratoExtensionApi.storage.local.get(STORAGE_KEYS);
     const dynamicHosts = Array.isArray(stored.tabarato_connected_store_hosts)
       ? stored.tabarato_connected_store_hosts.map(String).filter(Boolean)
       : [];
@@ -42,7 +42,7 @@
   }
 
   async function migrateStoredBaseUrl() {
-    const stored = await chrome.storage.local.get(["tabarato_extension_session", "tabarato_last_base_url"]);
+    const stored = await globalThis.TaBaratoExtensionApi.storage.local.get(["tabarato_extension_session", "tabarato_last_base_url"]);
     const updates = {};
     const session = stored.tabarato_extension_session;
     if (session?.baseUrl) {
@@ -52,7 +52,7 @@
     const lastBaseUrl = brandConfig.migrateBaseUrl(stored.tabarato_last_base_url);
     if (lastBaseUrl !== stored.tabarato_last_base_url) updates.tabarato_last_base_url = lastBaseUrl;
     if (!Object.keys(updates).length) return;
-    await chrome.storage.local.set(updates);
+    await globalThis.TaBaratoExtensionApi.storage.local.set(updates);
     configCache = null;
   }
 
@@ -73,10 +73,13 @@
   async function updateTab(tabId, url = "") {
     if (!tabId) return false;
     const allowed = await isAllowedUrl(url);
-    const results = await Promise.allSettled([
-      allowed ? chrome.action.enable(tabId) : chrome.action.disable(tabId),
-      chrome.sidePanel.setOptions({ tabId, enabled: allowed, path: "sidepanel/index.html" }),
-    ]);
+    const tasks = [
+      allowed ? globalThis.TaBaratoExtensionApi.action?.enable?.(tabId) : globalThis.TaBaratoExtensionApi.action?.disable?.(tabId),
+    ];
+    if (globalThis.TaBaratoExtensionApi.sidePanel?.setOptions) {
+      tasks.push(globalThis.TaBaratoExtensionApi.sidePanel.setOptions({ tabId, enabled: allowed, path: "sidepanel/index.html" }));
+    }
+    const results = await Promise.allSettled(tasks.filter(Boolean));
     results.filter((result) => result.status === "rejected")
       .forEach((result) => runtime.reportError("tab-availability", result.reason));
     return allowed;
@@ -84,7 +87,9 @@
 
   async function closePanelIfDisallowed(tab) {
     if (!tab?.id || !tab?.windowId || await isAllowedUrl(tab.url)) return;
-    await chrome.sidePanel.close({ windowId: tab.windowId }).catch((error) => runtime.reportError("close-side-panel", error));
+    if (globalThis.TaBaratoExtensionApi.sidePanel?.close) {
+      await globalThis.TaBaratoExtensionApi.sidePanel.close({ windowId: tab.windowId }).catch((error) => runtime.reportError("close-side-panel", error));
+    }
   }
 
   const validDynamicHost = (value) => {
@@ -97,19 +102,25 @@
     const configuredHost = configuredOrigin ? new URL(configuredOrigin).hostname : "";
     const hosts = [...new Set([...dynamicHosts, configuredHost].map(validDynamicHost).filter(Boolean))]
       .filter((host) => !builtInAllowedHost(host) && !OFFICIAL_SITE_ORIGINS.has(`https://${host}`));
-    await chrome.scripting.unregisterContentScripts({ ids: [DYNAMIC_CONTENT_SCRIPT_ID] }).catch(() => {});
+    const scripting = globalThis.TaBaratoExtensionApi.scripting;
+    if (!scripting?.registerContentScripts) return;
+    await Promise.resolve(scripting.unregisterContentScripts?.({ ids: [DYNAMIC_CONTENT_SCRIPT_ID] })).catch(() => {});
     if (!hosts.length) return;
-    await chrome.scripting.registerContentScripts([{
+    const registration = {
       id: DYNAMIC_CONTENT_SCRIPT_ID,
       matches: hosts.map((host) => `https://*.${host}/*`),
       js: STORE_CONTENT_FILES,
       runAt: "document_idle",
-      persistAcrossSessions: true,
-    }]);
+    };
+    try {
+      await scripting.registerContentScripts([{ ...registration, persistAcrossSessions: true }]);
+    } catch {
+      await scripting.registerContentScripts([registration]);
+    }
   }
 
   async function refreshAllTabs() {
-    const tabs = await chrome.tabs.query({});
+    const tabs = await globalThis.TaBaratoExtensionApi.tabs.query({});
     await Promise.all(tabs.map((tab) => updateTab(tab.id, tab.url)));
   }
 

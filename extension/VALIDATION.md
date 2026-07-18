@@ -1,4 +1,4 @@
-# Validacao da extensao 3.1.2
+# Validacao da extensao 3.3.0
 
 Este documento registra o que foi efetivamente validado nesta revisao e separa os fluxos que ainda dependem das contas reais do usuario.
 
@@ -86,3 +86,32 @@ A versao somente deve ser considerada totalmente validada em producao depois des
 - Rótulos no padrão `Com MELIMODA`, `Com VALEDESCONTO` e equivalentes são reconhecidos em qualquer elemento visível do modal.
 - Quando existem vários códigos, o primeiro cupom exibido de cima para baixo é usado na mensagem.
 - `R$ 51,84 com Cupom` continua sendo tratado como cupom sem código, sem inventar a palavra `CUPOM` como código.
+
+
+## v3.2.0 - otimização completa
+
+- O registro em lote passou de blocos rígidos para uma janela deslizante de até cinco abas: cada aba é fechada assim que termina e a próxima começa a carregar enquanto o item atual é publicado.
+- A leitura da página usa `MutationObserver` e estabilidade real de título, preço e imagem, reduzindo verificações repetidas entre a extensão e a página.
+- A arte compartilhada é preparada uma vez e reutilizada no Telegram e nos grupos do WhatsApp.
+- No WhatsApp, a imagem em Base64 é transferida somente no primeiro grupo; os seguintes reutilizam o arquivo em memória, mantendo o envio sequencial para evitar conversas erradas.
+- O catálogo da extensão passou a usar uma resposta compacta, cache curto e índices em memória para localizar ofertas, links e produtos publicados.
+- O site passou a pesquisar sob demanda, com debounce, cancelamento de requisições antigas e limite de resultados. Favoritos, comparação e alertas agora consultam apenas os IDs necessários.
+- As APIs evitam contagens e agregações pesadas quando a tela não precisa delas, e consultas de visitantes/cliques foram reduzidas a uma única ida ao banco.
+- A preparação automática do banco agora é versionada e protegida por trava no PostgreSQL, evitando repetir todo o DDL em cada nova instância da Vercel.
+- Foram adicionados índices para histórico, listagens recentes e pesquisa textual.
+- Os arquivos estáticos públicos foram reduzidos de aproximadamente 1,6 MB para 576 KB, mantendo PNG/JPG apenas onde são necessários como fallback ou metadado social.
+- Resultado final: 88 testes automatizados aprovados, 42.501 verificações determinísticas de carga, lint, TypeScript e build aprovados, sem vulnerabilidades encontradas pelo `npm audit`.
+
+## v3.3.0 - estabilidade multicanal e navegadores
+
+- Publicacao no site separada do envio ao Telegram, eliminando a arte Base64 da rota rapida.
+- Telegram iniciado depois da confirmacao do site, mas fora da barreira que aguarda o WhatsApp e libera o lote.
+- Requisicoes do Telegram limitadas a duas tentativas e 15 segundos por tentativa; timeout incerto nao e repetido automaticamente.
+- Marcadores atomicos `sending`, `uncertain` e `failed` evitam chamadas simultaneas e mensagens duplicadas.
+- WhatsApp continua depois de falha individual, repete somente estagios seguros e usa texto quando o clipboard de imagem nao existe.
+- Falha na arte nao interrompe site, Telegram ou WhatsApp.
+- Removida chamada duplicada de desbloqueio do botao Salvar e removida opcao de publicacao sem efeito.
+- Runtime WebExtensions compartilhado sem referencias diretas a `chrome.*`.
+- Pacotes separados para Chromium e Firefox, mais fonte preparada para conversao no Safari.
+- CORS aceita origens controladas `chrome-extension`, `moz-extension` e `safari-web-extension`.
+- Resultado final: 94 testes automatizados aprovados, incluindo simulacao de falha entre grupos, retry seguro, fallback sem imagem e manifests multiplataforma; 42.501 verificacoes deterministicas de carga; lint, TypeScript, build e auditoria de dependencias aprovados.

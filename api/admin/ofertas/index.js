@@ -34,27 +34,33 @@ export default async function handler(req, res) {
         return sendJson(res, 200, { postedProductIds });
       }
 
-      const offers = await listOffers({
+      const extensionView = req.query.view === "extension";
+      const offersPromise = listOffers({
         search: req.query.search || "",
         status: req.query.status || "",
         category: req.query.category || "",
+        compact: extensionView,
       });
-      const [categories, metrics] = await Promise.all([
-        listCategories(),
-        query(`SELECT
+      const categoriesPromise = listCategories();
+      const metricsPromise = extensionView
+        ? Promise.resolve({ rows: [{}] })
+        : query(`SELECT
           (SELECT COUNT(*) FROM site_visitors) AS unique_visitors,
           (SELECT COUNT(*) FROM site_visits) AS visits,
           (SELECT COUNT(*) FROM site_analytics_events WHERE event_type='click') AS real_clicks,
           (SELECT COUNT(DISTINCT visitor_id) FROM social_page_visits) AS social_unique_visitors,
           (SELECT COUNT(*) FROM social_page_visits) AS social_visits,
           (SELECT COUNT(*) FROM social_page_visits WHERE visit_day = (NOW() AT TIME ZONE 'America/Bahia')::date) AS social_visits_today,
-          (SELECT COUNT(*) FROM social_page_visits WHERE visit_day >= (NOW() AT TIME ZONE 'America/Bahia')::date - 6) AS social_visits_7d`),
-      ]);
+          (SELECT COUNT(*) FROM social_page_visits WHERE visit_day >= (NOW() AT TIME ZONE 'America/Bahia')::date - 6) AS social_visits_7d`);
+      const [offers, categories, metrics] = await Promise.all([offersPromise, categoriesPromise, metricsPromise]);
       const metricRow = metrics.rows[0] || {};
-      return sendJson(res, 200, {
+      const payload = {
         offers,
         categories,
-        siteMetrics: {
+        connectedStoreHosts: connectedStoreHostsFromOffers(offers),
+      };
+      if (!extensionView) {
+        payload.siteMetrics = {
           uniqueVisitors: Number(metricRow.unique_visitors || 0),
           visits: Number(metricRow.visits || 0),
           realClicks: Number(metricRow.real_clicks || 0),
@@ -62,9 +68,9 @@ export default async function handler(req, res) {
           socialVisits: Number(metricRow.social_visits || 0),
           socialVisitsToday: Number(metricRow.social_visits_today || 0),
           socialVisits7d: Number(metricRow.social_visits_7d || 0),
-        },
-        connectedStoreHosts: connectedStoreHostsFromOffers(offers),
-      });
+        };
+      }
+      return sendJson(res, 200, payload);
     }
 
     if (req.method === "POST") {

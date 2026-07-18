@@ -1,28 +1,31 @@
 (() => {
   if (globalThis.TaBaratoBackgroundClipboard) return;
 
+  const api = globalThis.TaBaratoExtensionApi;
   const OFFSCREEN_URL = "offscreen/clipboard.html";
   let creationPromise = null;
 
   async function ensureDocument() {
-    const exists = await chrome.offscreen.hasDocument();
-    if (exists) return;
+    if (!api.offscreen?.hasDocument || !api.offscreen?.createDocument) return false;
+    const exists = await api.offscreen.hasDocument();
+    if (exists) return true;
     if (!creationPromise) {
-      creationPromise = chrome.offscreen.createDocument({
+      creationPromise = api.offscreen.createDocument({
         url: OFFSCREEN_URL,
         reasons: ["CLIPBOARD"],
         justification: "Copiar a arte da oferta para colar no WhatsApp Web.",
-      }).finally(() => { creationPromise = null; });
+      }).then(() => true).finally(() => { creationPromise = null; });
     }
-    await creationPromise;
+    return creationPromise;
   }
 
   async function writeImage(imageDataUrl) {
     if (!String(imageDataUrl || "").startsWith("data:image/")) {
       throw new Error("A arte da oferta nao esta em um formato de imagem valido.");
     }
-    await ensureDocument();
-    const response = await chrome.runtime.sendMessage({
+    const available = await ensureDocument();
+    if (!available) return false;
+    const response = await api.runtime.sendMessage({
       type: "TABARATO_OFFSCREEN_WRITE_IMAGE",
       imageDataUrl,
     });

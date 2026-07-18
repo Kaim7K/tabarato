@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Search, ArrowRight, Package, Tag } from "lucide-react";
-import { formatPrice, matchesSmartSearch, normalizeText } from "@/lib/catalog";
-import { listPublicOffers } from "@/lib/offersApi";
+import { formatPrice, normalizeText } from "@/lib/catalog";
+import { searchPublicOffers } from "@/lib/offersApi";
 import { StoreBadge } from "@/components/BrandIcons";
 
 const RECENT_SEARCHES_KEY = "tb_recent_searches";
@@ -11,39 +11,51 @@ export default function SmartSearch({ placeholder = "Buscar por nome, categoria.
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
   const [open, setOpen] = useState(false);
-  const [allOffers, setAllOffers] = useState([]);
+  const [searching, setSearching] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
   const [recentSearches, setRecentSearches] = useState(() => {
     try { return JSON.parse(localStorage.getItem(RECENT_SEARCHES_KEY) || "[]"); } catch { return []; }
   });
   const containerRef = useRef(null);
-  const loadingRef = useRef(false);
+  const searchSequence = useRef(0);
   const inputId = useId();
   const resultsId = useId();
   const navigate = useNavigate();
 
-  const loadOffers = useCallback(() => {
-    if (allOffers.length || loadingRef.current) return;
-    loadingRef.current = true;
-    listPublicOffers({ limit: 100 })
-      .then(setAllOffers)
-      .catch(() => {})
-      .finally(() => { loadingRef.current = false; });
-  }, [allOffers.length]);
-
   useEffect(() => {
-    if (!query.trim()) {
+    const value = query.trim();
+    if (value.length < 2) {
       setResults([]);
       setActiveIndex(-1);
-      return;
+      setSearching(false);
+      return undefined;
     }
-    const q = normalizeText(query);
-    const matches = allOffers
-      .filter((offer) => matchesSmartSearch(offer, q))
-      .slice(0, 6);
-    setResults(matches);
-    setActiveIndex(matches.length ? 0 : -1);
-  }, [query, allOffers]);
+
+    let controller;
+    const sequence = ++searchSequence.current;
+    setSearching(true);
+    const timer = window.setTimeout(() => {
+      controller = new AbortController();
+      searchPublicOffers(value, { signal: controller.signal })
+        .then((matches) => {
+          if (searchSequence.current !== sequence) return;
+          setResults(matches);
+          setActiveIndex(matches.length ? 0 : -1);
+        })
+        .catch((error) => {
+          if (error?.name !== "AbortError" && searchSequence.current === sequence) setResults([]);
+        })
+        .finally(() => {
+          if (searchSequence.current === sequence) setSearching(false);
+        });
+    }, 180);
+
+    return () => {
+      searchSequence.current += 1;
+      window.clearTimeout(timer);
+      controller?.abort();
+    };
+  }, [query]);
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -104,8 +116,8 @@ export default function SmartSearch({ placeholder = "Buscar por nome, categoria.
           id={inputId}
           type="text"
           value={query}
-          onChange={(e) => { setQuery(e.target.value); setOpen(true); loadOffers(); }}
-          onFocus={() => { setOpen(true); loadOffers(); }}
+          onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)}
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
           role="combobox"
@@ -123,6 +135,8 @@ export default function SmartSearch({ placeholder = "Buscar por nome, categoria.
               <div className="px-3 pt-2 pb-1 text-[#111111]/30 text-xs font-medium uppercase">Buscas recentes</div>
               {recentSearches.map((term) => <button key={term} type="button" onClick={() => submitSearch(term)} className="w-full min-h-10 px-3 flex items-center gap-2 rounded-md text-sm text-[#111111]/65 hover:bg-[#F4F5F6] text-left"><Search className="w-4 h-4" /> {term}</button>)}
             </div>
+          ) : searching ? (
+            <div className="p-6 text-center text-sm text-[#111111]/40" role="status">Buscando...</div>
           ) : results.length === 0 ? (
             <div className="p-6 text-center">
               <p className="text-sm text-[#111111]/40 mb-1">Nenhum resultado para "{query}"</p>

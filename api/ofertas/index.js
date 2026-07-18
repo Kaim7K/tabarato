@@ -1,5 +1,5 @@
 import { query } from "../_lib/db.js";
-import { isAdminAuthorized, sendJson, methodNotAllowed, publicError, readJson } from "../_lib/http.js";
+import { isAdminAuthorized, isValidUuid, sendJson, methodNotAllowed, publicError, readJson } from "../_lib/http.js";
 import { mapPublicOffer, PUBLIC_OFFER_COLUMNS, setPublicCache } from "../_lib/publicOffers.js";
 import { searchGroups } from "../_lib/search.js";
 import { listCategories } from "../_lib/categories.js";
@@ -17,8 +17,19 @@ export default async function handler(req, res) {
       if (!isValidVisitorId(visitorId)) return sendJson(res, 400, { error: "Identificador de visitante invalido." });
       const rejectionReason = visitRejectionReason(req, input);
       if (rejectionReason) return sendJson(res, 200, { counted: false, reason: rejectionReason });
-      await query(`INSERT INTO site_visitors (visitor_id) VALUES ($1) ON CONFLICT (visitor_id) DO UPDATE SET last_seen_at=NOW()`, [visitorId]);
-      const visit = await query(`INSERT INTO site_visits (visitor_id) VALUES ($1) ON CONFLICT (visitor_id, visit_day) DO NOTHING RETURNING id`, [visitorId]);
+      const visit = await query(
+        `WITH visitor AS (
+           INSERT INTO site_visitors (visitor_id)
+           VALUES ($1)
+           ON CONFLICT (visitor_id) DO UPDATE SET last_seen_at=NOW()
+           RETURNING visitor_id
+         )
+         INSERT INTO site_visits (visitor_id)
+         SELECT visitor_id FROM visitor
+         ON CONFLICT (visitor_id, visit_day) DO NOTHING
+         RETURNING id`,
+        [visitorId],
+      );
       return sendJson(res, 200, { counted: visit.rowCount > 0 });
     } catch (error) {
       return publicError(res, error, "Nao foi possivel registrar a visita.");
@@ -37,10 +48,15 @@ export default async function handler(req, res) {
       const rejectionReason = visitRejectionReason(req, input, { minimumVisibleMs: 1200 });
       if (rejectionReason) return sendJson(res, 200, { counted: false, reason: rejectionReason });
 
-      await query(`INSERT INTO site_visitors (visitor_id) VALUES ($1) ON CONFLICT (visitor_id) DO UPDATE SET last_seen_at=NOW()`, [visitorId]);
       const visit = await query(
-        `INSERT INTO social_page_visits (visitor_id, visit_day)
-         VALUES ($1, (NOW() AT TIME ZONE 'America/Bahia')::date)
+        `WITH visitor AS (
+           INSERT INTO site_visitors (visitor_id)
+           VALUES ($1)
+           ON CONFLICT (visitor_id) DO UPDATE SET last_seen_at=NOW()
+           RETURNING visitor_id
+         )
+         INSERT INTO social_page_visits (visitor_id, visit_day)
+         SELECT visitor_id, (NOW() AT TIME ZONE 'America/Bahia')::date FROM visitor
          ON CONFLICT (visitor_id, visit_day) DO NOTHING
          RETURNING id`,
         [visitorId]
@@ -85,6 +101,8 @@ export default async function handler(req, res) {
     const search = String(req.query.search || "").trim().slice(0, 120);
     const category = String(req.query.category || "").trim().slice(0, 120);
     const platform = String(req.query.platform || "").trim().slice(0, 100);
+    const rawIds = String(req.query.ids || "").split(",").map((value) => value.trim()).filter(Boolean).slice(0, 100);
+    const ids = rawIds.filter(isValidUuid);
     const minPrice = Number(req.query.minPrice);
     const maxPrice = Number(req.query.maxPrice);
     const requestedLimit = Number(req.query.limit || 24);
@@ -99,7 +117,7 @@ export default async function handler(req, res) {
       searchGroups(search).forEach((group) => {
         const groupFilters = group.map((term) => {
           params.push(`%${term}%`);
-          return `(unaccent(product_name) ILIKE unaccent($${params.length}::text) OR unaccent(COALESCE(short_description, '')) ILIKE unaccent($${params.length}::text) OR unaccent(category) ILIKE unaccent($${params.length}::text) OR unaccent(platform) ILIKE unaccent($${params.length}::text))`;
+          return `immutable_unaccent(product_name || ' ' || COALESCE(short_description, '') || ' ' || category || ' ' || platform) ILIKE immutable_unaccent($${params.length}::text)`;
         });
         filters.push(`(${groupFilters.join(" OR ")})`);
       });
@@ -111,6 +129,14 @@ export default async function handler(req, res) {
     if (platform) {
       params.push(platform);
       filters.push(`platform = $${params.length}`);
+    }
+    if (rawIds.length) {
+      if (!ids.length) {
+        setPublicCache(res);
+        return sendJson(res, 200, { offers: [], pagination: { page: 1, limit, total: 0, pages: 0 } });
+      }
+      params.push(ids);
+      filters.push(`id = ANY($${params.length}::uuid[])`);
     }
     if (Number.isFinite(minPrice) && minPrice >= 0) {
       params.push(minPrice);
@@ -131,20 +157,24 @@ export default async function handler(req, res) {
       discount: "CASE WHEN previous_price > current_price THEN (previous_price - current_price) / previous_price ELSE 0 END DESC",
     }[sort] || "COALESCE(published_at, updated_at, created_at) DESC";
 
+    const includeTotal = String(req.query.includeTotal || "1") !== "0";
     params.push(limit);
     const limitParam = params.length;
     params.push(offset);
     const result = await query(
-      `SELECT ${PUBLIC_OFFER_COLUMNS}, COUNT(*) OVER() AS total_count FROM telegram_offers
+      `SELECT ${PUBLIC_OFFER_COLUMNS}${includeTotal ? ", COUNT(*) OVER() AS total_count" : ""}
+       FROM telegram_offers
        WHERE ${filters.join(" AND ")}
        ORDER BY ${orderBy}
        LIMIT $${limitParam} OFFSET $${params.length}`,
       params
     );
     setPublicCache(res);
+    const offers = result.rows.map(mapPublicOffer);
+    if (!includeTotal) return sendJson(res, 200, { offers });
     const total = Number(result.rows[0]?.total_count || 0);
     return sendJson(res, 200, {
-      offers: result.rows.map(mapPublicOffer),
+      offers,
       pagination: { page, limit, total, pages: Math.ceil(total / limit) },
     });
   } catch (error) {

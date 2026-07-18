@@ -103,6 +103,8 @@
     capturedPageUrl: "",
     shareImagePromise: null,
     shareImageKey: "",
+    sharePackagePromise: null,
+    sharePackageKey: "",
     batchController: null,
     batchWorkerTabId: null,
     batchWorkerTabIds: [],
@@ -123,7 +125,7 @@
   }
 
   async function activeTab() {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const [tab] = await globalThis.TaBaratoExtensionApi.tabs.query({ active: true, currentWindow: true });
     return tab || null;
   }
 

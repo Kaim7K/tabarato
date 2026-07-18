@@ -1,6 +1,20 @@
 import { query } from "../../../_lib/db.js";
 import { handleExtensionCors, requireAdmin, requireUuid, sendJson, methodNotAllowed, publicError } from "../../../_lib/http.js";
-import { publishOfferById } from "../../../_lib/publisher.js";
+import { publishOfferById, publishOfferSiteById, sendOfferTelegramById } from "../../../_lib/publisher.js";
+
+function telegramPayload(req, res) {
+  const shareImageDataUrl = String(req.body?.shareImageDataUrl || "");
+  const messageHeadline = String(req.body?.messageHeadline || "").trim();
+  if (shareImageDataUrl && (!/^data:image\/png;base64,[A-Za-z0-9+/=]+$/i.test(shareImageDataUrl) || shareImageDataUrl.length > 3_500_000)) {
+    sendJson(res, 400, { error: "Arte da oferta invalida ou muito grande." });
+    return null;
+  }
+  if (messageHeadline.length > 80) {
+    sendJson(res, 400, { error: "Mensagem personalizada muito grande." });
+    return null;
+  }
+  return { shareImageDataUrl, messageHeadline };
+}
 
 export default async function handler(req, res) {
   if (handleExtensionCors(req, res, ["POST"])) return;
@@ -9,7 +23,8 @@ export default async function handler(req, res) {
   if (!requireUuid(req.query.id, res)) return;
 
   try {
-    if (req.body?.action === "record-channel") {
+    const action = String(req.body?.action || "publish-all");
+    if (action === "record-channel") {
       const channel = String(req.body.channel || "").toUpperCase();
       const status = String(req.body.status || "").toUpperCase();
       if (channel !== "WHATSAPP" || !["SUCESSO", "ERRO"].includes(status)) return sendJson(res, 400, { error: "Histórico de publicação inválido." });
@@ -19,19 +34,28 @@ export default async function handler(req, res) {
       );
       return sendJson(res, 201, { ok: true });
     }
-    const shareImageDataUrl = String(req.body?.shareImageDataUrl || "");
-    const messageHeadline = String(req.body?.messageHeadline || "").trim();
-    if (shareImageDataUrl && (!/^data:image\/png;base64,[A-Za-z0-9+/=]+$/i.test(shareImageDataUrl) || shareImageDataUrl.length > 3_500_000)) {
-      return sendJson(res, 400, { error: "Arte da oferta invalida ou muito grande." });
+
+    if (action === "publish-site") {
+      const result = await publishOfferSiteById(req.query.id, { forceRepublish: req.body?.forceRepublish === true });
+      return sendJson(res, result.ok ? (result.pending ? 202 : 200) : result.status || 500, result);
     }
-    if (messageHeadline.length > 80) return sendJson(res, 400, { error: "Mensagem personalizada muito grande." });
+
+    const payload = telegramPayload(req, res);
+    if (!payload) return;
+    if (action === "send-telegram") {
+      const result = await sendOfferTelegramById(req.query.id, {
+        ...payload,
+        forceRetry: req.body?.forceTelegramRetry === true,
+      });
+      return sendJson(res, result.ok ? 200 : result.status || 500, result);
+    }
+
     const result = await publishOfferById(req.query.id, {
-      shareImageDataUrl,
+      ...payload,
       forceRepublish: req.body?.forceRepublish === true,
-      messageHeadline,
+      forceTelegramRetry: req.body?.forceTelegramRetry === true,
     });
-    if (!result.ok) return sendJson(res, result.status || 500, result);
-    return sendJson(res, 200, result);
+    return sendJson(res, result.ok ? (result.pending ? 202 : 200) : result.status || 500, result);
   } catch (error) {
     return publicError(res, error);
   }

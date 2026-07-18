@@ -1,3 +1,5 @@
+import { createHmac, timingSafeEqual } from "node:crypto";
+
 export function sendJson(res, status, body) {
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   return res.status(status).json(body);
@@ -13,11 +15,15 @@ export async function readJson(req) {
     }
   }
   const chunks = [];
-  for await (const chunk of req) chunks.push(chunk);
-  const raw = Buffer.concat(chunks).toString("utf8");
-  if (Buffer.byteLength(raw, "utf8") > 1_000_000) {
-    throw Object.assign(new Error("Corpo da requisicao muito grande."), { statusCode: 413 });
+  let size = 0;
+  for await (const chunk of req) {
+    size += chunk.length;
+    if (size > 1_000_000) {
+      throw Object.assign(new Error("Corpo da requisicao muito grande."), { statusCode: 413 });
+    }
+    chunks.push(chunk);
   }
+  const raw = Buffer.concat(chunks).toString("utf8");
   try {
     return raw ? JSON.parse(raw) : {};
   } catch {
@@ -76,8 +82,12 @@ export function verifyAdminExtensionToken(token, secret, now = Date.now()) {
 export function handleExtensionCors(req, res, methods) {
   const origin = String(req.headers.origin || "");
   const configuredOrigin = String(process.env.EXTENSION_ORIGIN || "").trim();
-  const validOrigin = /^chrome-extension:\/\/[a-p]{32}$/.test(origin)
-    && (!configuredOrigin || configuredOrigin === origin);
+  const extensionOrigin = /^(?:chrome-extension:\/\/[a-p]{32}|moz-extension:\/\/[0-9a-f-]{36}|safari-web-extension:\/\/[a-z0-9.-]+)$/i.test(origin);
+  const configuredOrigins = configuredOrigin.split(",").map((item) => item.trim()).filter(Boolean);
+  const configuredMatch = configuredOrigins.some((allowed) => allowed === origin
+    || (allowed.endsWith("*") && origin.startsWith(allowed.slice(0, -1))));
+  const validOrigin = extensionOrigin
+    && (!configuredOrigins.length || configuredMatch);
 
   if (!validOrigin) return false;
 
@@ -160,4 +170,3 @@ export function publicError(res, error, fallback = "Erro interno.") {
   const status = Number(error?.statusCode) || 500;
   return sendJson(res, status, { error: status < 500 ? error.message : fallback });
 }
-import { createHmac, timingSafeEqual } from "node:crypto";

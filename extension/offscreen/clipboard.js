@@ -25,7 +25,7 @@
     }
   }
 
-  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  globalThis.TaBaratoExtensionApi.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message?.type !== "TABARATO_OFFSCREEN_WRITE_IMAGE") return false;
     pngBlobFromDataUrl(message.imageDataUrl)
       .then((blob) => navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]))

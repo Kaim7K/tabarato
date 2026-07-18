@@ -37,24 +37,38 @@
   async function closeWorker(tabId) {
     if (!tabId) return;
     unregisterWorker(tabId);
-    await chrome.tabs.remove(tabId).catch(() => {});
+    await globalThis.TaBaratoExtensionApi.tabs.remove(tabId).catch(() => {});
   }
 
   async function closeAllWorkers() {
     const tabIds = registeredWorkerIds();
     state.batchWorkerTabIds = [];
     state.batchWorkerTabId = null;
-    if (tabIds.length) await chrome.tabs.remove(tabIds).catch(() => {});
+    if (tabIds.length) await globalThis.TaBaratoExtensionApi.tabs.remove(tabIds).catch(() => {});
   }
 
   async function stop() {
     state.batchController?.abort();
     await closeAllWorkers();
     await Promise.all([
-      chrome.runtime.sendMessage({ type: "TABARATO_STOP_WHATSAPP" }).catch(() => {}),
-      chrome.runtime.sendMessage({ type: "TABARATO_STOP_ML_COUPONS" }).catch(() => {}),
+      globalThis.TaBaratoExtensionApi.runtime.sendMessage({ type: "TABARATO_STOP_WHATSAPP" }).catch(() => {}),
+      globalThis.TaBaratoExtensionApi.runtime.sendMessage({ type: "TABARATO_STOP_ML_COUPONS" }).catch(() => {}),
     ]);
     showToast("Operacao interrompida.", "success");
+  }
+
+  async function preloadWorker(url, sourceTab, signal, index, total) {
+    if (signal.aborted) throw new Error("Envio interrompido.");
+    const tab = await globalThis.TaBaratoExtensionApi.tabs.create({
+      url,
+      active: false,
+      windowId: sourceTab.windowId,
+    });
+    registerWorkers([tab.id]);
+    const ready = panel.capture.waitForProductDom(tab.id, url, signal, 45000)
+      .then(() => ({ ok: true }))
+      .catch((error) => ({ ok: false, error }));
+    return { tabId: tab.id, url, index, total, ready };
   }
 
   async function preloadWorkers(urls, sourceTab, signal, offset, total) {
@@ -62,27 +76,13 @@
     const first = offset + 1;
     const last = offset + urls.length;
     log(`Abrindo ${first}-${last}/${total} em paralelo...`);
-
-    const workers = await Promise.all(urls.map(async (url, localIndex) => {
-      if (signal.aborted) throw new Error("Envio interrompido.");
-      const tab = await chrome.tabs.create({
-        url,
-        active: false,
-        windowId: sourceTab.windowId,
-      });
-      registerWorkers([tab.id]);
-      const ready = panel.capture.waitForProductDom(tab.id, url, signal, 45000)
-        .then(() => ({ ok: true }))
-        .catch((error) => ({ ok: false, error }));
-      return {
-        tabId: tab.id,
-        url,
-        index: offset + localIndex,
-        ready,
-      };
-    }));
-
-    return workers;
+    return Promise.all(urls.map((url, localIndex) => preloadWorker(
+      url,
+      sourceTab,
+      signal,
+      offset + localIndex,
+      total,
+    )));
   }
 
   async function readWorker(worker, sourceTab, signal, total) {
@@ -131,26 +131,38 @@
         status: result.action === "updated" ? "published" : "skipped",
         message: `${labels[result.action] || "Produto revisado"}: ${product.productName}`,
         tone: result.action === "updated" ? "success" : "neutral",
+        telegramError: result.publication?.telegramError || "",
+        telegramPending: Boolean(result.publication?.telegramPending),
         whatsappError: result.publication?.whatsappError || "",
+        whatsappWarning: result.publication?.whatsappWarning || "",
       };
     }
 
     const payload = panel.product.toPayload(product, "APROVADO");
-    const created = await panel.api.request("/api/admin/ofertas", {
-      method: "POST",
-      body: payload,
-      signal: controller.signal,
-    });
-    state.synchronizedOffers.unshift(created.offer);
+    const [created, preparedShare] = await Promise.all([
+      panel.api.request("/api/admin/ofertas", {
+        method: "POST",
+        body: payload,
+        signal: controller.signal,
+      }),
+      panel.media.prepareShare(payload).catch((error) => {
+        runtime.reportError("batch-prepare-artwork", error);
+        return { file: null, imageDataUrl: "", imageCacheKey: "" };
+      }),
+    ]);
+    panel.catalog.addOffer(created.offer);
     const publication = await panel.publishing.publishOfferId(created.offer.id, payload, {
       notifyWhatsApp: true,
-      tolerateWhatsAppFailure: true,
+      preparedShare,
     });
     return {
       status: "published",
       message: `Publicado: ${payload.productName}`,
       tone: "success",
+      telegramError: publication.telegramError || "",
+      telegramPending: Boolean(publication.telegramPending),
       whatsappError: publication.whatsappError || "",
+      whatsappWarning: publication.whatsappWarning || "",
     };
   }
 
@@ -200,31 +212,71 @@
       }
       if (previouslyPosted.length) log(`${pendingUrls.length} produtos novos serao processados.`);
 
-      const chunks = batchUtils.chunkValues(pendingUrls, BATCH_WINDOW_SIZE);
-      for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex += 1) {
-        if (controller.signal.aborted) break;
-        const offset = chunkIndex * BATCH_WINDOW_SIZE;
-        const workers = await preloadWorkers(chunks[chunkIndex], sourceTab, controller.signal, offset, pendingUrls.length);
+      const initialCount = Math.min(BATCH_WINDOW_SIZE, pendingUrls.length);
+      const workers = await preloadWorkers(
+        pendingUrls.slice(0, initialCount),
+        sourceTab,
+        controller.signal,
+        0,
+        pendingUrls.length,
+      );
+      let nextIndex = initialCount;
 
-        for (const worker of workers) {
-          if (controller.signal.aborted) break;
+      while (workers.length && !controller.signal.aborted) {
+        const worker = workers.shift();
+        let product = null;
+        let readError = null;
+        try {
+          product = await readWorker(worker, sourceTab, controller.signal, pendingUrls.length);
+        } catch (error) {
+          readError = error;
+        }
+
+        // Libera a vaga assim que a leitura termina. A proxima pagina carrega
+        // enquanto a oferta atual e publicada e enviada aos canais.
+        await closeWorker(worker.tabId);
+        if (nextIndex < pendingUrls.length && !controller.signal.aborted) {
+          const replacementIndex = nextIndex;
+          nextIndex += 1;
           try {
-            const product = await readWorker(worker, sourceTab, controller.signal, pendingUrls.length);
-            const result = await processProduct(product, worker.url, controller);
-            if (result.status === "published") published += 1;
-            else skipped += 1;
-            log(result.message, result.tone);
-            if (result.whatsappError) log(`WhatsApp nao confirmou: ${result.whatsappError}`, "error");
+            const replacement = await preloadWorker(
+              pendingUrls[replacementIndex],
+              sourceTab,
+              controller.signal,
+              replacementIndex,
+              pendingUrls.length,
+            );
+            workers.push(replacement);
+            log(`Pre-carregando ${replacementIndex + 1}/${pendingUrls.length}...`);
           } catch (error) {
-            if (controller.signal.aborted) break;
-            failed += 1;
-            log(runtime.errorMessage(error), "error");
-          } finally {
-            await closeWorker(worker.tabId);
+            if (!controller.signal.aborted) {
+              failed += 1;
+              log(`Falha ao abrir ${replacementIndex + 1}/${pendingUrls.length}: ${runtime.errorMessage(error)}`, "error");
+            }
           }
         }
 
-        await Promise.all(workers.map((worker) => closeWorker(worker.tabId)));
+        if (readError) {
+          if (controller.signal.aborted) break;
+          failed += 1;
+          log(runtime.errorMessage(readError), "error");
+          continue;
+        }
+
+        try {
+          const result = await processProduct(product, worker.url, controller);
+          if (result.status === "published") published += 1;
+          else skipped += 1;
+          log(result.message, result.tone);
+          if (result.telegramPending) log("Telegram pendente; o lote continuou sem aguardar.", "neutral");
+          else if (result.telegramError) log(`Telegram nao confirmou: ${result.telegramError}`, "error");
+          if (result.whatsappError) log(`WhatsApp parcial: ${result.whatsappError}`, "error");
+          else if (result.whatsappWarning) log(`WhatsApp: ${result.whatsappWarning}`, "neutral");
+        } catch (error) {
+          if (controller.signal.aborted) break;
+          failed += 1;
+          log(runtime.errorMessage(error), "error");
+        }
       }
 
       showToast(
@@ -240,7 +292,7 @@
       }
     } finally {
       await closeAllWorkers();
-      if (sourceTab?.id) await chrome.tabs.update(sourceTab.id, { active: true }).catch(() => {});
+      if (sourceTab?.id) await globalThis.TaBaratoExtensionApi.tabs.update(sourceTab.id, { active: true }).catch(() => {});
       state.activeProduct = productBeforeBatch;
       panel.product.invalidateShareImage();
       elements.duplicateWarning.textContent = warningBeforeBatch.text;

@@ -2,11 +2,20 @@ import pg from "pg";
 
 const { Pool } = pg;
 
+const SCHEMA_VERSION = 3;
+const SCHEMA_LOCK_KEY = 824271904;
+
 let pool;
 let schemaReady;
 
 function poolConfig(connectionString) {
-  const common = { max: 3 };
+  const common = {
+    max: 3,
+    connectionTimeoutMillis: 5_000,
+    idleTimeoutMillis: 10_000,
+    keepAlive: true,
+    allowExitOnIdle: true,
+  };
   try {
     const url = new URL(connectionString);
     const isLocal = ["localhost", "127.0.0.1", "::1"].includes(url.hostname);
@@ -44,11 +53,32 @@ export async function query(text, params = []) {
   return getPool().query(text, params);
 }
 
+async function currentSchemaVersion(client) {
+  const existence = await client.query("SELECT to_regclass('public.app_schema_meta') AS relation");
+  if (!existence.rows[0]?.relation) return 0;
+  const result = await client.query("SELECT version FROM app_schema_meta WHERE schema_key='main'");
+  return Number(result.rows[0]?.version || 0);
+}
+
 export async function ensureSchema() {
   if (!schemaReady) {
-    schemaReady = getPool().query(`
+    schemaReady = (async () => {
+      const client = await getPool().connect();
+      let locked = false;
+      try {
+        if (await currentSchemaVersion(client) >= SCHEMA_VERSION) return;
+        await client.query("SELECT pg_advisory_lock($1)", [SCHEMA_LOCK_KEY]);
+        locked = true;
+        if (await currentSchemaVersion(client) >= SCHEMA_VERSION) return;
+        await client.query(`
       CREATE EXTENSION IF NOT EXISTS pgcrypto;
       CREATE EXTENSION IF NOT EXISTS unaccent;
+      CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
+      CREATE OR REPLACE FUNCTION immutable_unaccent(value TEXT)
+      RETURNS TEXT AS $$
+        SELECT public.unaccent('public.unaccent', value)
+      $$ LANGUAGE SQL IMMUTABLE PARALLEL SAFE STRICT;
 
       CREATE TABLE IF NOT EXISTS telegram_offers (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -319,7 +349,51 @@ export async function ensureSchema() {
       BEFORE UPDATE ON telegram_auto_messages
       FOR EACH ROW
       EXECUTE FUNCTION set_telegram_offers_updated_at();
-    `).catch((error) => {
+
+      CREATE INDEX IF NOT EXISTS idx_public_offers_recent
+      ON telegram_offers ((COALESCE(published_at, updated_at, created_at)) DESC)
+      WHERE status='PUBLICADO';
+
+      CREATE INDEX IF NOT EXISTS idx_public_offers_category_recent
+      ON telegram_offers (category, (COALESCE(published_at, updated_at, created_at)) DESC)
+      WHERE status='PUBLICADO';
+
+      CREATE INDEX IF NOT EXISTS idx_public_offers_platform_recent
+      ON telegram_offers (platform, (COALESCE(published_at, updated_at, created_at)) DESC)
+      WHERE status='PUBLICADO';
+
+      CREATE INDEX IF NOT EXISTS idx_public_offers_clicks
+      ON telegram_offers (clicks DESC, (COALESCE(published_at, updated_at, created_at)) DESC)
+      WHERE status='PUBLICADO';
+
+      CREATE INDEX IF NOT EXISTS idx_telegram_offers_source_lookup
+      ON telegram_offers (LOWER(platform), UPPER(REPLACE(source_product_id, '-', '')))
+      WHERE source_product_id IS NOT NULL;
+
+      CREATE INDEX IF NOT EXISTS idx_public_offers_search
+      ON telegram_offers USING GIN (
+        immutable_unaccent(
+          product_name || ' ' || COALESCE(short_description, '') || ' ' || category || ' ' || platform
+        ) gin_trgm_ops
+      )
+      WHERE status='PUBLICADO';
+
+      CREATE TABLE IF NOT EXISTS app_schema_meta (
+        schema_key TEXT PRIMARY KEY,
+        version INTEGER NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      INSERT INTO app_schema_meta (schema_key, version, updated_at)
+      VALUES ('main', ${SCHEMA_VERSION}, NOW())
+      ON CONFLICT (schema_key)
+      DO UPDATE SET version=EXCLUDED.version, updated_at=EXCLUDED.updated_at;
+    `);
+      } finally {
+        if (locked) await client.query("SELECT pg_advisory_unlock($1)", [SCHEMA_LOCK_KEY]).catch(() => {});
+        client.release();
+      }
+    })().catch((error) => {
       schemaReady = null;
       throw error;
     });
