@@ -4,6 +4,7 @@ import { SocialEditor } from "@/features/social/SocialEditor";
 import { SocialPagePreview } from "@/features/social/SocialPagePreview";
 import { DEFAULT_PAGE_SETTINGS, DEFAULT_STYLE, EMPTY_LINK, mergeLinkDefaults, toApiDate } from "@/features/social/socialConfig";
 import { isAdminLoggedIn, validateAdminSession } from "@/lib/adminAuth";
+import { registerSocialVisit } from "@/lib/visitorAnalytics";
 import { useDocumentMetadata } from "@/hooks/useDocumentMetadata";
 import "@/features/social/social.css";
 
@@ -38,6 +39,8 @@ export default function SocialPage() {
   const [linkForm, setLinkForm] = useState({ ...EMPTY_LINK, style: { ...DEFAULT_STYLE } });
   const [busy, setBusy] = useState(true);
   const [message, setMessage] = useState("");
+
+  useEffect(() => registerSocialVisit(), []);
 
   useEffect(() => {
     const controller = new AbortController();

@@ -207,7 +207,7 @@ const browserCaptureScript = `(() => {
 export default function AdminOffers() {
   useDocumentMetadata("Painel administrativo | Tá Barato", undefined, "noindex, nofollow");
   const [offers, setOffers] = useState([]);
-  const [siteMetrics, setSiteMetrics] = useState({ uniqueVisitors: 0, visits: 0, realClicks: 0 });
+  const [siteMetrics, setSiteMetrics] = useState({ uniqueVisitors: 0, visits: 0, realClicks: 0, socialUniqueVisitors: 0, socialVisits: 0, socialVisitsToday: 0, socialVisits7d: 0 });
   const [autoMessages, setAutoMessages] = useState([]);
   const [form, setForm] = useState(emptyOffer);
   const [messageForm, setMessageForm] = useState(emptyAutoMessage);
@@ -282,6 +282,10 @@ export default function AdminOffers() {
       publicationCount,
       uniqueVisitors: siteMetrics.uniqueVisitors,
       visits: siteMetrics.visits,
+      socialUniqueVisitors: siteMetrics.socialUniqueVisitors,
+      socialVisits: siteMetrics.socialVisits,
+      socialVisitsToday: siteMetrics.socialVisitsToday,
+      socialVisits7d: siteMetrics.socialVisits7d,
       topOffers: [...offers].sort((a, b) => number(b.clicks) - number(a.clicks)).slice(0, 5),
       byPlatform: [...new Set(offers.map((offer) => offer.platform).filter(Boolean))].map((name) => ({
         name,
@@ -319,7 +323,7 @@ export default function AdminOffers() {
       const migrated = await Promise.all(missingLegacy.map((item) => telegramOffersApi.createCategory(item.name)));
       const synchronizedCategories = [...serverCategories, ...migrated.map((item) => item.category)];
       setOffers(nextOffers);
-      setSiteMetrics(data.siteMetrics || { uniqueVisitors: 0, visits: 0, realClicks: 0 });
+      setSiteMetrics(data.siteMetrics || { uniqueVisitors: 0, visits: 0, realClicks: 0, socialUniqueVisitors: 0, socialVisits: 0, socialVisitsToday: 0, socialVisits7d: 0 });
       const requestedId = new URLSearchParams(window.location.search).get("edit");
       const requestedOffer = nextOffers.find((offer) => offer.id === requestedId);
       if (requestedOffer) edit(requestedOffer);

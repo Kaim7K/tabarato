@@ -34,7 +34,11 @@ export default async function handler(req, res) {
         query(`SELECT
           (SELECT COUNT(*) FROM site_visitors) AS unique_visitors,
           (SELECT COUNT(*) FROM site_visits) AS visits,
-          (SELECT COUNT(*) FROM site_analytics_events WHERE event_type='click') AS real_clicks`),
+          (SELECT COUNT(*) FROM site_analytics_events WHERE event_type='click') AS real_clicks,
+          (SELECT COUNT(DISTINCT visitor_id) FROM social_page_visits) AS social_unique_visitors,
+          (SELECT COUNT(*) FROM social_page_visits) AS social_visits,
+          (SELECT COUNT(*) FROM social_page_visits WHERE visit_day = (NOW() AT TIME ZONE 'America/Bahia')::date) AS social_visits_today,
+          (SELECT COUNT(*) FROM social_page_visits WHERE visit_day >= (NOW() AT TIME ZONE 'America/Bahia')::date - 6) AS social_visits_7d`),
       ]);
       const metricRow = metrics.rows[0] || {};
       return sendJson(res, 200, {
@@ -44,6 +48,10 @@ export default async function handler(req, res) {
           uniqueVisitors: Number(metricRow.unique_visitors || 0),
           visits: Number(metricRow.visits || 0),
           realClicks: Number(metricRow.real_clicks || 0),
+          socialUniqueVisitors: Number(metricRow.social_unique_visitors || 0),
+          socialVisits: Number(metricRow.social_visits || 0),
+          socialVisitsToday: Number(metricRow.social_visits_today || 0),
+          socialVisits7d: Number(metricRow.social_visits_7d || 0),
         },
         connectedStoreHosts: connectedStoreHostsFromOffers(offers),
       });

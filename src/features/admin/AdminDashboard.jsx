@@ -20,7 +20,8 @@ export function Dashboard({ analytics, offers, loading, onNew, onEdit, onRefresh
         </div>
       </div>
 
-      <div className="grid sm:grid-cols-2 xl:grid-cols-5 gap-4">
+      <div className="grid sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6 gap-4">
+        <Metric icon={Users} label="Visitantes da /social" value={analytics.socialUniqueVisitors} hint={`${analytics.socialVisitsToday} hoje · ${analytics.socialVisits7d} nos ultimos 7 dias`} />
         <Metric icon={Users} label="Pessoas reais" value={analytics.uniqueVisitors} hint={`${analytics.visits} visitas unicas por dia`} />
         <Metric icon={ClipboardList} label="Ofertas cadastradas" value={analytics.total} hint={`${analytics.drafts} rascunhos`} />
         <Metric icon={Send} label="Publicadas" value={analytics.published} hint={`${analytics.totalClicks} cliques registrados`} />

@@ -4,8 +4,7 @@ import { mapPublicOffer, PUBLIC_OFFER_COLUMNS, setPublicCache } from "../_lib/pu
 import { searchGroups } from "../_lib/search.js";
 import { listCategories } from "../_lib/categories.js";
 import { handleSocial } from "../_lib/social.js";
-
-const VISITOR_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+import { isValidVisitorId, visitRejectionReason } from "../_lib/analytics.js";
 
 export default async function handler(req, res) {
   if (req.query.resource === "social") return handleSocial(req, res);
@@ -15,14 +14,40 @@ export default async function handler(req, res) {
       if (isAdminAuthorized(req)) return sendJson(res, 200, { counted: false, reason: "admin" });
       const input = await readJson(req);
       const visitorId = String(input.visitorId || "");
-      const agent = String(req.headers["user-agent"] || "");
-      if (!VISITOR_UUID.test(visitorId)) return sendJson(res, 400, { error: "Identificador de visitante invalido." });
-      if (!agent || /bot|crawler|spider|headless|lighthouse/i.test(agent)) return sendJson(res, 200, { counted: false, reason: "automated" });
+      if (!isValidVisitorId(visitorId)) return sendJson(res, 400, { error: "Identificador de visitante invalido." });
+      const rejectionReason = visitRejectionReason(req, input);
+      if (rejectionReason) return sendJson(res, 200, { counted: false, reason: rejectionReason });
       await query(`INSERT INTO site_visitors (visitor_id) VALUES ($1) ON CONFLICT (visitor_id) DO UPDATE SET last_seen_at=NOW()`, [visitorId]);
       const visit = await query(`INSERT INTO site_visits (visitor_id) VALUES ($1) ON CONFLICT (visitor_id, visit_day) DO NOTHING RETURNING id`, [visitorId]);
       return sendJson(res, 200, { counted: visit.rowCount > 0 });
     } catch (error) {
       return publicError(res, error, "Nao foi possivel registrar a visita.");
+    }
+  }
+
+  if (req.query.resource === "social-visit" && req.method === "POST") {
+    try {
+      if (isAdminAuthorized(req)) return sendJson(res, 200, { counted: false, reason: "admin" });
+      if (process.env.VERCEL_ENV && process.env.VERCEL_ENV !== "production") {
+        return sendJson(res, 200, { counted: false, reason: "non-production" });
+      }
+      const input = await readJson(req);
+      const visitorId = String(input.visitorId || "");
+      if (!isValidVisitorId(visitorId)) return sendJson(res, 400, { error: "Identificador de visitante invalido." });
+      const rejectionReason = visitRejectionReason(req, input, { minimumVisibleMs: 1200 });
+      if (rejectionReason) return sendJson(res, 200, { counted: false, reason: rejectionReason });
+
+      await query(`INSERT INTO site_visitors (visitor_id) VALUES ($1) ON CONFLICT (visitor_id) DO UPDATE SET last_seen_at=NOW()`, [visitorId]);
+      const visit = await query(
+        `INSERT INTO social_page_visits (visitor_id, visit_day)
+         VALUES ($1, (NOW() AT TIME ZONE 'America/Bahia')::date)
+         ON CONFLICT (visitor_id, visit_day) DO NOTHING
+         RETURNING id`,
+        [visitorId]
+      );
+      return sendJson(res, 200, { counted: visit.rowCount > 0 });
+    } catch (error) {
+      return publicError(res, error, "Nao foi possivel registrar a visita da pagina social.");
     }
   }
 
