@@ -28,7 +28,7 @@ test("extension manifest is Manifest V3 and references existing files", () => {
   assert.equal(manifest.manifest_version, 3);
   assert.equal(manifest.background.service_worker, "background/service-worker.js");
   assert.equal(manifest.side_panel.default_path, "sidepanel/index.html");
-  assert.equal(manifest.minimum_chrome_version, "116");
+  assert.equal(manifest.minimum_chrome_version, "141");
   assert.ok(manifest.permissions.includes("sidePanel"));
   assert.ok(manifest.permissions.includes("clipboardRead"));
   assert.ok(manifest.permissions.includes("clipboardWrite"));
@@ -50,7 +50,7 @@ test("extension manifest is Manifest V3 and references existing files", () => {
   ];
   assert.ok(referencedFiles.every((path) => existsSync(join(extensionRoot, path))));
   assert.match(backgroundSource, /access\.js/);
-  assert.match(backgroundSource, /TaBaratoExtensionApi\.sidePanel\?\.close|api\.sidePanel\?\.open/);
+  assert.match(backgroundSource, /chrome\.sidePanel\.close/);
   assert.match(readFileSync(join(extensionRoot, "sidepanel", "index.html"), "utf8"), /product-utils\.js/);
 });
 
@@ -71,17 +71,17 @@ test("extension action and launcher stay hidden outside allowed pages", () => {
   assert.match(backgroundSource, /tabarato-connected-stores/);
   assert.match(backgroundSource, /scheduleInitialization/);
   assert.match(backgroundSource, /Promise\.allSettled/);
-  assert.match(backgroundSource, /TaBaratoExtensionApi\.action\?\.disable|api\.action\?\.disable/);
-  assert.match(backgroundSource, /TaBaratoExtensionApi\.sidePanel\.setOptions/);
-  assert.match(backgroundSource, /sidePanel\?\.close/);
-  assert.match(backgroundSource, /api\.sidePanel\?\.open/);
+  assert.match(backgroundSource, /chrome\.action\.disable/);
+  assert.match(backgroundSource, /chrome\.sidePanel\.setOptions/);
+  assert.match(backgroundSource, /chrome\.sidePanel\.close\(\{ windowId: tab\.windowId \}\)/);
+  assert.match(backgroundSource, /chrome\.sidePanel\.open\(\{ windowId: sender\.tab\.windowId \}\)/);
   assert.match(backgroundSource, /message\?\.type === "TABARATO_OPEN_PANEL"/);
   assert.match(backgroundSource, /openPanelOnActionClick: true/);
-  assert.match(backgroundSource, /api\.action\?\.onClicked/);
+  assert.match(backgroundSource, /chrome\.action\.onClicked/);
   assert.match(content, /TABARATO_IS_ALLOWED_PAGE/);
   assert.match(content, /existing\?\.(?:remove|remove\(\))/);
   assert.match(content, /currentSynchronousProductAdapter/);
-  assert.match(content, /const panelRequest = globalThis\.TaBaratoExtensionApi\.runtime\.sendMessage\(\{ type: "TABARATO_OPEN_PANEL" \}\);[\s\S]+adapter\.prepareAffiliateLink/);
+  assert.match(content, /const panelRequest = chrome\.runtime\.sendMessage\(\{ type: "TABARATO_OPEN_PANEL" \}\);[\s\S]+adapter\.prepareAffiliateLink/);
   assert.doesNotMatch(content, /const adapter = await currentAdapter\(\);[\s\S]{0,240}TABARATO_OPEN_PANEL/);
   assert.match(content, /assets\/icon-128\.png/);
   assert.doesNotMatch(content, /Enviar produto/);
@@ -118,7 +118,11 @@ test("new brand identity uses the correct logo contrast in each surface", () => 
   const shareCard = readFileSync(join(root, "src", "lib", "shareCard.js"), "utf8");
   const social = readFileSync(join(root, "src", "features", "social", "SocialPagePreview.jsx"), "utf8");
   const requiredAssets = [
+    "public/brand/logo.png",
+    "public/brand/logo-dark.png",
     "public/brand/logo-card.png",
+    "public/brand/logo-card-dark.png",
+    "public/brand/mascot.png",
     "public/brand/favicon.png",
     "extension/assets/tabarato-logo.png",
     "extension/assets/icon-128.png",
@@ -418,7 +422,7 @@ test("batch mode canonicalizes routes and preloads five stable product tabs", ()
   assert.match(panelSource, /reviewProduct/);
   assert.match(panelSource, /recoverAffiliateLink/);
   assert.match(panelSource, /TABARATO_CAPTURE_AFFILIATE_LINK/);
-  assert.match(panelSource, /TaBaratoExtensionApi\.tabs\.reload/);
+  assert.match(panelSource, /chrome\.tabs\.reload/);
   assert.doesNotMatch(panelSource, /captureUrlInTempTab/);
   assert.match(content, /storeId: adapter\?\.id/);
   assert.match(content, /message\?\.type === "TABARATO_CAPTURE_AFFILIATE_LINK"/);
@@ -431,7 +435,7 @@ test("extension publishes to site, Telegram and sequential WhatsApp groups", () 
   assert.match(panelSource, /sendOfferToWhatsApp/);
   assert.match(panelSource, /groupNames\(\)/);
   assert.match(backgroundSource, /normalizeGroups/);
-  assert.match(backgroundSource, /for \(let index = 0; index < groups\.length; index \+= 1\)/);
+  assert.match(backgroundSource, /for \(const groupName of groups\)/);
   assert.match(backgroundSource, /TABARATO_STOP_WHATSAPP/);
   assert.match(whatsapp, /TABARATO_WHATSAPP_CANCEL/);
   assert.match(whatsapp, /activeController/);
@@ -466,7 +470,7 @@ test("WhatsApp artwork is copied and pasted without file attachment inputs", () 
   assert.match(media, /navigator\.clipboard\.write/);
   assert.match(media, /ClipboardItem/);
   assert.match(media, /copyImageToClipboard/);
-  assert.match(backgroundSource, /api\.offscreen\.createDocument/);
+  assert.match(backgroundSource, /chrome\.offscreen\.createDocument/);
   assert.match(backgroundSource, /TABARATO_OFFSCREEN_WRITE_IMAGE/);
   assert.ok(existsSync(join(extensionRoot, "offscreen", "clipboard.html")));
   const whatsappBackground = readFileSync(join(extensionRoot, "background", "whatsapp.js"), "utf8");
@@ -546,16 +550,16 @@ test("coupon activation uses confirmed filters and trusted Chrome input", () => 
   assert.match(backgroundSource, /could not establish connection/);
   assert.match(backgroundSource, /O automatizador de cupons nao foi carregado/);
   assert.match(backgroundSource, /Input\.dispatchMouseEvent/);
-  assert.match(backgroundSource, /TaBaratoExtensionApi\.debugger\?\.attach/);
-  assert.match(backgroundSource, /TaBaratoExtensionApi\.debugger\?\.detach/);
+  assert.match(backgroundSource, /chrome\.debugger\.attach/);
+  assert.match(backgroundSource, /chrome\.debugger\.detach/);
   assert.match(backgroundSource, /PAGE_URL = "https:\/\/www\.mercadolivre\.com\.br\/cupons\/"/);
   assert.doesNotMatch(backgroundSource, /cupons\/filter\?new=true/);
   assert.match(backgroundSource, /\^\\\/cupons\(\?:\\\/\|\$\)/);
   assert.match(panelSource, /couponActivationRunning/);
   assert.match(panelSource, /Parar cupons/);
   assert.match(panelSource, /isCouponManagementUrl/);
-  assert.match(backgroundSource, /api\.action\?\.onClicked/);
-  assert.match(backgroundSource, /TaBaratoExtensionApi\.tabs\.query\(\{\}\)|api\.tabs\.query\(\{\}\)/);
+  assert.match(backgroundSource, /chrome\.action\.onClicked/);
+  assert.match(backgroundSource, /chrome\.tabs\.query\(\{\}\)/);
   assert.match(panelSource, /Capturando o novo produto/);
   assert.match(sidePanelStyles, /position: fixed/);
   assert.match(sidePanelStyles, /Montserrat/);
@@ -673,7 +677,6 @@ test("extension runtime releases timed out operations", async () => {
     console: { error() {} },
     fetch,
     setTimeout,
-    browser: { runtime: {}, storage: {} },
   };
   context.globalThis = context;
   vm.runInNewContext(source, context, { filename: "runtime.js" });
@@ -782,7 +785,6 @@ test("batch runtime keeps at most five preloaded tabs and reads them sequentiall
       parsePrice: (value) => Number(String(value).replace(",", ".")),
     },
   };
-  context.TaBaratoExtensionApi = context.chrome;
   context.globalThis = context;
   vm.runInNewContext(utilitySource, context, { filename: "batch-utils.js" });
   vm.runInNewContext(source, context, { filename: "batch.js" });
@@ -798,9 +800,7 @@ test("batch runtime keeps at most five preloaded tabs and reads them sequentiall
     && events.slice(0, index + 1).filter((item) => item.startsWith("create:")).length === 6);
   const fifthRead = events.findIndex((event, index) => event.startsWith("read:")
     && events.slice(0, index + 1).filter((item) => item.startsWith("read:")).length === 5);
-  const firstReadComplete = events.findIndex((event) => event.startsWith("read:"));
-  assert.ok(sixthCreate > firstReadComplete);
-  assert.ok(sixthCreate < fifthRead);
+  assert.ok(sixthCreate > fifthRead);
   assert.equal(liveTabs.size, 0);
   assert.match(toast, /12 ignorados, 0 erros/);
 });
@@ -809,7 +809,7 @@ test("batch checks publication history before creating product tabs", () => {
   const batch = readFileSync(join(extensionRoot, "sidepanel", "modules", "batch.js"), "utf8");
   const catalog = readFileSync(join(extensionRoot, "sidepanel", "modules", "catalog.js"), "utf8");
   const historyCheck = batch.indexOf("previouslyPostedUrls");
-  const tabPreload = batch.indexOf("const initialCount = Math.min(BATCH_WINDOW_SIZE");
+  const tabPreload = batch.indexOf("preloadWorkers(chunks[chunkIndex]");
   assert.ok(historyCheck >= 0);
   assert.ok(tabPreload > historyCheck);
   assert.match(batch, /Ja publicado, nao foi aberto/);
@@ -857,7 +857,6 @@ test("catalog resolves already published product IDs locally and from the databa
       normalizeText: (value = "") => String(value).toLowerCase(),
     },
   };
-  context.TaBaratoExtensionApi = context.chrome;
   context.globalThis = context;
   vm.runInNewContext(batchSource, context, { filename: "batch-utils.js" });
   vm.runInNewContext(catalogSource, context, { filename: "catalog.js" });

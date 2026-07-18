@@ -39,7 +39,6 @@ CRON_SECRET=
 APP_URL=
 VITE_WHATSAPP_GROUP_URL=
 VITE_TELEGRAM_CHANNEL_URL=
-EXTENSION_ORIGIN=
 ```
 
 Use `POSTGRES_URL` ou `DATABASE_URL`. Não coloque tokens reais no repositório.
@@ -140,13 +139,3 @@ npm run typecheck
 npm test
 npm run build
 ```
-
-## Extensao em varios navegadores
-
-O diretorio `extension/` contem manifests separados para Chromium, Firefox e Safari. Para a Vercel aceitar requisicoes das versoes instaladas, configure por exemplo:
-
-```text
-EXTENSION_ORIGIN=chrome-extension://ID_DO_CHROMIUM,moz-extension://*,safari-web-extension://*
-```
-
-O token temporario da extensao continua obrigatorio em todas as rotas administrativas. A ativacao automatica de cupons e exclusiva da versao Chromium por depender da Debugger API; os demais fluxos possuem fallback multiplataforma.

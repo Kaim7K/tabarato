@@ -10,7 +10,7 @@
   let navigationTimer = null;
 
   async function syncAdminMarker() {
-    const stored = await globalThis.TaBaratoExtensionApi.storage.local.get("tabarato_extension_session").catch(() => ({}));
+    const stored = await chrome.storage.local.get("tabarato_extension_session").catch(() => ({}));
     const extensionSession = stored.tabarato_extension_session;
     const active = Boolean(extensionSession?.token && new Date(extensionSession.expiresAt).getTime() > Date.now());
     if (active) document.documentElement.dataset.tabaratoExtensionAdmin = "true";
@@ -39,7 +39,7 @@
 
   async function updateAllowedPage() {
     try {
-      const result = await globalThis.TaBaratoExtensionApi.runtime.sendMessage({ type: "TABARATO_IS_ALLOWED_PAGE", url: location.href });
+      const result = await chrome.runtime.sendMessage({ type: "TABARATO_IS_ALLOWED_PAGE", url: location.href });
       allowedPage = Boolean(result?.allowed);
     } catch {
       allowedPage = false;
@@ -70,7 +70,7 @@
       border: "1px solid rgba(17,17,17,.14)",
       borderRadius: "50%",
       background: "#ffffff",
-      backgroundImage: `url("${globalThis.TaBaratoExtensionApi.runtime.getURL("assets/icon-128.png")}")`,
+      backgroundImage: `url("${chrome.runtime.getURL("assets/icon-128.png")}")`,
       backgroundPosition: "center",
       backgroundRepeat: "no-repeat",
       backgroundSize: "34px 34px",
@@ -83,11 +83,11 @@
       if (button.disabled) return;
       button.disabled = true;
       try {
-        const panelRequest = globalThis.TaBaratoExtensionApi.runtime.sendMessage({ type: "TABARATO_OPEN_PANEL" });
+        const panelRequest = chrome.runtime.sendMessage({ type: "TABARATO_OPEN_PANEL" });
         const adapter = currentSynchronousProductAdapter();
         if (adapter) {
           adapter.prepareAffiliateLink?.();
-          globalThis.TaBaratoExtensionApi.storage.local.set({ tabarato_capture_request: { url: location.href, at: Date.now() } }).catch(() => {});
+          chrome.storage.local.set({ tabarato_capture_request: { url: location.href, at: Date.now() } }).catch(() => {});
         }
         const result = await panelRequest;
         if (!result?.ok) throw new Error(result?.error || "Nao foi possivel abrir a extensao.");
@@ -125,7 +125,7 @@
   const isCouponManagementPage = () => /(?:^|\.)mercadolivre\.com\.br$/i.test(location.hostname)
     && /^\/cupons(?:\/|$)/i.test(location.pathname);
 
-  globalThis.TaBaratoExtensionApi.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message?.type === "TABARATO_EXTRACT_PRODUCT") {
       if (isCouponManagementPage()) {
         sendResponse({ ok: false, ignored: true, error: "A pagina de cupons nao e uma pagina de produto." });
@@ -171,7 +171,7 @@
 
   updateButton().catch((error) => runtime.reportError("launcher", error));
   syncAdminMarker().catch(() => {});
-  globalThis.TaBaratoExtensionApi.storage.onChanged.addListener((changes, area) => {
+  chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== "local") return;
     if (changes.tabarato_extension_session) syncAdminMarker().catch(() => {});
     if (changes.tabarato_extension_session || changes.tabarato_connected_store_hosts || changes.tabarato_last_base_url) {

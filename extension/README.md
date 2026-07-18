@@ -73,34 +73,6 @@ A chave `ADMIN_API_KEY` permanece apenas no servidor. O login da extensao recebe
 
 ## Diagnostico
 
-Falhas operacionais possuem tempo limite e liberam a interface para nova tentativa. O ultimo erro tecnico e guardado em `storage.session` sob `tabarato_last_extension_error`, sem senha, token, HTML capturado ou dados completos do produto. A versao de producao nao possui `console.log`, `console.debug` ou `console.warn`.
+Falhas operacionais possuem tempo limite e liberam a interface para nova tentativa. O ultimo erro tecnico e guardado em `chrome.storage.session` sob `tabarato_last_extension_error`, sem senha, token, HTML capturado ou dados completos do produto. A versao de producao nao possui `console.log`, `console.debug` ou `console.warn`.
 
 Consulte [VALIDATION.md](./VALIDATION.md) para a matriz de testes e as validacoes manuais que dependem de contas autenticadas.
-
-## Compatibilidade entre navegadores
-
-A versão 3.3.0 possui pacotes separados para evitar APIs incompatíveis:
-
-- `manifest.json`: Chrome, Microsoft Edge, Brave, Opera e Vivaldi.
-- `manifest.firefox.json`: Firefox com a interface na barra lateral nativa.
-- `manifest.safari.json`: fonte preparada para conversão em Safari Web Extension.
-
-A captura, o painel, o site, Telegram e WhatsApp usam a camada WebExtensions comum. A ativação automática de cupons usa entrada confiável do depurador Chromium; em navegadores sem essa API, apenas esse recurso é desativado e o restante continua funcionando.
-
-## Publicacao resiliente — v3.3.0
-
-- Site, Telegram e WhatsApp usam operacoes independentes. O timeout do Telegram nao segura o WhatsApp nem o proximo item do lote.
-- A rota `publish-site` confirma a publicacao sem transportar a arte em Base64. O envio da arte ao Telegram ocorre em uma chamada separada.
-- Timeouts do Telegram ficam marcados como `uncertain`; a extensao nao repete automaticamente uma mensagem possivelmente enviada.
-- O WhatsApp continua com os grupos seguintes quando um grupo falha e repete apenas etapas anteriores ao clique final de envio.
-- Quando o navegador nao permite copiar imagem para o clipboard, o grupo recebe a mensagem em texto em vez de bloquear todo o lote.
-- Falha na geracao da arte nao impede a publicacao: Telegram usa a imagem remota do produto e WhatsApp usa o fallback em texto.
-- O painel abre por Side Panel no Chromium, Sidebar no Firefox e, quando nenhuma interface lateral existe, em uma aba da extensao.
-
-Para liberar mais de uma familia de navegador na Vercel, use uma lista separada por virgulas. O Firefox e o Safari podem usar curingas restritos ao esquema de extensao:
-
-```text
-EXTENSION_ORIGIN=chrome-extension://ID_DO_CHROMIUM,moz-extension://*,safari-web-extension://*
-```
-
-A ativacao automatica de cupons depende da Debugger API do Chromium. Firefox e Safari mantem captura, lote, site, Telegram e WhatsApp, mas exibem uma mensagem clara ao tentar usar apenas essa automacao incompatível.

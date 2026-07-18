@@ -546,10 +546,8 @@ export default function AdminOffers() {
     if (!offer) return;
     setSaving(true);
     try {
-      const result = await telegramOffersApi.publish(offer.id);
-      showMessage(result.telegram?.ok
-        ? "Oferta publicada no site e enviada ao Telegram."
-        : `Oferta publicada no site. Telegram: ${result.telegram?.error || "envio pendente"}`);
+      await telegramOffersApi.publish(offer.id);
+      showMessage("Oferta enviada para o Telegram.");
       await load();
       startNew();
     } catch (error) {
@@ -590,10 +588,8 @@ export default function AdminOffers() {
 
   const retry = async (offer) => {
     try {
-      const result = await telegramOffersApi.publish(offer.id);
-      showMessage(result.telegram?.ok
-        ? "Reenvio ao Telegram concluido."
-        : `A oferta continua publicada. Telegram: ${result.telegram?.error || "envio pendente"}`);
+      await telegramOffersApi.publish(offer.id);
+      showMessage("Reenvio concluido.");
       await load();
     } catch (error) {
       showMessage(error.message);

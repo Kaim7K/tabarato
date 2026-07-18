@@ -4,7 +4,7 @@ import Footer from "@/components/Footer";
 import { EmptyState, LoadingState, PageShell, SectionHeader } from "@/components/PublicUi";
 import { formatPrice } from "@/lib/catalog";
 import { useOfferTools } from "@/lib/OfferToolsContext";
-import { listPublicOffersByIds } from "@/lib/offersApi";
+import { listPublicOffers } from "@/lib/offersApi";
 import { useDocumentMetadata } from "@/hooks/useDocumentMetadata";
 
 export default function Alerts() {
@@ -13,34 +13,17 @@ export default function Alerts() {
   const [offers, setOffers] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const monitoredOfferIds = useMemo(
-    () => alerts.filter((item) => item.type !== "search" && item.offerId).map((item) => item.offerId),
-    [alerts],
-  );
-
   useEffect(() => {
     let active = true;
-    let controller;
-    const refresh = (force = false) => {
-      if (!force && document.visibilityState !== "visible") return Promise.resolve();
-      controller?.abort();
-      controller = new AbortController();
-      return listPublicOffersByIds(monitoredOfferIds, { signal: controller.signal })
-        .then((items) => { if (active) setOffers(items); })
-        .catch(() => {})
-        .finally(() => { if (active) setLoading(false); });
-    };
-    refresh(true);
-    const interval = window.setInterval(() => refresh(false), 60_000);
-    const onVisibility = () => { if (document.visibilityState === "visible") refresh(true); };
+    const refresh = () => listPublicOffers({ limit: 100 })
+      .then((items) => { if (active) setOffers(items); })
+      .finally(() => { if (active) setLoading(false); });
+    refresh();
+    const interval = window.setInterval(refresh, 60_000);
+    const onVisibility = () => { if (document.visibilityState === "visible") refresh(); };
     document.addEventListener("visibilitychange", onVisibility);
-    return () => {
-      active = false;
-      controller?.abort();
-      window.clearInterval(interval);
-      document.removeEventListener("visibilitychange", onVisibility);
-    };
-  }, [monitoredOfferIds]);
+    return () => { active = false; window.clearInterval(interval); document.removeEventListener("visibilitychange", onVisibility); };
+  }, []);
 
   const rows = useMemo(() => alerts.map((alert) => ({ ...alert, offer: offers.find((item) => item.id === alert.offerId) })), [alerts, offers]);
 

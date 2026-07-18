@@ -4,7 +4,7 @@
   previousEngine?.stop?.();
   if (previousEngine?.messageHandler) {
     try {
-      globalThis.TaBaratoExtensionApi.runtime.onMessage.removeListener(previousEngine.messageHandler);
+      chrome.runtime.onMessage.removeListener(previousEngine.messageHandler);
     } catch {
       // The old extension context may already be invalid.
     }
@@ -105,7 +105,7 @@
       throw new Error("Outro elemento esta cobrindo o controle do Mercado Livre.");
     }
 
-    const response = await globalThis.TaBaratoExtensionApi.runtime.sendMessage({
+    const response = await chrome.runtime.sendMessage({
       type: "TABARATO_COUPON_CLICK",
       operationId: run.operationId,
       x,
@@ -350,5 +350,5 @@
 
   globalThis[ENGINE_KEY] = { version: 3, activate: activateCoupons, stop, messageHandler };
   globalThis.TaBaratoCoupons = globalThis[ENGINE_KEY];
-  globalThis.TaBaratoExtensionApi.runtime.onMessage.addListener(messageHandler);
+  chrome.runtime.onMessage.addListener(messageHandler);
 })();

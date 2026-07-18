@@ -42,47 +42,11 @@
     elements.fields.category.value = names.includes(current) ? current : names[0];
   }
 
-  const CATALOG_TTL = 20_000;
-
-  function rebuildIndexes() {
-    const source = new Map();
-    const link = new Map();
-    const name = new Map();
-    const posted = new Set();
-    state.synchronizedOffers.forEach((offer) => {
-      const platform = normalizeText(offer.platform || "");
-      const sourceProductId = normalizedSourceProductId(offer.sourceProductId);
-      const comparableLink = comparableUrl(offer.affiliateLink || "");
-      const normalizedName = normalizeText(offer.productName || "");
-      if (platform && sourceProductId) source.set(`${platform}:${sourceProductId}`, offer);
-      if (comparableLink) link.set(comparableLink, offer);
-      if (platform && normalizedName) name.set(`${platform}:${normalizedName}`, offer);
-      if (offerWasPublished(offer) && platform && sourceProductId) posted.add(`${platform}:${sourceProductId}`);
-    });
-    state.catalogIndexes = { source, link, name, posted };
-  }
-
-  function addOffer(offer) {
-    if (!offer?.id) return;
-    state.synchronizedOffers = [offer, ...state.synchronizedOffers.filter((item) => item.id !== offer.id)];
-    rebuildIndexes();
-  }
-
-  function removeOffer(id) {
-    state.synchronizedOffers = state.synchronizedOffers.filter((offer) => offer.id !== id);
-    rebuildIndexes();
-  }
-
-  async function synchronize({ force = false } = {}) {
+  async function synchronize() {
     if (state.catalogPromise) return state.catalogPromise;
-    if (!force && state.catalogSyncedAt && Date.now() - state.catalogSyncedAt < CATALOG_TTL) {
-      return { offers: state.synchronizedOffers, categories: state.availableCategories };
-    }
-    state.catalogPromise = panel.api.request("/api/admin/ofertas?view=extension")
+    state.catalogPromise = panel.api.request("/api/admin/ofertas")
       .then(async (data) => {
         state.synchronizedOffers = Array.isArray(data.offers) ? data.offers : [];
-        state.catalogSyncedAt = Date.now();
-        rebuildIndexes();
         const categories = data.categories?.length
           ? data.categories
           : [...new Set(state.synchronizedOffers.map((offer) => offer.category).filter(Boolean))];
@@ -90,7 +54,7 @@
         const connectedHosts = Array.isArray(data.connectedStoreHosts)
           ? data.connectedStoreHosts
           : connectedHostsFromOffers(state.synchronizedOffers);
-        await globalThis.TaBaratoExtensionApi.storage.local.set({ [STORAGE.connectedHosts]: connectedHosts });
+        await chrome.storage.local.set({ [STORAGE.connectedHosts]: connectedHosts });
         return data;
       })
       .finally(() => { state.catalogPromise = null; });
@@ -131,13 +95,21 @@
   }
 
   async function previouslyPostedUrls(urls) {
-    if (!state.catalogIndexes) rebuildIndexes();
     const identities = (Array.isArray(urls) ? urls : [])
       .map((url) => ({ url, identity: batchUtils?.productIdentityFromUrl?.(url) || null }))
       .filter((item) => item.identity?.sourceProductId && item.identity?.platform);
     if (!identities.length) return [];
 
-    const postedKeys = new Set(state.catalogIndexes?.posted || []);
+    const postedKeys = new Set(
+      state.synchronizedOffers
+        .filter(offerWasPublished)
+        .map((offer) => {
+          const platform = normalizeText(offer.platform || "");
+          const sourceProductId = normalizedSourceProductId(offer.sourceProductId);
+          return platform && sourceProductId ? `${platform}:${sourceProductId}` : "";
+        })
+        .filter(Boolean),
+    );
 
     const byPlatform = new Map();
     identities.forEach(({ identity }) => {
@@ -176,22 +148,21 @@
   }
 
   function findExisting(product) {
-    if (!state.catalogIndexes) rebuildIndexes();
-    const sourceProductId = normalizedSourceProductId(product.externalProductId || product.sourceProductId || "");
+    const productId = normalizeText(product.externalProductId || product.sourceProductId || "");
     const platform = normalizeText(product.platform || "");
     const link = comparableUrl(product.affiliateLink || product.sourceUrl || "");
     const name = normalizeText(product.productName || "");
-    return (platform && sourceProductId ? state.catalogIndexes.source.get(`${platform}:${sourceProductId}`) : null)
-      || (link ? state.catalogIndexes.link.get(link) : null)
-      || (platform && name ? state.catalogIndexes.name.get(`${platform}:${name}`) : null)
-      || null;
+    return state.synchronizedOffers.find((offer) => {
+      const samePlatform = normalizeText(offer.platform) === platform;
+      if (samePlatform && productId && normalizeText(offer.sourceProductId) === productId) return true;
+      if (link && comparableUrl(offer.affiliateLink) === link) return true;
+      return samePlatform && name && normalizeText(offer.productName) === name;
+    }) || null;
   }
 
   panel.catalog = {
-    addOffer,
     findExisting,
     previouslyPostedUrls,
-    removeOffer,
     suggestCategory,
     synchronize,
     updateCategoryOptions,

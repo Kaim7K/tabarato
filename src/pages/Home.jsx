@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import {
   ArrowUpRight,
@@ -51,41 +51,29 @@ export default function Home() {
       .finally(() => setLoading(false));
   }, []);
 
-  const { featured, filteredOffers, mostClicked, personalized, recent } = useMemo(() => {
-    const normalizedQuery = normalizeText(searchQuery);
-    const filtered = normalizedQuery
-      ? offers.filter((offer) => normalizeText(offer.name).includes(normalizedQuery) || normalizeText(offer.category).includes(normalizedQuery))
-      : offers;
-    const highlighted = filtered[0] || null;
-    const preferred = new Set(preferredCategories.slice(0, 3));
-    return {
-      filteredOffers: filtered,
-      featured: highlighted,
-      recent: filtered.filter((offer) => offer.id !== highlighted?.id).slice(0, 8),
-      personalized: preferred.size
-        ? filtered.filter((offer) => preferred.has(offer.category) && offer.id !== highlighted?.id).slice(0, 4)
-        : [],
-      mostClicked: [...filtered].sort((a, b) => (b.clicks || 0) - (a.clicks || 0)).slice(0, 5),
-    };
-  }, [offers, preferredCategories, searchQuery]);
+  const normalizedQuery = normalizeText(searchQuery);
+  const filteredOffers = normalizedQuery
+    ? offers.filter((offer) => normalizeText(offer.name).includes(normalizedQuery) || normalizeText(offer.category).includes(normalizedQuery))
+    : offers;
+  const featured = filteredOffers[0] || null;
   const featuredCopy = featured?.benefit || featured?.description || "Oferta selecionada para comprar melhor sem perder tempo.";
+  const recent = filteredOffers.filter((offer) => offer.id !== featured?.id).slice(0, 8);
+  const personalized = preferredCategories.length
+    ? filteredOffers.filter((offer) => preferredCategories.slice(0, 3).includes(offer.category) && offer.id !== featured?.id).slice(0, 4)
+    : [];
+  const mostClicked = [...filteredOffers].sort((a, b) => (b.clicks || 0) - (a.clicks || 0)).slice(0, 5);
   const hasTelegramLink = Boolean(TELEGRAM_CHANNEL_URL);
   const hasWhatsAppLink = Boolean(WHATSAPP_GROUP_URL);
 
   return (
     <div className="bg-[#F4F5F6] min-h-screen">
       <section className="relative isolate overflow-hidden bg-[#111111] text-white border-b-4 border-[#FF6B35]">
-        <picture>
-          <source srcSet="/brand/hero-marketplace-v1.webp" type="image/webp" />
-          <img
-            src="/brand/hero-marketplace-v1.jpg"
-            alt=""
-            aria-hidden="true"
-            fetchPriority="high"
-            decoding="async"
-            className="absolute inset-0 -z-20 h-full w-full object-cover object-[68%_center] sm:object-center"
-          />
-        </picture>
+        <img
+          src="/brand/hero-marketplace-v1.jpg"
+          alt=""
+          aria-hidden="true"
+          className="absolute inset-0 -z-20 h-full w-full object-cover object-[68%_center] sm:object-center"
+        />
         <div className="absolute inset-0 -z-10 bg-[#090909]/55 sm:bg-[#090909]/42" aria-hidden="true" />
         <div className="max-w-7xl mx-auto min-h-[29rem] sm:min-h-[32rem] px-4 sm:px-6 lg:px-8 py-10 sm:py-14 flex items-center">
           <div className="max-w-3xl">

@@ -66,48 +66,28 @@ export function formatTelegramMessage(offer) {
   return compactLines(lines);
 }
 
-async function telegramRequest(method, body, { attempts = 2, timeoutMs = 15000 } = {}) {
+async function telegramRequest(method, body) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token) throw new Error("Telegram não configurado.");
 
-  let lastError;
-  for (let attempt = 1; attempt <= attempts; attempt += 1) {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      const response = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
-        method: "POST",
-        headers: body instanceof FormData ? undefined : { "Content-Type": "application/json" },
-        body: body instanceof FormData ? body : JSON.stringify(body),
-        signal: controller.signal,
-      });
-      const payload = await response.json().catch(() => null);
-      if (response.ok && payload?.ok) return payload;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 12000);
 
-      const error = new Error(payload?.description || `Telegram respondeu com status ${response.status}.`);
-      error.code = "TELEGRAM_HTTP_ERROR";
-      error.status = response.status;
-      error.retryAfter = Math.max(0, Number(payload?.parameters?.retry_after || 0));
-      const retryable = response.status === 429 || response.status >= 500;
-      if (!retryable || attempt >= attempts) throw error;
-      const delayMs = error.retryAfter
-        ? Math.min(10000, error.retryAfter * 1000)
-        : Math.min(4000, 500 * (2 ** (attempt - 1)));
-      await new Promise((resolve) => setTimeout(resolve, delayMs));
-    } catch (error) {
-      if (error?.name === "AbortError") {
-        const timeoutError = new Error("O Telegram não confirmou o envio dentro do tempo esperado. O WhatsApp continuará normalmente.");
-        timeoutError.code = "TELEGRAM_TIMEOUT_UNCERTAIN";
-        timeoutError.uncertain = true;
-        throw timeoutError;
-      }
-      lastError = error;
-      if (error?.code !== "TELEGRAM_HTTP_ERROR" || attempt >= attempts) throw error;
-    } finally {
-      clearTimeout(timeout);
+  try {
+    const response = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
+      method: "POST",
+      headers: body instanceof FormData ? undefined : { "Content-Type": "application/json" },
+      body: body instanceof FormData ? body : JSON.stringify(body),
+      signal: controller.signal,
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok || !payload?.ok) {
+      throw new Error(payload?.description || `Telegram respondeu com status ${response.status}.`);
     }
+    return payload;
+  } finally {
+    clearTimeout(timeout);
   }
-  throw lastError || new Error("Falha ao acessar o Telegram.");
 }
 
 export async function sendTelegramOffer(offer) {
@@ -136,23 +116,7 @@ export async function sendTelegramOffer(offer) {
     body = { chat_id: chatId, photo: offer.imageUrl, caption, parse_mode: "HTML", reply_markup };
   }
 
-  let payload;
-  try {
-    payload = await telegramRequest(method, body);
-  } catch (error) {
-    const permanentImageFailure = hasImage
-      && error?.code === "TELEGRAM_HTTP_ERROR"
-      && Number(error.status) >= 400
-      && Number(error.status) < 500
-      && Number(error.status) !== 429;
-    if (!permanentImageFailure) throw error;
-    payload = await telegramRequest("sendMessage", {
-      chat_id: chatId,
-      text: caption,
-      parse_mode: "HTML",
-      reply_markup,
-    });
-  }
+  const payload = await telegramRequest(method, body);
   const messageId = payload.result?.message_id || payload.result?.[0]?.message_id;
   if (!messageId) throw new Error("Resposta inválida do Telegram.");
   return { messageId: String(messageId), response: payload };

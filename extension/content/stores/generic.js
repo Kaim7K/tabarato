@@ -6,7 +6,7 @@
   const hostMatches = (hostname, host) => hostname === host || hostname.endsWith(`.${host}`);
 
   async function connectedHosts() {
-    const stored = await globalThis.TaBaratoExtensionApi.storage.local.get(["tabarato_connected_store_hosts"]);
+    const stored = await chrome.storage.local.get(["tabarato_connected_store_hosts"]);
     return Array.isArray(stored.tabarato_connected_store_hosts) ? stored.tabarato_connected_store_hosts.map(String) : [];
   }
 

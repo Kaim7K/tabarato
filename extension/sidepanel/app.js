@@ -22,14 +22,14 @@
 
   async function activateCoupons() {
     if (state.couponActivationRunning) {
-      await globalThis.TaBaratoExtensionApi.runtime.sendMessage({ type: "TABARATO_STOP_ML_COUPONS" }).catch(() => {});
+      await chrome.runtime.sendMessage({ type: "TABARATO_STOP_ML_COUPONS" }).catch(() => {});
       showToast("Interrompendo a ativacao de cupons...", "neutral");
       return;
     }
     state.couponActivationRunning = true;
     renderCouponActivationState();
     try {
-      const result = await globalThis.TaBaratoExtensionApi.runtime.sendMessage({
+      const result = await chrome.runtime.sendMessage({
         type: "TABARATO_ACTIVATE_ML_COUPONS",
         limit: Number(elements.couponLimit.value) || 5,
       });
@@ -76,7 +76,7 @@
     window.addEventListener("tabarato-theme-change", renderThemeControl);
     elements.groupsToggle.addEventListener("click", () => elements.groupsPanel.classList.toggle("hidden"));
     elements.saveGroupsButton.addEventListener("click", async () => {
-      await globalThis.TaBaratoExtensionApi.storage.local.set({ [STORAGE.groups]: elements.whatsappGroups.value });
+      await chrome.storage.local.set({ [STORAGE.groups]: elements.whatsappGroups.value });
       showToast(`${panel.groupNames().length} grupos registrados.`, "success");
     });
     elements.stopMacroButton.addEventListener("click", panel.batch.stop);
@@ -108,13 +108,13 @@
     [elements.fields.currentPrice, elements.fields.previousPrice]
       .forEach((field) => field.addEventListener("change", panel.product.normalizePriceFields));
 
-    globalThis.TaBaratoExtensionApi.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+    chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
       if ((!changeInfo.url && changeInfo.status !== "complete") || !tab.active) return;
       panel.capture.highlightNavigation({ ...tab, id: tabId, url: changeInfo.url || tab.url });
     });
-    globalThis.TaBaratoExtensionApi.tabs.onActivated.addListener(async ({ tabId }) => {
+    chrome.tabs.onActivated.addListener(async ({ tabId }) => {
       try {
-        panel.capture.highlightNavigation(await globalThis.TaBaratoExtensionApi.tabs.get(tabId));
+        panel.capture.highlightNavigation(await chrome.tabs.get(tabId));
       } catch { /* Closed tabs are ignored. */ }
     });
   }
@@ -126,10 +126,10 @@
   async function captureCurrentPageAfterAuth(stored = null) {
     if (!panel.api.sessionIsValid()) return;
     const tab = await activeTab().catch(() => null);
-    const saved = stored || await globalThis.TaBaratoExtensionApi.storage.local.get(STORAGE.captureRequest);
+    const saved = stored || await chrome.storage.local.get(STORAGE.captureRequest);
     const captureRequest = saved?.[STORAGE.captureRequest];
     if (freshCaptureRequest(captureRequest, tab)) {
-      await globalThis.TaBaratoExtensionApi.storage.local.remove(STORAGE.captureRequest);
+      await chrome.storage.local.remove(STORAGE.captureRequest);
       await panel.capture.current();
       return;
     }
@@ -145,7 +145,7 @@
   async function initialize() {
     renderThemeControl();
     bindEvents();
-    const stored = await globalThis.TaBaratoExtensionApi.storage.local.get(Object.values(STORAGE));
+    const stored = await chrome.storage.local.get(Object.values(STORAGE));
     await panel.api.restoreSession(stored);
     elements.whatsappGroups.value = stored[STORAGE.groups] || "";
     panel.product.restoreDraft(stored[STORAGE.productDraft]);
