@@ -1,6 +1,3 @@
-@font-face { font-family: "Montserrat"; src: url("../assets/montserrat-400.ttf") format("truetype"); font-weight: 400; font-display: swap; }
-@font-face { font-family: "Montserrat"; src: url("../assets/montserrat-600.ttf") format("truetype"); font-weight: 600; font-display: swap; }
-@font-face { font-family: "Montserrat"; src: url("../assets/montserrat-700.ttf") format("truetype"); font-weight: 700; font-display: swap; }
 
 :root {
   color-scheme: light;

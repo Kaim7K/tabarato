@@ -1,5 +1,5 @@
 import { handleExtensionCors, requireAdmin, sendJson, methodNotAllowed, readJson, publicError } from "../../_lib/http.js";
-import { createOffer, listOffers, validateOffer } from "../../_lib/offers.js";
+import { createOffer, listOffers, listPostedProductIds, validateOffer } from "../../_lib/offers.js";
 import { createCategory, listCategories, removeCategory } from "../../_lib/categories.js";
 import { query } from "../../_lib/db.js";
 
@@ -24,6 +24,16 @@ export default async function handler(req, res) {
 
   try {
     if (req.method === "GET") {
+      if (req.query.resource === "posted-products") {
+        const sourceProductIds = String(req.query.sourceProductIds || "")
+          .split(",")
+          .map((value) => value.trim())
+          .filter(Boolean)
+          .slice(0, 100);
+        const postedProductIds = await listPostedProductIds(req.query.platform || "", sourceProductIds);
+        return sendJson(res, 200, { postedProductIds });
+      }
+
       const offers = await listOffers({
         search: req.query.search || "",
         status: req.query.status || "",

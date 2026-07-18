@@ -30,7 +30,7 @@
   }
 
   function couponNoticeForStatus(status = "") {
-    return /^(?:activation-required|available-without-code)$/i.test(String(status || ""))
+    return /^(?:activation-required|available-without-code|applied-without-code)$/i.test(String(status || ""))
       ? COUPON_ACTIVATION_MESSAGE
       : "";
   }

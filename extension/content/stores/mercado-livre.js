@@ -8,6 +8,39 @@
   let capturedAffiliateLink = "";
   let capturedAffiliatePage = "";
 
+  const scrollTop = () => Number(
+    globalThis.scrollY
+      || document.scrollingElement?.scrollTop
+      || document.documentElement?.scrollTop
+      || document.body?.scrollTop
+      || 0
+  );
+
+  const pinPageToTop = () => {
+    const roots = [document.scrollingElement, document.documentElement, document.body].filter(Boolean);
+    roots.forEach((root) => {
+      root.scrollTop = 0;
+      root.scrollLeft = 0;
+    });
+    try {
+      globalThis.scrollTo?.({ top: 0, left: 0, behavior: "auto" });
+    } catch {
+      globalThis.scrollTo?.(0, 0);
+    }
+    return scrollTop() <= 2;
+  };
+
+  const stabilizePageTop = async (timeout = 1200) => {
+    let stableSamples = 0;
+    const ready = await tools.waitFor(() => {
+      pinPageToTop();
+      stableSamples = scrollTop() <= 2 ? stableSamples + 1 : 0;
+      return stableSamples >= 3 ? true : "";
+    }, timeout);
+    pinPageToTop();
+    return Boolean(ready);
+  };
+
   const contextText = (element, depthLimit = 4) => {
     let current = element;
     let value = "";
@@ -142,14 +175,21 @@
     .filter((element) => element.id !== "tabarato-launcher" && tools.visible(element))
     .map((element) => {
       const label = controlLabel(element);
-      const shareLabel = /compartilhar|compartilhe|\bshare\b|gerar\s+link|link\s+de\s+afiliado|afiliad/i.test(controlLabel(element));
+      const shareLabel = /compartilhar|compartilhe|\bshare\b|gerar\s+link|link\s+de\s+afiliado|afiliad/i.test(label);
       if (!shareLabel) return null;
+      const contextScore = affiliateContextScore(element);
+      const explicitAffiliateLabel = /afiliad|gerar\s+link|link\s+de\s+afiliado/i.test(label);
       const rectangle = element.getBoundingClientRect();
       const viewportWidth = Number(globalThis.innerWidth || document.documentElement?.clientWidth || 0);
-      const score = affiliateContextScore(element)
+      const topProductControl = rectangle.top >= 0
+        && rectangle.top < 560
+        && (viewportWidth <= 0 || rectangle.left > viewportWidth * 0.42);
+      if (!contextScore && !explicitAffiliateLabel && !topProductControl) return null;
+      const score = contextScore
         + (/compartilh|\bshare\b/i.test(label) ? 60 : 0)
-        + (/afiliad|gerar\s+link/i.test(label) ? 80 : 0)
-        + (rectangle.top >= 0 && rectangle.top < 420 ? 25 : 0)
+        + (explicitAffiliateLabel ? 80 : 0)
+        + (rectangle.top >= 0 && rectangle.top < 420 ? 35 : 0)
+        - (rectangle.top > 900 ? 80 : 0)
         + (viewportWidth > 0 && rectangle.left > viewportWidth * 0.45 ? 10 : 0);
       return { element, score };
     })
@@ -160,12 +200,12 @@
   const affiliateRequestPending = () => Date.now() - affiliateRequestStartedAt < 1800;
 
   const prepareAffiliateLink = (force = false) => {
+    pinPageToTop();
     if (affiliateDialog()) return true;
     if (!force && affiliateRequestPending()) return true;
     const control = shareControls()[0];
     if (!control) return false;
     affiliateRequestStartedAt = Date.now();
-    control.scrollIntoView?.({ block: "center", inline: "nearest" });
     control.click();
     return true;
   };
@@ -186,6 +226,7 @@
   };
 
   const openAffiliateDialog = async (attempt = 0) => {
+    await stabilizePageTop();
     const existing = affiliateDialog();
     if (existing) return existing;
     if (affiliateRequestPending()) {
@@ -208,8 +249,10 @@
     if (force || capturedAffiliatePage !== location.href) affiliateRequestStartedAt = 0;
     capturedAffiliatePage = location.href;
     capturedAffiliateLink = "";
+    await stabilizePageTop();
 
     for (let attempt = 0; attempt < 3; attempt += 1) {
+      await stabilizePageTop();
       if (attempt > 0) {
         await closeAffiliateDialog().catch(() => {});
         await new Promise((resolve) => window.setTimeout(resolve, 350 * attempt));
@@ -237,10 +280,39 @@
 
   const usefulCoupon = (root = productRoot()) => tools.couponCandidates(root)[0]?.value || "";
 
+  const explicitCouponCode = (root = productRoot()) => {
+    if (!root) return "";
+    const selectors = [
+      ".ui-vpp-coupons",
+      "[class*='coupon' i]",
+      "[class*='cupom' i]",
+      "[data-testid*='coupon' i]",
+      "[data-testid*='cupom' i]",
+      ".ui-pdp-price__main-container",
+      ".ui-pdp-price__second-line",
+    ].join(", ");
+    const candidates = [root, ...root.querySelectorAll(selectors)]
+      .filter((element, index, values) => values.indexOf(element) === index)
+      .filter((element) => element === root || tools.visible(element));
+    for (const element of candidates) {
+      const text = tools.clean(element.innerText || element.textContent || "");
+      if (!text || text.length > 260 || !/\bcom\b/i.test(text)) continue;
+      const code = globalThis.TaBaratoCouponCode.extractExplicitComCode(text);
+      if (!code) continue;
+      const couponContext = /cupom|coupon|desconto|\boff\b|R\$|ui-vpp-coupons/i.test(
+        `${text} ${element.className || ""} ${element.getAttribute?.("data-testid") || ""}`,
+      );
+      if (couponContext) return code;
+    }
+    return "";
+  };
+
   const captureCoupon = async (hasCouponPrice = false) => {
-    const existing = usefulCoupon(productRoot());
+    const root = productRoot();
+    const existing = explicitCouponCode(root) || usefulCoupon(root);
     if (existing) return { code: existing, status: "code" };
     const control = productControl(/ver cupons dispon[ií]veis|ver.*cupons?|cupons? dispon[ií]veis/i);
+    const pageState = globalThis.TaBaratoCouponCode.classify(root.innerText || root.textContent || "", { hasCouponPrice });
     let dialog = couponDialog();
     if (!dialog && control) {
       control.click();
@@ -248,14 +320,22 @@
     }
     try {
       if (!dialog) {
-        return {
-          code: "",
-          status: hasCouponPrice && control ? "activation-required" : "none",
-        };
+        const status = pageState.status !== "none"
+          ? pageState.status
+          : hasCouponPrice || control
+            ? "activation-required"
+            : "none";
+        return { code: "", status };
       }
-      const code = await tools.waitFor(() => usefulCoupon(couponDialog() || dialog), 1400) || "";
+      const code = await tools.waitFor(() => {
+        const activeDialog = couponDialog() || dialog;
+        return explicitCouponCode(activeDialog) || usefulCoupon(activeDialog);
+      }, 1800) || "";
       if (code) return { code, status: "code" };
-      return globalThis.TaBaratoCouponCode.classify(dialog.innerText, { hasCouponPrice });
+      const dialogState = globalThis.TaBaratoCouponCode.classify(dialog.innerText || dialog.textContent || "", { hasCouponPrice });
+      return dialogState.status === "none" && (hasCouponPrice || control)
+        ? { code: "", status: "activation-required" }
+        : dialogState;
     } finally {
       if (dialog && tools.visible(dialog)) closeDialog(dialog);
       await tools.closeTransientDialogs();

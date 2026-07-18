@@ -54,9 +54,11 @@ extension/
 - Um texto so vira cupom quando possui contexto explicito, como `Com MELIMODA` ou `Cupom: MELIMODA`. Categorias e nomes de produto nao sao aceitos como codigo.
 - A mensagem omite cupom e frete quando essas informacoes nao foram confirmadas. Parcelamento, Pix e frete nao sao duplicados.
 - Mercado Livre exige um link `meli.la` realmente gerado pela conta de afiliado. A URL comum nao e convertida nem apresentada como link de afiliado.
-- No envio em lote, a extensao aguarda o componente de afiliados, le o link em campos, atributos e textos do modal, repete a geracao e recarrega a pagina uma vez antes de considerar o link indisponivel.
+- No envio em lote, a extensao abre ate cinco produtos por vez em abas de pre-carregamento. Cada pagina precisa manter nome, preco e imagem estaveis em tres verificacoes consecutivas antes da leitura. Depois, a aba e ativada, o componente de afiliados recebe tempo para montar e o `meli.la` passa por recuperacao e recarga controlada antes de ser considerado indisponivel.
+- Antes de abrir as abas do lote, a extensao consulta o ID do produto no historico do site. Itens ja publicados sao descartados sem carregar novamente a pagina.
+- No Mercado Livre, `Com CODIGO` vira o codigo real do cupom. Quando ha cupom ou preco com cupom sem codigo visivel, a mensagem usa `disponível no anúncio. Ative antes de comprar.`.
 - Todos os dialogs abertos pela captura sao fechados no bloco de finalizacao do adaptador.
-- O lote reutiliza uma aba de trabalho, elimina rotas repetidas e so pula produtos abaixo do limite de confianca depois das tentativas de recuperacao.
+- O lote elimina rotas repetidas, trabalha em janelas de cinco abas, coleta uma por vez enquanto as seguintes carregam em paralelo e fecha cada aba imediatamente depois da publicacao.
 - WhatsApp usa a imagem copiada no clipboard do sistema. A extensao nao simula upload por campo de arquivo.
 
 ## Producao

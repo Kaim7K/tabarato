@@ -105,6 +105,7 @@
     shareImageKey: "",
     batchController: null,
     batchWorkerTabId: null,
+    batchWorkerTabIds: [],
     couponActivationRunning: false,
     navigationCaptureTimer: null,
     draftPersistTimer: null,

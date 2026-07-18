@@ -14,7 +14,12 @@
         const itemId = url.href.match(/(?:^|[/?-])(MLB-?\d{6,})(?:$|[/?#-])/i)?.[1]?.replace("-", "").toUpperCase();
         if (!itemId) return null;
         url.search = "";
-        return { key: `mercado-livre:${itemId}`, url: url.href };
+        return {
+          key: `mercado-livre:${itemId}`,
+          url: url.href,
+          platform: "Mercado Livre",
+          sourceProductId: itemId,
+        };
       }
 
       if (storeId === "shopee") {
@@ -23,16 +28,35 @@
           || url.pathname.match(/\/product\/(\d+)\/(\d+)/i);
         if (!ids) return null;
         url.search = "";
-        return { key: `shopee:${ids[1]}.${ids[2]}`, url: url.href };
+        return {
+          key: `shopee:${ids[1]}.${ids[2]}`,
+          url: url.href,
+          platform: "Shopee",
+          sourceProductId: `${ids[1]}.${ids[2]}`,
+        };
       }
 
       [...url.searchParams.keys()].forEach((key) => {
         if (trackingParameter.test(key)) url.searchParams.delete(key);
       });
-      return { key: `${url.hostname}${url.pathname}${url.search}`, url: url.href };
+      return {
+        key: `${url.hostname}${url.pathname}${url.search}`,
+        url: url.href,
+        platform: "",
+        sourceProductId: "",
+      };
     } catch {
       return null;
     }
+  };
+
+  const productIdentityFromUrl = (value, storeId = "") => {
+    const inferredStoreId = storeId || (/mercadolivre|mercadolibre/i.test(String(value || ""))
+      ? "mercado-livre"
+      : /shopee/i.test(String(value || ""))
+        ? "shopee"
+        : "generic");
+    return routeDetails(value, inferredStoreId);
   };
 
   const normalizeProductUrls = (values, storeId, limit = 20) => {
@@ -43,6 +67,17 @@
       if (routes.size >= limit) break;
     }
     return [...routes.values()];
+  };
+
+
+  const chunkValues = (values, size = 5) => {
+    const normalizedSize = Math.max(1, Math.min(10, Number(size) || 5));
+    const source = Array.isArray(values) ? values : [];
+    const chunks = [];
+    for (let index = 0; index < source.length; index += normalizedSize) {
+      chunks.push(source.slice(index, index + normalizedSize));
+    }
+    return chunks;
   };
 
   const reviewProduct = (product, minimumConfidence, parsePrice) => {
@@ -65,7 +100,9 @@
   };
 
   globalThis.TaBaratoBatchUtils = {
+    chunkValues,
     normalizeProductUrls,
+    productIdentityFromUrl,
     reviewProduct,
   };
 })();

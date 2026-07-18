@@ -196,6 +196,34 @@ function rethrowDuplicateConstraint(error, productName) {
   throw error;
 }
 
+export async function listPostedProductIds(platform = "", sourceProductIds = []) {
+  const normalizedPlatform = String(platform || "").trim();
+  const normalizedIds = [...new Set((Array.isArray(sourceProductIds) ? sourceProductIds : [])
+    .map((value) => String(value || "").replace(/-/g, "").trim().toUpperCase())
+    .filter((value) => /^[A-Z0-9.]{4,120}$/.test(value)))]
+    .slice(0, 100);
+  if (!normalizedPlatform || !normalizedIds.length) return [];
+
+  const result = await query(
+    `SELECT DISTINCT UPPER(REPLACE(offer.source_product_id, '-', '')) AS source_product_id
+     FROM telegram_offers offer
+     WHERE LOWER(offer.platform)=LOWER($1)
+       AND UPPER(REPLACE(offer.source_product_id, '-', '')) = ANY($2::text[])
+       AND (
+         offer.status='PUBLICADO'
+         OR offer.published_at IS NOT NULL
+         OR offer.telegram_message_id IS NOT NULL
+         OR EXISTS (
+           SELECT 1
+           FROM offer_publication_history history
+           WHERE history.offer_id=offer.id AND history.status='SUCESSO'
+         )
+       )`,
+    [normalizedPlatform, normalizedIds],
+  );
+  return result.rows.map((row) => String(row.source_product_id || "").trim()).filter(Boolean);
+}
+
 export async function listOffers({ search = "", status = "", category = "" } = {}) {
   const filters = [];
   const params = [];

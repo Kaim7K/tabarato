@@ -4,6 +4,7 @@
 
   const { STORAGE, elements, state } = panel;
   const { comparableUrl, normalizeText } = globalThis.TaBaratoProductUtils;
+  const batchUtils = globalThis.TaBaratoBatchUtils;
 
   const CATEGORY_PROFILES = [
     { categories: ["tecnologia", "eletronicos", "informatica"], words: ["celular", "smartphone", "iphone", "notebook", "fone", "monitor", "ssd", "tablet", "tv", "gamer"] },
@@ -76,6 +77,76 @@
     return ranked[0]?.score > 0 ? ranked[0].category : state.availableCategories[0] || "";
   }
 
+
+  function offerWasPublished(offer) {
+    return Boolean(
+      offer
+      && (
+        Number(offer.publicationCount || 0) > 0
+        || offer.lastPublishedAt
+        || offer.publishedAt
+        || String(offer.status || "").toUpperCase() === "PUBLICADO"
+      )
+    );
+  }
+
+  function normalizedSourceProductId(value = "") {
+    return String(value || "").replace(/-/g, "").trim().toUpperCase();
+  }
+
+  async function previouslyPostedUrls(urls) {
+    const identities = (Array.isArray(urls) ? urls : [])
+      .map((url) => ({ url, identity: batchUtils?.productIdentityFromUrl?.(url) || null }))
+      .filter((item) => item.identity?.sourceProductId && item.identity?.platform);
+    if (!identities.length) return [];
+
+    const postedKeys = new Set(
+      state.synchronizedOffers
+        .filter(offerWasPublished)
+        .map((offer) => {
+          const platform = normalizeText(offer.platform || "");
+          const sourceProductId = normalizedSourceProductId(offer.sourceProductId);
+          return platform && sourceProductId ? `${platform}:${sourceProductId}` : "";
+        })
+        .filter(Boolean),
+    );
+
+    const byPlatform = new Map();
+    identities.forEach(({ identity }) => {
+      const platform = identity.platform;
+      if (!byPlatform.has(platform)) byPlatform.set(platform, new Set());
+      byPlatform.get(platform).add(normalizedSourceProductId(identity.sourceProductId));
+    });
+
+    for (const [platform, ids] of byPlatform) {
+      const platformKey = normalizeText(platform);
+      const sourceProductIds = [...ids].filter((id) => !postedKeys.has(`${platformKey}:${id}`));
+      if (!sourceProductIds.length) continue;
+      const search = new URLSearchParams({
+        resource: "posted-products",
+        platform,
+        sourceProductIds: sourceProductIds.join(","),
+      });
+      try {
+        const result = await panel.api.request(`/api/admin/ofertas?${search.toString()}`, { timeout: 12000 });
+        (Array.isArray(result.postedProductIds) ? result.postedProductIds : [])
+          .map(normalizedSourceProductId)
+          .filter(Boolean)
+          .forEach((id) => postedKeys.add(`${platformKey}:${id}`));
+      } catch {
+        // Compatibilidade com uma versao antiga do site: usa o catalogo ja sincronizado.
+      }
+    }
+
+    return identities
+      .filter(({ identity }) => postedKeys.has(`${normalizeText(identity.platform)}:${normalizedSourceProductId(identity.sourceProductId)}`))
+      .map(({ url, identity }) => ({
+        url,
+        platform: identity.platform,
+        sourceProductId: normalizedSourceProductId(identity.sourceProductId),
+      }));
+  }
+
   function findExisting(product) {
     const productId = normalizeText(product.externalProductId || product.sourceProductId || "");
     const platform = normalizeText(product.platform || "");
@@ -89,5 +160,11 @@
     }) || null;
   }
 
-  panel.catalog = { findExisting, suggestCategory, synchronize, updateCategoryOptions };
+  panel.catalog = {
+    findExisting,
+    previouslyPostedUrls,
+    suggestCategory,
+    synchronize,
+    updateCategoryOptions,
+  };
 })();

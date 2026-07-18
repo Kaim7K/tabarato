@@ -161,27 +161,42 @@ test("login captures the current product without requiring a manual refresh", ()
   assert.match(app, /freshCaptureRequest\(captureRequest, tab\)/);
 });
 
-test("Mercado Livre opens an icon-only affiliate share control", () => {
+test("Mercado Livre pins the page to the top before opening the affiliate share control", () => {
   const source = readFileSync(join(extensionRoot, "content", "stores", "mercado-livre.js"), "utf8");
   let clicked = false;
+  let clickedAtScroll = -1;
+  const scrollingElement = { scrollTop: 900, scrollLeft: 0 };
   const affiliateContainer = {
     textContent: "Programa de afiliados Ganhos extras 10%",
     parentElement: null,
-    getBoundingClientRect: () => ({ height: 80, top: 100 }),
+    getBoundingClientRect: () => ({ height: 80, top: 100, left: 700, width: 300 }),
   };
   const shareButton = {
     id: "share-icon",
     textContent: "",
     parentElement: affiliateContainer,
     getAttribute: (name) => name === "aria-label" ? "Compartilhar" : "",
-    getBoundingClientRect: () => ({ height: 32, top: 120 }),
-    click: () => { clicked = true; },
+    getBoundingClientRect: () => ({ height: 32, top: 120, left: 850, width: 32 }),
+    scrollIntoView: () => { throw new Error("affiliate capture must not scrollIntoView"); },
+    click: () => {
+      clicked = true;
+      clickedAtScroll = scrollingElement.scrollTop;
+    },
   };
   const context = {
     Date,
+    innerWidth: 1200,
+    scrollY: 900,
+    scrollTo: () => {
+      context.scrollY = 0;
+      scrollingElement.scrollTop = 0;
+    },
     location: { href: "https://produto.mercadolivre.com.br/MLB-123456789-produto_JM", hostname: "produto.mercadolivre.com.br" },
     navigator: {},
     document: {
+      scrollingElement,
+      documentElement: { scrollTop: 900, scrollLeft: 0, clientWidth: 1200 },
+      body: { scrollTop: 900, scrollLeft: 0 },
       querySelector: () => null,
       querySelectorAll: (selector) => selector.includes("role='dialog'") ? [] : [shareButton],
     },
@@ -195,6 +210,14 @@ test("Mercado Livre opens an icon-only affiliate share control", () => {
   vm.runInNewContext(source, context, { filename: "mercado-livre.js" });
   assert.equal(context.TaBaratoStores[0].prepareAffiliateLink(), true);
   assert.equal(clicked, true);
+  assert.equal(clickedAtScroll, 0);
+  assert.doesNotMatch(source, /control\.scrollIntoView/);
+});
+
+test("batch capture pins Mercado Livre workers before affiliate checks and after reload", () => {
+  const source = readFileSync(join(extensionRoot, "sidepanel", "modules", "capture.js"), "utf8");
+  assert.match(source, /await waitForProductDom\(tabId, url, signal, 45000\);\s*await pinWorkerToTop\(tabId, url, signal\);\s*await waitForAffiliateSurface/);
+  assert.match(source, /await reloadWorker\(tabId, url, signal\);\s*await pinWorkerToTop\(tabId, url, signal\);\s*await waitForAffiliateSurface/);
 });
 
 test("capture extracts requested product fields and closes store popups", () => {
@@ -224,7 +247,7 @@ test("capture extracts requested product fields and closes store popups", () => 
   assert.match(meli, /pricePaymentMethod/);
   assert.match(meli, /couponPrice\.value \|\| basePrice/);
   assert.match(meli, /captureCoupon/);
-  assert.match(meli, /usefulCoupon\(couponDialog\(\) \|\| dialog\)/);
+  assert.match(meli, /explicitCouponCode\(activeDialog\) \|\| usefulCoupon\(activeDialog\)/);
   assert.match(meli, /regularPrice: basePrice/);
   assert.match(meli, /Number\(basePrice\) >= Number\(currentPrice\)/);
   assert.match(meli, /priceInfo\.method === "Pix"/);
@@ -232,7 +255,7 @@ test("capture extracts requested product fields and closes store popups", () => 
   assert.match(meli, /const controlLabel =/);
   assert.match(meli, /getAttribute\?\.\("aria-label"\)/);
   assert.match(meli, /getAttribute\?\.\("title"\)/);
-  assert.match(meli, /compartilhar.*controlLabel\(element\)/);
+  assert.match(meli, /const shareLabel = \/compartilhar/);
   assert.doesNotMatch(meli, /affiliateLink: affiliateLink \|\| tools\.affiliateLink\(\)/);
   assert.doesNotMatch(meli, /promotionSummary/);
   assert.match(couponCode, /\(\?:Com\|COM\)/);
@@ -265,6 +288,8 @@ test("coupon parser reads explicit Com CODE labels and never invents a coupon", 
   assert.equal(context.TaBaratoCouponCode.extract("Com... MELIMODA 20% OFF")[0], "MELIMODA");
   assert.equal(context.TaBaratoCouponCode.classify("Ative o cupom antes da compra.", { hasCouponPrice: true }).status, "activation-required");
   assert.equal(context.TaBaratoCouponCode.classify("Nenhum cupom disponivel.").status, "none");
+  assert.equal(context.TaBaratoCouponCode.extractExplicitComCode("Com MELIMODA"), "MELIMODA");
+  assert.equal(context.TaBaratoCouponCode.extractExplicitComCode("R$ 51,84 com Cupom"), "");
 });
 
 test("Mercado Livre pricing reads the installment total and only explicit free shipping", () => {
@@ -319,7 +344,7 @@ test("side panel provides groups, admin, modes, batch and custom messages", () =
   assert.match(panelSource, /action=send-custom/);
 });
 
-test("batch mode canonicalizes product routes and reuses one worker tab", () => {
+test("batch mode canonicalizes routes and preloads five stable product tabs", () => {
   const html = readFileSync(join(extensionRoot, "sidepanel", "index.html"), "utf8");
   const batchSource = readFileSync(join(extensionRoot, "sidepanel", "batch-utils.js"), "utf8");
   const content = readFileSync(join(extensionRoot, "content", "index.js"), "utf8");
@@ -334,6 +359,9 @@ test("batch mode canonicalizes product routes and reuses one worker tab", () => 
   ], "mercado-livre", 10);
   assert.equal(mercadoLivreRoutes.length, 2);
   assert.equal(mercadoLivreRoutes[0], "https://produto.mercadolivre.com.br/MLB-123456789-produto_JM");
+  const mercadoLivreIdentity = context.TaBaratoBatchUtils.productIdentityFromUrl(mercadoLivreRoutes[0]);
+  assert.equal(mercadoLivreIdentity.sourceProductId, "MLB123456789");
+  assert.equal(mercadoLivreIdentity.platform, "Mercado Livre");
   const shopeeRoutes = context.TaBaratoBatchUtils.normalizeProductUrls([
     "https://shopee.com.br/produto-i.123.456?utm_source=x",
     "https://shopee.com.br/product/123/456?sp_atk=tracking",
@@ -362,10 +390,21 @@ test("batch mode canonicalizes product routes and reuses one worker tab", () => 
     ["link afiliado meli.la"],
   );
   assert.match(html, /src="batch-utils\.js"/);
-  assert.match(panelSource, /urlInWorker/);
-  assert.match(panelSource, /batchWorkerTabId/);
-  assert.match(panelSource, /url: "about:blank"/);
-  assert.match(panelSource, /url: "about:blank", active: true/);
+  assert.equal(
+    JSON.stringify(context.TaBaratoBatchUtils.chunkValues([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], 5)),
+    JSON.stringify([[1, 2, 3, 4, 5], [6, 7, 8, 9, 10], [11, 12]]),
+  );
+  assert.match(panelSource, /BATCH_WINDOW_SIZE = 5/);
+  assert.match(panelSource, /Promise\.all\(urls\.map/);
+  assert.match(panelSource, /active: false/);
+  assert.match(panelSource, /loadedWorker/);
+  assert.match(panelSource, /batchWorkerTabIds/);
+  assert.doesNotMatch(panelSource, /url: "about:blank"/);
+  assert.match(panelSource, /stableSamples >= 3/);
+  assert.match(panelSource, /document\.readyState === "complete"/);
+  assert.match(panelSource, /Boolean\(price\)/);
+  assert.match(panelSource, /\^https\?:\/i\.test\(image\)/);
+  assert.match(panelSource, /waitForAffiliateSurface/);
   assert.match(panelSource, /waitForProductDom/);
   assert.doesNotMatch(panelSource, /waitForTabComplete\(tabId, 40000/);
   assert.match(panelSource, /normalizeProductUrls/);
@@ -607,6 +646,7 @@ test("side panel product utilities normalize prices and message benefits", () =>
   assert.equal(context.TaBaratoProductUtils.normalizeCouponCode("MELIMODA"), "MELIMODA");
   assert.equal(context.TaBaratoProductUtils.normalizeCouponCode("Cupom: FRALDA10"), "FRALDA10");
   assert.equal(context.TaBaratoProductUtils.couponNoticeForStatus("activation-required"), "disponível no anúncio. Ative antes de comprar.");
+  assert.equal(context.TaBaratoProductUtils.couponNoticeForStatus("applied-without-code"), "disponível no anúncio. Ative antes de comprar.");
   assert.equal(context.TaBaratoProductUtils.normalizeCouponValue("disponível no anúncio. Ative antes de comprar."), "disponível no anúncio. Ative antes de comprar.");
   assert.equal(context.TaBaratoProductUtils.firstUsefulParagraph("Muito curto.\nEste segundo paragrafo possui palavras suficientes para ser utilizado na oferta."), "Este segundo paragrafo possui palavras suficientes para ser utilizado na oferta.");
   const benefits = context.TaBaratoProductUtils.messageBenefits("Promocao: 43% OFF. 20% OFF com Pix. Preco principal no Pix. R$ 739,90 em 10x sem juros. 10x sem juros. Frete gratis. Frete gratis.");
@@ -634,4 +674,191 @@ test("extension runtime releases timed out operations", async () => {
     /tempo limite/,
   );
   assert.equal(await context.TaBaratoRuntime.withTimeout(Promise.resolve("ok"), 20), "ok");
+});
+
+test("batch runtime keeps at most five preloaded tabs and reads them sequentially", async () => {
+  const source = readFileSync(join(extensionRoot, "sidepanel", "modules", "batch.js"), "utf8");
+  const utilitySource = readFileSync(join(extensionRoot, "sidepanel", "batch-utils.js"), "utf8");
+  const urls = Array.from({ length: 12 }, (_, index) => `https://produto.mercadolivre.com.br/MLB-${100000000 + index}-produto_JM`);
+  const events = [];
+  const liveTabs = new Set();
+  let maximumLiveTabs = 0;
+  let nextTabId = 100;
+  let toast = "";
+
+  const classList = {
+    contains: () => true,
+    toggle: () => {},
+  };
+  const elements = {
+    batchLimit: { value: "12" },
+    batchStartButton: { disabled: false },
+    batchLog: { appendChild: () => {}, replaceChildren: () => {} },
+    duplicateWarning: { classList, textContent: "" },
+  };
+  const panel = {
+    LIMITS: { minimumBatchConfidence: 0.8 },
+    activeTab: async () => ({ id: 1, windowId: 9, url: "https://lista.mercadolivre.com.br/ofertas" }),
+    elements,
+    lockActions: () => {},
+    showToast: (message) => { toast = message; },
+    state: {
+      activeProduct: null,
+      batchController: null,
+      batchWorkerTabId: null,
+      batchWorkerTabIds: [],
+      synchronizedOffers: [],
+    },
+    unlockActions: () => {},
+    capture: {
+      visibleProductUrls: async () => urls,
+      waitForProductDom: async (tabId) => {
+        events.push(`ready:${tabId}`);
+      },
+      reloadWorker: async () => {},
+      loadedWorker: async (tabId, url) => {
+        events.push(`read:${url}`);
+        return {
+          productName: `Produto ${tabId}`,
+          currentPrice: "99,90",
+          imageUrl: "https://http2.mlstatic.com/image.jpg",
+          affiliateLink: `https://meli.la/${tabId}`,
+          externalProductId: `MLB${100000000 + tabId}`,
+          platform: "Mercado Livre",
+          confidence: 1,
+        };
+      },
+      recoverAffiliateLink: async (_tabId, product) => product,
+    },
+    catalog: {
+      synchronize: async () => [],
+      findExisting: () => ({ id: "existing" }),
+    },
+    publishing: {
+      reconcile: async () => ({ action: "unchanged", publication: {} }),
+    },
+    product: {
+      invalidateShareImage: () => {},
+    },
+    api: { request: async () => ({}) },
+  };
+  const context = {
+    AbortController,
+    URL,
+    document: {
+      createElement: () => ({ dataset: {}, scrollIntoView: () => {}, textContent: "" }),
+    },
+    chrome: {
+      tabs: {
+        create: async ({ url }) => {
+          const tab = { id: nextTabId++, windowId: 9, url };
+          liveTabs.add(tab.id);
+          maximumLiveTabs = Math.max(maximumLiveTabs, liveTabs.size);
+          events.push(`create:${url}`);
+          return tab;
+        },
+        remove: async (values) => {
+          (Array.isArray(values) ? values : [values]).forEach((id) => liveTabs.delete(id));
+        },
+        update: async (id) => ({ id, windowId: 9 }),
+      },
+      windows: { update: async () => ({}) },
+      runtime: { sendMessage: async () => ({ ok: true }) },
+    },
+    TaBaratoPanel: panel,
+    TaBaratoRuntime: {
+      errorMessage: (error) => String(error?.message || error),
+      reportError: () => {},
+    },
+    TaBaratoProductUtils: {
+      parsePrice: (value) => Number(String(value).replace(",", ".")),
+    },
+  };
+  context.globalThis = context;
+  vm.runInNewContext(utilitySource, context, { filename: "batch-utils.js" });
+  vm.runInNewContext(source, context, { filename: "batch.js" });
+
+  await context.TaBaratoPanel.batch.start();
+
+  assert.equal(maximumLiveTabs, 5);
+  assert.equal(events.filter((event) => event.startsWith("create:")).length, 12);
+  assert.equal(events.filter((event) => event.startsWith("read:")).length, 12);
+  const firstRead = events.findIndex((event) => event.startsWith("read:"));
+  assert.equal(events.slice(0, firstRead).filter((event) => event.startsWith("create:")).length, 5);
+  const sixthCreate = events.findIndex((event, index) => event.startsWith("create:")
+    && events.slice(0, index + 1).filter((item) => item.startsWith("create:")).length === 6);
+  const fifthRead = events.findIndex((event, index) => event.startsWith("read:")
+    && events.slice(0, index + 1).filter((item) => item.startsWith("read:")).length === 5);
+  assert.ok(sixthCreate > fifthRead);
+  assert.equal(liveTabs.size, 0);
+  assert.match(toast, /12 ignorados, 0 erros/);
+});
+
+test("batch checks publication history before creating product tabs", () => {
+  const batch = readFileSync(join(extensionRoot, "sidepanel", "modules", "batch.js"), "utf8");
+  const catalog = readFileSync(join(extensionRoot, "sidepanel", "modules", "catalog.js"), "utf8");
+  const historyCheck = batch.indexOf("previouslyPostedUrls");
+  const tabPreload = batch.indexOf("preloadWorkers(chunks[chunkIndex]");
+  assert.ok(historyCheck >= 0);
+  assert.ok(tabPreload > historyCheck);
+  assert.match(batch, /Ja publicado, nao foi aberto/);
+  assert.match(catalog, /resource: "posted-products"/);
+  assert.match(catalog, /publicationCount/);
+});
+
+test("catalog resolves already published product IDs locally and from the database", async () => {
+  const batchSource = readFileSync(join(extensionRoot, "sidepanel", "batch-utils.js"), "utf8");
+  const catalogSource = readFileSync(join(extensionRoot, "sidepanel", "modules", "catalog.js"), "utf8");
+  const requestedPaths = [];
+  const panel = {
+    STORAGE: { connectedHosts: "hosts" },
+    elements: {
+      fields: {
+        category: {
+          value: "",
+          replaceChildren: () => {},
+        },
+      },
+    },
+    state: {
+      availableCategories: [],
+      synchronizedOffers: [{
+        platform: "Mercado Livre",
+        sourceProductId: "MLB111111111",
+        status: "PUBLICADO",
+      }],
+    },
+    api: {
+      request: async (path) => {
+        requestedPaths.push(path);
+        return { postedProductIds: ["MLB222222222"] };
+      },
+    },
+  };
+  const context = {
+    URL,
+    URLSearchParams,
+    chrome: { storage: { local: { set: async () => {} } } },
+    document: { createElement: () => ({}) },
+    TaBaratoPanel: panel,
+    TaBaratoProductUtils: {
+      comparableUrl: (value) => value,
+      normalizeText: (value = "") => String(value).toLowerCase(),
+    },
+  };
+  context.globalThis = context;
+  vm.runInNewContext(batchSource, context, { filename: "batch-utils.js" });
+  vm.runInNewContext(catalogSource, context, { filename: "catalog.js" });
+
+  const urls = [
+    "https://produto.mercadolivre.com.br/MLB-111111111-primeiro_JM",
+    "https://produto.mercadolivre.com.br/MLB-222222222-segundo_JM",
+    "https://produto.mercadolivre.com.br/MLB-333333333-terceiro_JM",
+  ];
+  const posted = await context.TaBaratoPanel.catalog.previouslyPostedUrls(urls);
+  assert.deepEqual([...posted.map((item) => item.sourceProductId)], ["MLB111111111", "MLB222222222"]);
+  assert.equal(requestedPaths.length, 1);
+  assert.match(requestedPaths[0], /resource=posted-products/);
+  assert.match(requestedPaths[0], /MLB222222222/);
+  assert.match(requestedPaths[0], /MLB333333333/);
 });

@@ -50,6 +50,15 @@
     return matches;
   }
 
+  function extractExplicitComCode(value = "") {
+    const text = String(value || "");
+    for (const match of text.matchAll(/\b(?:Com|COM)\s*(?:\.{2,}|:|-)?\s*([A-Z][A-Z0-9_-]{3,24})\b/g)) {
+      const code = normalize(match[1]);
+      if (code) return code;
+    }
+    return "";
+  }
+
   function classify(value = "", options = {}) {
     const text = String(value || "");
     const code = extract(text)[0] || "";
@@ -73,5 +82,10 @@
     return { code: "", status: "none" };
   }
 
-  globalThis.TaBaratoCouponCode = Object.freeze({ classify, extract, normalize });
+  globalThis.TaBaratoCouponCode = Object.freeze({
+    classify,
+    extract,
+    extractExplicitComCode,
+    normalize,
+  });
 })();
