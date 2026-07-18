@@ -110,8 +110,15 @@
     return extractionPromise;
   }
 
+  const isCouponManagementPage = () => /(?:^|\.)mercadolivre\.com\.br$/i.test(location.hostname)
+    && /^\/cupons(?:\/|$)/i.test(location.pathname);
+
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message?.type === "TABARATO_EXTRACT_PRODUCT") {
+      if (isCouponManagementPage()) {
+        sendResponse({ ok: false, ignored: true, error: "A pagina de cupons nao e uma pagina de produto." });
+        return false;
+      }
       extractCurrentProduct()
         .then((product) => sendResponse({ ok: true, product }))
         .catch((error) => {

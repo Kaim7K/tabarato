@@ -92,7 +92,7 @@ test("new brand identity uses the correct logo contrast in each surface", () => 
   assert.match(admin, /BRAND_LOGO_DARK/);
   assert.match(shareCard, /BRAND_LOGO_CARD/);
   assert.match(social, /BRAND_LOGO_CARD/);
-  assert.match(social, /BRAND_MASCOT/);
+  assert.doesNotMatch(social, /BRAND_MASCOT/);
 });
 
 test("every side panel selector references an existing element", () => {
@@ -236,7 +236,8 @@ test("offer artwork matches the requested premium share card", () => {
   assert.match(artwork, /discountPercent/);
   assert.match(artwork, /subjectBounds/);
   assert.match(artwork, /drawProduct/);
-  assert.match(artwork, /roundedRect\(context, 70, 824, 940, 184, 92\)/);
+  assert.match(artwork, /drawProduct\(context, product, \{ x: 42, y: 42, width: 996, height: 860 \}\)/);
+  assert.match(artwork, /roundedRect\(context, 42, 918, 996, 126, 63\)/);
   assert.match(artwork, /previousX/);
   assert.match(artwork, /drawContained\(context, storeLogo/);
   assert.match(artwork, /drawContained\(context, siteLogo/);
@@ -302,10 +303,13 @@ test("extension offers coupon activation and compact icon actions", () => {
   assert.match(coupons, /filtrar\(\?: e ordenar\)/);
   assert.match(coupons, /nao ativados/);
   assert.match(coupons, /inactiveFilterChipVisible/);
+  assert.match(coupons, /inactiveFilterRoute/);
   assert.match(coupons, /activationControls/);
   assert.match(coupons, /\^\(ativar\|aplicar\|resgatar\)/);
   assert.match(background, /globalThis\.__TABARATO_COUPON_AUTOMATION__/);
   assert.match(background, /automation\.activate\(couponLimit\)/);
+  assert.match(background, /\^\\\/cupons\(\?:\\\/\|\$\)/);
+  assert.match(sidePanelApp, /isCouponManagementUrl/);
   assert.match(background, /chrome\.action\.onClicked/);
   assert.match(background, /chrome\.tabs\.query\(\{\}\)/);
   assert.match(sidePanelApp, /Capturando o novo produto/);

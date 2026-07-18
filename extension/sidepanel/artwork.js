@@ -61,50 +61,50 @@
     const context = canvas.getContext("2d", { alpha: false });
     context.imageSmoothingEnabled = true; context.imageSmoothingQuality = "high";
 
-    context.fillStyle = "#ECEFEC";
+    context.fillStyle = "#E9EDE9";
     context.fillRect(0, 0, SIZE, SIZE);
     context.fillStyle = "#FFFFFF";
-    roundedRect(context, 34, 34, 1012, 1012, 34); context.fill();
+    roundedRect(context, 18, 18, 1044, 1044, 34); context.fill();
 
     context.fillStyle = "#F7F8F6";
-    roundedRect(context, 66, 66, 948, 730, 24); context.fill();
-    drawProduct(context, product, { x: 94, y: 88, width: 892, height: 686 });
+    roundedRect(context, 30, 30, 1020, 884, 24); context.fill();
+    drawProduct(context, product, { x: 42, y: 42, width: 996, height: 860 });
 
     const discount = discountPercent(currentPrice, previousPrice);
     if (discount > 0) {
       context.fillStyle = "#15965D";
-      roundedRect(context, 792, 78, 198, 68, 34); context.fill();
+      roundedRect(context, 814, 48, 214, 72, 36); context.fill();
       context.fillStyle = "#FFFFFF";
       context.font = "700 34px Montserrat, Arial, sans-serif";
       context.textAlign = "center"; context.textBaseline = "middle";
-      context.fillText(`-${discount}%`, 891, 112);
+      context.fillText(`-${discount}%`, 921, 84);
     }
 
-    context.shadowColor = "rgba(17,17,17,.16)"; context.shadowBlur = 26; context.shadowOffsetY = 10;
+    context.shadowColor = "rgba(17,17,17,.18)"; context.shadowBlur = 24; context.shadowOffsetY = 8;
     context.fillStyle = "#FFFFFF";
-    roundedRect(context, 70, 824, 940, 184, 92); context.fill();
+    roundedRect(context, 42, 918, 996, 126, 63); context.fill();
     context.shadowColor = "transparent"; context.shadowBlur = 0; context.shadowOffsetY = 0;
 
     context.textAlign = "left"; context.textBaseline = "middle";
-    context.fillStyle = "#111111"; context.font = "700 56px Montserrat, Arial, sans-serif";
+    context.fillStyle = "#111111"; context.font = "700 54px Montserrat, Arial, sans-serif";
     const currentLabel = formatPrice(currentPrice);
-    context.fillText(currentLabel, 112, 916, 350);
-    const currentWidth = Math.min(context.measureText(currentLabel).width, 350);
+    context.fillText(currentLabel, 76, 981, 360);
+    const currentWidth = Math.min(context.measureText(currentLabel).width, 360);
 
     if (discount > 0) {
       const previousLabel = formatPrice(previousPrice);
-      const previousX = Math.min(470, 112 + currentWidth + 24);
-      context.fillStyle = "#8B8F8C"; context.font = "600 25px Montserrat, Arial, sans-serif";
-      context.fillText(previousLabel, previousX, 916, 190);
-      const previousWidth = Math.min(context.measureText(previousLabel).width, 190);
+      const previousX = Math.min(470, 76 + currentWidth + 20);
+      context.fillStyle = "#8B8F8C"; context.font = "600 24px Montserrat, Arial, sans-serif";
+      context.fillText(previousLabel, previousX, 981, 200);
+      const previousWidth = Math.min(context.measureText(previousLabel).width, 200);
       context.strokeStyle = "#8B8F8C"; context.lineWidth = 3;
-      context.beginPath(); context.moveTo(previousX, 921); context.lineTo(previousX + previousWidth, 911); context.stroke();
+      context.beginPath(); context.moveTo(previousX, 986); context.lineTo(previousX + previousWidth, 976); context.stroke();
     }
 
     context.strokeStyle = "rgba(17,17,17,.13)"; context.lineWidth = 2;
-    context.beginPath(); context.moveTo(748, 866); context.lineTo(748, 966); context.stroke();
-    drawContained(context, storeLogo, { x: 650, y: 878, width: 62, height: 76 });
-    drawContained(context, siteLogo, { x: 786, y: 865, width: 178, height: 96 });
+    context.beginPath(); context.moveTo(780, 940); context.lineTo(780, 1022); context.stroke();
+    drawContained(context, storeLogo, { x: 684, y: 946, width: 62, height: 70 });
+    drawContained(context, siteLogo, { x: 814, y: 940, width: 190, height: 82 });
 
     product.close?.(); siteLogo?.close?.(); storeLogo?.close?.();
     return canvasBlob(canvas);

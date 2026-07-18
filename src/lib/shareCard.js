@@ -54,7 +54,7 @@ const drawContained = (context, image, area) => {
 const discount = (offer) => {
   const current = Number(offer.price);
   const previous = Number(offer.previous_price);
-  return previous > current && current > 0 ? Math.round((1 - current / previous) * 100) : Number(offer.discount || 0);
+  return previous > current && current > 0 ? Math.round((1 - current / previous) * 100) : 0;
 };
 
 const storeLogo = (platform = "") => {
@@ -71,86 +71,86 @@ export async function shareOfferCard(offer) {
   context.imageSmoothingEnabled = true;
   context.imageSmoothingQuality = "high";
 
-  context.fillStyle = "#ECEFEC";
+  context.fillStyle = "#E9EDE9";
   context.fillRect(0, 0, 1080, 1080);
   context.fillStyle = "#FFFFFF";
   context.beginPath();
-  context.roundRect(34, 34, 1012, 1012, 34);
+  context.roundRect(18, 18, 1044, 1044, 34);
   context.fill();
 
   context.fillStyle = "#F7F8F6";
   context.beginPath();
-  context.roundRect(66, 66, 948, 730, 24);
+  context.roundRect(30, 30, 1020, 884, 24);
   context.fill();
 
   try {
     const product = await loadImage(offer.image, true);
-    drawProduct(context, product, { x: 94, y: 88, width: 892, height: 686 });
+    drawProduct(context, product, { x: 42, y: 42, width: 996, height: 860 });
   } catch {
     context.fillStyle = "#F4F5F6";
-    context.fillRect(94, 88, 892, 686);
+    context.fillRect(42, 42, 996, 860);
   }
 
   const percentage = discount(offer);
   if (percentage > 0) {
     context.fillStyle = "#15965D";
     context.beginPath();
-    context.roundRect(792, 78, 198, 68, 34);
+    context.roundRect(814, 48, 214, 72, 36);
     context.fill();
     context.fillStyle = "#FFFFFF";
     context.font = "700 34px Montserrat, Arial, sans-serif";
     context.textAlign = "center";
     context.textBaseline = "middle";
-    context.fillText(`-${percentage}%`, 891, 112);
+    context.fillText(`-${percentage}%`, 921, 84);
   }
 
   context.shadowColor = "rgba(17,17,17,.18)";
-  context.shadowBlur = 28;
-  context.shadowOffsetY = 12;
+  context.shadowBlur = 24;
+  context.shadowOffsetY = 8;
   context.fillStyle = "#FFFFFF";
   context.beginPath();
-  context.roundRect(70, 824, 940, 184, 92);
+  context.roundRect(42, 918, 996, 126, 63);
   context.fill();
   context.shadowColor = "transparent";
   context.shadowBlur = 0;
   context.shadowOffsetY = 0;
 
   context.textAlign = "left";
-  context.textBaseline = "alphabetic";
+  context.textBaseline = "middle";
   context.fillStyle = "#111111";
-  context.font = "700 56px Montserrat, Arial, sans-serif";
+  context.font = "700 54px Montserrat, Arial, sans-serif";
   const currentLabel = formatPrice(offer.price);
-  context.fillText(currentLabel, 112, 916, 350);
-  const currentWidth = Math.min(context.measureText(currentLabel).width, 350);
+  context.fillText(currentLabel, 76, 981, 360);
+  const currentWidth = Math.min(context.measureText(currentLabel).width, 360);
 
   if (Number(offer.previous_price) > Number(offer.price)) {
     const oldPrice = formatPrice(offer.previous_price);
     context.fillStyle = "#8D8D8D";
-    const previousX = Math.min(470, 112 + currentWidth + 24);
-    context.font = "600 25px Montserrat, Arial, sans-serif";
-    context.fillText(oldPrice, previousX, 916, 190);
-    const width = Math.min(context.measureText(oldPrice).width, 190);
+    const previousX = Math.min(470, 76 + currentWidth + 20);
+    context.font = "600 24px Montserrat, Arial, sans-serif";
+    context.fillText(oldPrice, previousX, 981, 200);
+    const width = Math.min(context.measureText(oldPrice).width, 200);
     context.strokeStyle = "#8D8D8D";
     context.lineWidth = 4;
     context.beginPath();
-    context.moveTo(previousX, 921);
-    context.lineTo(previousX + width, 911);
+    context.moveTo(previousX, 986);
+    context.lineTo(previousX + width, 976);
     context.stroke();
   }
 
   context.strokeStyle = "rgba(17,17,17,.16)";
   context.lineWidth = 2;
   context.beginPath();
-  context.moveTo(748, 866);
-  context.lineTo(748, 966);
+  context.moveTo(780, 940);
+  context.lineTo(780, 1022);
   context.stroke();
 
   const [brand, store] = await Promise.all([
     loadImage(BRAND_LOGO_CARD).catch(() => null),
     storeLogo(offer.platform) ? loadImage(storeLogo(offer.platform)).catch(() => null) : null,
   ]);
-  drawContained(context, store, { x: 650, y: 878, width: 62, height: 76 });
-  drawContained(context, brand, { x: 786, y: 865, width: 178, height: 96 });
+  drawContained(context, store, { x: 684, y: 946, width: 62, height: 70 });
+  drawContained(context, brand, { x: 814, y: 940, width: 190, height: 82 });
 
   const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png", 0.94));
   if (!blob) throw new Error("Nao foi possivel gerar o card.");

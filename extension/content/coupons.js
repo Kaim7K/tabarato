@@ -80,6 +80,11 @@
     return /^nao ativados(?: remover filtro)?$/.test(controlText(element));
   });
 
+  const inactiveFilterRoute = () => {
+    const url = new URL(location.href);
+    return /^\/cupons(?:\/filter)?\/?$/i.test(url.pathname) && url.searchParams.get("new") === "true";
+  };
+
   async function waitForCouponGrid() {
     return waitFor(() => {
       if (activationControls().length) return true;
@@ -89,7 +94,7 @@
   }
 
   async function applyInactiveFilter() {
-    if (inactiveFilterSelected() || inactiveFilterChipVisible()) {
+    if (inactiveFilterSelected() || inactiveFilterChipVisible() || inactiveFilterRoute()) {
       await waitForCouponGrid();
       return true;
     }
@@ -176,6 +181,7 @@
   async function activateCoupons(requestedLimit) {
     const limit = Math.max(1, Math.min(100, Number(requestedLimit) || 5));
     await applyInactiveFilter();
+    await waitFor(() => activationControls().length > 0 || /nenhum cupom|nao encontramos cupons/.test(normalized(document.body?.innerText || "")), 12000, 160);
 
     let activated = 0;
     let attempted = 0;
@@ -242,6 +248,6 @@
     return true;
   };
 
-  globalThis[AUTOMATION_KEY] = { version: 3, activate: activateCoupons, messageHandler };
+  globalThis[AUTOMATION_KEY] = { version: 4, activate: activateCoupons, messageHandler };
   chrome.runtime.onMessage.addListener(messageHandler);
 })();

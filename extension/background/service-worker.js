@@ -204,7 +204,7 @@ async function activateMercadoLivreCoupons(limit) {
     .filter((item) => {
       try {
         const url = new URL(item.url || "");
-        return /(?:^|\.)mercadolivre\.com\.br$/i.test(url.hostname) && /^\/cupons\/?$/i.test(url.pathname);
+        return /(?:^|\.)mercadolivre\.com\.br$/i.test(url.hostname) && /^\/cupons(?:\/|$)/i.test(url.pathname);
       } catch {
         return false;
       }

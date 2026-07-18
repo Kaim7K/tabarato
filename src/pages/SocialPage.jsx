@@ -41,13 +41,20 @@ export default function SocialPage() {
 
   useEffect(() => {
     const controller = new AbortController();
-    request("", { signal: controller.signal }).then((data) => setPage({ settings: { ...DEFAULT_PAGE_SETTINGS, ...data.settings }, links: data.links.map(mergeLinkDefaults) })).catch((error) => { if (error.name !== "AbortError") setMessage(error.message); }).finally(() => setBusy(false));
+    const loadPage = async () => {
+      const publicPage = await request("", { signal: controller.signal });
+      setPage({ settings: { ...DEFAULT_PAGE_SETTINGS, ...publicPage.settings }, links: publicPage.links.map(mergeLinkDefaults) });
+      if (!isAdminLoggedIn() || controller.signal.aborted) return;
+      const authorized = await validateAdminSession();
+      setAdmin(authorized);
+      if (!authorized || controller.signal.aborted) return;
+      const adminPage = await request("&includeUnpublished=true", { signal: controller.signal });
+      setPage({ settings: { ...DEFAULT_PAGE_SETTINGS, ...adminPage.settings }, links: adminPage.links.map(mergeLinkDefaults) });
+    };
+    loadPage().catch((error) => {
+      if (error.name !== "AbortError") setMessage(error.message);
+    }).finally(() => setBusy(false));
     return () => controller.abort();
-  }, []);
-
-  useEffect(() => {
-    if (!isAdminLoggedIn()) return;
-    validateAdminSession().then(setAdmin).catch(() => setAdmin(false));
   }, []);
 
   const updateFromServer = (data) => setPage({ settings: { ...DEFAULT_PAGE_SETTINGS, ...data.settings }, links: data.links.map(mergeLinkDefaults) });
@@ -93,7 +100,7 @@ export default function SocialPage() {
 
   return (
     <div className={editing ? "social-workspace" : ""}>
-      {admin && !editing && <button type="button" className="social-edit-trigger" onClick={() => setEditing(true)} title="Editar árvore de links"><Pencil /> <span>Editar página</span></button>}
+      {admin && !editing && <button type="button" className="social-edit-trigger" onClick={() => setEditing(true)} title="Editar árvore de links" aria-label="Editar árvore de links"><Pencil /></button>}
       {editing && <SocialEditor page={page} setPage={setPage} linkForm={linkForm} setLinkForm={setLinkForm} previewMode={previewMode} setPreviewMode={setPreviewMode} onClose={() => setEditing(false)} onSaveSettings={saveSettings} onSaveLink={saveLink} onDelete={removeLink} onDuplicate={duplicateLink} onReorder={reorderLinks} busy={busy} message={message} />}
       <div className={editing ? `social-preview-stage social-preview-stage--${previewMode}` : ""}>
         {editing && <div className="social-preview-stage__bar"><span>{previewMode === "mobile" ? "Prévia no celular" : "Prévia no desktop"}</span><button type="button" onClick={() => setEditing(false)} aria-label="Fechar editor"><X /></button></div>}

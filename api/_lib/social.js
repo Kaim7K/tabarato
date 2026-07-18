@@ -139,7 +139,10 @@ async function readSocialPage(includeUnpublished = false) {
 
 export async function handleSocial(req, res) {
   try {
-    if (req.method === "GET") return sendJson(res, 200, await readSocialPage(isAdminAuthorized(req)));
+    if (req.method === "GET") {
+      const includeUnpublished = req.query.includeUnpublished === "true" && isAdminAuthorized(req);
+      return sendJson(res, 200, await readSocialPage(includeUnpublished));
+    }
     if (!requireAdmin(req, res)) return;
     const input = await readJson(req);
 

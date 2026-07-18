@@ -475,6 +475,16 @@ function captureScriptsForUrl(value) {
   }
 }
 
+function isCouponManagementUrl(value) {
+  try {
+    const url = new URL(value);
+    return /(?:^|\.)mercadolivre\.com\.br$/i.test(url.hostname)
+      && /^\/cupons(?:\/|$)/i.test(url.pathname);
+  } catch {
+    return false;
+  }
+}
+
 async function ensureCaptureScripts(tab) {
   const availability = await chrome.runtime.sendMessage({ type: "TABARATO_IS_ALLOWED_PAGE", url: tab.url });
   if (!availability?.allowed) throw new Error("Abra uma pagina permitida pelo Ta Barato.");
@@ -541,6 +551,7 @@ async function captureProduct({ reconcile = true } = {}) {
     const catalogRequest = synchronizeCatalog().catch(() => null);
     const tab = await activeTab();
     if (!tab?.id) throw new Error("Nenhuma aba ativa encontrada.");
+    if (isCouponManagementUrl(tab.url)) return;
     const result = await extractProductFromTab(tab);
     if (!result?.ok) throw new Error(result?.error || "Produto nao encontrado.");
     const product = await enrichCapturedProduct(result.product);
@@ -931,7 +942,7 @@ function renderAuth() {
 
 function highlightProductChange(tab) {
   const nextUrl = comparableUrl(tab?.url);
-  if (!session || !tab?.id || !nextUrl || !captureScriptsForUrl(nextUrl).length) return;
+  if (!session || !tab?.id || !nextUrl || isCouponManagementUrl(tab.url) || !captureScriptsForUrl(nextUrl).length) return;
   if (tab.id === capturedTabId && nextUrl === capturedPageUrl) return;
   elements.captureSource.textContent = "Pagina mudou. Capturando o novo produto...";
   elements.refreshButton.classList.add("needs-refresh");
@@ -1079,6 +1090,7 @@ async function initializePanel() {
     captureProduct();
   } else if (session
     && tab?.url
+    && !isCouponManagementUrl(tab.url)
     && !isPrimarySiteUrl(tab.url)
     && !/web\.whatsapp\.com/i.test(tab.url)
     && (!activeProduct || comparableUrl(tab.url) !== capturedPageUrl)) {
