@@ -27,6 +27,16 @@
     return null;
   }
 
+  function currentSynchronousProductAdapter() {
+    return (globalThis.TaBaratoStores || []).find((adapter) => {
+      try {
+        return adapter.matches?.() && adapter.isProduct?.();
+      } catch {
+        return false;
+      }
+    }) || null;
+  }
+
   async function updateAllowedPage() {
     try {
       const result = await chrome.runtime.sendMessage({ type: "TABARATO_IS_ALLOWED_PAGE", url: location.href });
@@ -73,12 +83,13 @@
       if (button.disabled) return;
       button.disabled = true;
       try {
-        const adapter = await currentAdapter();
-        if (adapter?.isProduct?.()) {
+        const panelRequest = chrome.runtime.sendMessage({ type: "TABARATO_OPEN_PANEL" });
+        const adapter = currentSynchronousProductAdapter();
+        if (adapter) {
           adapter.prepareAffiliateLink?.();
-          await chrome.storage.local.set({ tabarato_capture_request: { url: location.href, at: Date.now() } });
+          chrome.storage.local.set({ tabarato_capture_request: { url: location.href, at: Date.now() } }).catch(() => {});
         }
-        const result = await chrome.runtime.sendMessage({ type: "TABARATO_OPEN_PANEL" });
+        const result = await panelRequest;
         if (!result?.ok) throw new Error(result?.error || "Nao foi possivel abrir a extensao.");
       } catch (error) {
         runtime.reportError("open-panel-launcher", error);

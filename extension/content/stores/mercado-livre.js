@@ -20,6 +20,15 @@
   const visibleControl = (pattern) => [...document.querySelectorAll("button, a, [role='button']")]
     .find((element) => tools.visible(element) && pattern.test(tools.clean(`${element.textContent} ${element.getAttribute("aria-label") || ""} ${element.getAttribute("title") || ""}`)));
 
+  const productRoot = () => document.querySelector(".ui-pdp--sticky-wrapper-right")
+    || document.querySelector(".ui-pdp-container--column-right")
+    || document.querySelector(".ui-pdp-container__col.col-2")
+    || document.querySelector(".ui-pdp-container--pdp")
+    || document;
+
+  const productControl = (pattern) => [...productRoot().querySelectorAll("button, a, [role='button']")]
+    .find((element) => tools.visible(element) && pattern.test(tools.clean(`${element.textContent} ${element.getAttribute("aria-label") || ""} ${element.getAttribute("title") || ""}`)));
+
   const visibleDialog = (pattern) => [...document.querySelectorAll("[role='dialog'], .andes-modal, [class*='modal']")]
     .find((element) => tools.visible(element) && pattern.test(tools.clean(element.textContent)));
 
@@ -133,12 +142,12 @@
 
   const couponDialog = () => visibleDialog(/cupons? do mercado livre|cupom|conferir produtos|com\s*(?:\.{2,}|:|-)?\s*[A-Z][A-Z0-9_-]{3,24}/i);
 
-  const usefulCoupon = (root = document) => tools.couponCandidates(root)[0]?.value || "";
+  const usefulCoupon = (root = productRoot()) => tools.couponCandidates(root)[0]?.value || "";
 
   const captureCoupon = async (hasCouponPrice = false) => {
-    const existing = usefulCoupon();
+    const existing = usefulCoupon(productRoot());
     if (existing) return { code: existing, status: "code" };
-    const control = visibleControl(/ver cupons dispon[ií]veis|ver.*cupons?|cupons? dispon[ií]veis/i);
+    const control = productControl(/ver cupons dispon[ií]veis|ver.*cupons?|cupons? dispon[ií]veis/i);
     let dialog = couponDialog();
     if (!dialog && control) {
       control.click();
@@ -161,13 +170,14 @@
   };
 
   const paymentBenefits = async () => {
-    const pagePaymentText = [...document.querySelectorAll(".ui-pdp-payment, [class*='installment'], [class*='payment'], [class*='price']")]
+    const root = productRoot();
+    const pagePaymentText = [...root.querySelectorAll(".ui-pdp-price__subtitles, .ui-pdp-payment, [class*='installment' i], [class*='payment' i]")]
       .filter(tools.visible)
       .map((element) => tools.clean(element.textContent))
       .join(" ");
     const benefits = [];
     let installment = tools.installmentSummary(pagePaymentText);
-    const control = !installment && visibleControl(/meios de pagamento|formas de pagamento|ver.*pagamento/i);
+    const control = !installment && productControl(/meios de pagamento|formas de pagamento|ver.*pagamento/i);
     if (!installment && control) {
       control.click();
       await tools.waitFor(() => (/meios de pagamento|cart[oõ]es de cr[eé]dito|aproveite estas promo[cç][oõ]es/i.test(document.body.innerText) ? true : ""), 3500);
@@ -176,7 +186,7 @@
       if (dialog && tools.visible(dialog)) closeDialog(dialog);
     }
     if (installment) benefits.push(installment);
-    if (tools.hasExplicitFreeShipping()) benefits.push("Frete gratis.");
+    if (tools.hasExplicitFreeShipping(root)) benefits.push("Frete gratis.");
     return benefits.join(" ");
   };
 
@@ -243,12 +253,20 @@
       }
       const structured = tools.jsonProduct();
       const productId = location.href.match(/\b(MLB-?\d{6,})\b/i)?.[1]?.replace("-", "").toUpperCase() || "";
-      const priceInfo = tools.priceDetails(".ui-pdp-price__second-line .andes-money-amount", ".ui-pdp-price__main-container .andes-money-amount");
+      const priceInfo = tools.priceDetails(
+        ".ui-pdp-price__main-container .ui-pdp-price__second-line > .ui-pdp-price__part__container > .andes-money-amount",
+        ".ui-pdp-price__main-container .ui-pdp-price__second-line .andes-money-amount",
+        ".ui-pdp-price__second-line .andes-money-amount"
+      );
       const basePrice = priceInfo.value || tools.productPrice(structured);
       const couponPrice = tools.couponPriceDetails(basePrice);
       const couponState = await captureCoupon(Boolean(couponPrice.value));
       const currentPrice = couponPrice.value || basePrice;
-      const capturedPreviousPrice = tools.price(".ui-pdp-price__original-value .andes-money-amount", ".andes-money-amount--previous");
+      const capturedPreviousPrice = tools.price(
+        ".ui-pdp-price__main-container .ui-pdp-price__original-value.andes-money-amount",
+        ".ui-pdp-price__main-container .ui-pdp-price__original-value .andes-money-amount",
+        ".ui-pdp-price__main-container .andes-money-amount--previous"
+      );
       const previousPrice = Number(capturedPreviousPrice) > Number(currentPrice)
         ? capturedPreviousPrice
         : Number(basePrice) >= Number(currentPrice)

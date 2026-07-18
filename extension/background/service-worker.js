@@ -13,7 +13,7 @@ const whatsapp = globalThis.TaBaratoBackgroundWhatsApp;
 const coupons = globalThis.TaBaratoBackgroundCoupons;
 
 chrome.action.disable().catch(() => {});
-chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).catch(() => {});
+chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
 
 chrome.runtime.onInstalled.addListener(() => {
   access.scheduleInitialization().catch((error) => runtime.reportError("extension-installed", error));
@@ -58,13 +58,6 @@ const handlers = {
     if (sender.tab?.id) await access.updateTab(sender.tab.id, url);
     return { ok: true, allowed };
   },
-  TABARATO_OPEN_PANEL: async (_message, sender) => {
-    if (!sender.tab?.id || !sender.tab?.windowId || !await access.isAllowedUrl(sender.tab.url)) {
-      throw new Error("A aba ativa nao e permitida pelo Ta Barato.");
-    }
-    await chrome.sidePanel.open({ windowId: sender.tab.windowId });
-    return { ok: true };
-  },
   TABARATO_SHARE_WHATSAPP: (message) => whatsapp.send(message),
   TABARATO_STOP_WHATSAPP: () => whatsapp.stop(),
   TABARATO_ACTIVATE_ML_COUPONS: (message) => coupons.activate(message.limit),
@@ -73,6 +66,32 @@ const handlers = {
 };
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.type === "TABARATO_OPEN_PANEL") {
+    if (!sender.tab?.id || !sender.tab?.windowId) {
+      sendResponse({ ok: false, error: "A aba ativa nao foi identificada." });
+      return false;
+    }
+    chrome.sidePanel.open({ windowId: sender.tab.windowId })
+      .then(async () => {
+        await access.updateTab(sender.tab.id, sender.tab.url).catch(() => {});
+        sendResponse({ ok: true });
+      })
+      .catch((error) => {
+        const message = runtime.errorMessage(error);
+        if (!/user gesture|gesto do usuario/i.test(message)) {
+          runtime.reportError("message-TABARATO_OPEN_PANEL", error);
+        }
+        sendResponse({
+          ok: false,
+          requiresActionClick: /user gesture|gesto do usuario/i.test(message),
+          error: /user gesture|gesto do usuario/i.test(message)
+            ? "Clique no icone da extensao para abrir o painel lateral."
+            : message,
+        });
+      });
+    return true;
+  }
+
   const handler = handlers[message?.type];
   if (!handler) return false;
   Promise.resolve()

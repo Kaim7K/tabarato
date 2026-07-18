@@ -9,6 +9,7 @@
       // The old extension context may already be invalid.
     }
   }
+  globalThis.TaBaratoCoupons = null;
 
   const ACTION_PATTERN = /^(?:aplicar|ativar|resgatar)(?: cupom)?$/;
   const APPLIED_PATTERN = /\b(?:conferir|ativado|aplicado|resgatado)\b/;
@@ -347,6 +348,7 @@
     return false;
   };
 
-  globalThis[ENGINE_KEY] = { version: 2, activate: activateCoupons, stop, messageHandler };
+  globalThis[ENGINE_KEY] = { version: 3, activate: activateCoupons, stop, messageHandler };
+  globalThis.TaBaratoCoupons = globalThis[ENGINE_KEY];
   chrome.runtime.onMessage.addListener(messageHandler);
 })();

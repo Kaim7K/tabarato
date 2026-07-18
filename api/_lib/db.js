@@ -5,17 +5,36 @@ const { Pool } = pg;
 let pool;
 let schemaReady;
 
+function poolConfig(connectionString) {
+  const common = { max: 3 };
+  try {
+    const url = new URL(connectionString);
+    const isLocal = ["localhost", "127.0.0.1", "::1"].includes(url.hostname);
+    return {
+      ...common,
+      host: url.hostname,
+      port: url.port ? Number(url.port) : undefined,
+      database: decodeURIComponent(url.pathname.replace(/^\//, "")),
+      user: decodeURIComponent(url.username),
+      password: decodeURIComponent(url.password),
+      ssl: isLocal ? false : { rejectUnauthorized: false },
+    };
+  } catch {
+    return {
+      ...common,
+      connectionString,
+      ssl: connectionString.includes("localhost") ? false : { rejectUnauthorized: false },
+    };
+  }
+}
+
 export function getPool() {
   if (!pool) {
     const connectionString = process.env.POSTGRES_URL || process.env.DATABASE_URL;
     if (!connectionString) {
       throw new Error("POSTGRES_URL or DATABASE_URL is not configured.");
     }
-    pool = new Pool({
-      connectionString,
-      ssl: connectionString.includes("localhost") ? false : { rejectUnauthorized: false },
-      max: 3,
-    });
+    pool = new Pool(poolConfig(connectionString));
   }
   return pool;
 }

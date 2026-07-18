@@ -75,6 +75,29 @@
     return chrome.tabs.get(tab.id);
   }
 
+  async function ensureCouponAutomation(tabId) {
+    await chrome.scripting.executeScript({ target: { tabId }, files: ["content/coupons.js"] });
+    const loaded = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => Boolean(globalThis.TaBaratoCoupons?.activate && globalThis.__TABARATO_COUPON_ENGINE__?.messageHandler),
+    }).then((results) => Boolean(results[0]?.result)).catch(() => false);
+    if (!loaded) throw new Error("O automatizador de cupons nao foi carregado. Recarregue a extensao e tente novamente.");
+  }
+
+  async function startCouponAutomation(tabId, message) {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      await ensureCouponAutomation(tabId);
+      try {
+        return await chrome.tabs.sendMessage(tabId, message);
+      } catch (error) {
+        const text = runtime.errorMessage(error);
+        if (attempt > 0 || !/receiving end does not exist|could not establish connection|message port closed|extension context invalidated|automatizador de cupons/i.test(text)) throw error;
+        await runtime.delay(250);
+      }
+    }
+    throw new Error("O automatizador de cupons nao respondeu.");
+  }
+
   async function stop() {
     if (!activeOperation) return { ok: true, stopped: false };
     activeOperation.cancelled = true;
@@ -106,9 +129,8 @@
         throw new Error("O Chrome nao permitiu controlar a pagina de cupons. Feche o DevTools dessa pagina e tente novamente.");
       }
 
-      await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["content/coupons.js"] });
       const result = await runtime.withTimeout(
-        chrome.tabs.sendMessage(tab.id, {
+        startCouponAutomation(tab.id, {
           type: "TABARATO_START_COUPONS",
           operationId: operation.id,
           limit: requested,

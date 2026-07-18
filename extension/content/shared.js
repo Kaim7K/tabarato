@@ -79,9 +79,36 @@
 
   const priceTextFrom = (element) => {
     if (!element) return "";
+    const aria = clean(element.getAttribute?.("aria-label"));
+    const ariaMatch = aria.match(/(?:antes|agora)?\s*:?\s*(\d[\d.]*)\s+reais(?:\s+com\s+(\d{1,2})\s+centavos)?/i);
+    if (ariaMatch) return `${ariaMatch[1]}${ariaMatch[2] ? `,${ariaMatch[2].padStart(2, "0")}` : ""}`;
     const fraction = clean(element.querySelector(".andes-money-amount__fraction")?.textContent);
     const cents = clean(element.querySelector(".andes-money-amount__cents")?.textContent);
     return fraction ? `${fraction}${cents ? `,${cents}` : ""}` : element.textContent;
+  };
+
+  const isRecommendationContext = (element) => Boolean(element?.closest?.(
+    ".poly-card, .poly-component__price, .poly-component__coupons, .andes-carousel-snapped, [class*='recommend' i], [class*='recos' i]"
+  ));
+
+  const amountContext = (element, depthLimit = 4) => {
+    const chunks = [];
+    let current = element;
+    for (let depth = 0; current && depth < depthLimit; depth += 1, current = current.parentElement) {
+      chunks.push(clean(current.textContent));
+    }
+    return clean(chunks.join(" "));
+  };
+
+  const moneyDetailsFrom = (element) => {
+    const normalizedPrice = normalizePrice(priceTextFrom(element));
+    if (!normalizedPrice) return null;
+    const context = amountContext(element);
+    return {
+      value: normalizedPrice,
+      method: /\bpix\b/i.test(context) ? "Pix" : "",
+      context,
+    };
   };
 
   const price = (...selectors) => {
@@ -94,15 +121,17 @@
 
   const priceDetails = (...selectors) => {
     for (const selector of selectors) {
-      const element = document.querySelector(selector);
-      const normalizedPrice = normalizePrice(priceTextFrom(element));
-      if (!normalizedPrice) continue;
-      const context = clean(`${element.textContent} ${element.parentElement?.textContent || ""}`);
-      return {
-        value: normalizedPrice,
-        method: /\bpix\b/i.test(context) ? "Pix" : "",
-        context,
-      };
+      const candidates = [...document.querySelectorAll(selector)]
+        .filter((element) => visible(element) && !isRecommendationContext(element))
+        .map((element) => ({
+          element,
+          details: moneyDetailsFrom(element),
+          localContext: normalized(`${element.textContent || ""} ${element.parentElement?.textContent || ""}`),
+        }))
+        .filter((item) => item.details)
+        .filter((item) => !/(?:\d+\s*x|parcela|parcelamento|sem juros|meios de pagamento)/i.test(item.localContext))
+        .filter((item) => !/original-value|previous/.test(String(item.element.className || "")));
+      if (candidates[0]?.details) return candidates[0].details;
     }
     return { value: "", method: "", context: "" };
   };
@@ -121,17 +150,22 @@
 
     [...document.querySelectorAll("span, p, div, a, button")].forEach((element) => {
       if (!visible(element)) return;
+      if (isRecommendationContext(element)) return;
       const context = clean(element.textContent);
       if (!context || context.length > 120 || !/cupom/i.test(context)) return;
       const before = context.match(/R\$\s*([\d.]+(?:,\d{2})?)\s+com\s+(?:o\s+)?cupom\b/i);
       const after = context.match(/\bcom\s+(?:o\s+)?cupom\s*(?:por|de|a)?\s*R\$\s*([\d.]+(?:,\d{2})?)/i);
       const match = before || after;
-      if (match) push(match[1], context, 160 - context.length);
+      if (match) {
+        const productCouponScore = element.closest?.(".ui-vpp-coupons, [class*='coupon' i]") ? 220 : 160;
+        push(match[1], context, productCouponScore - context.length);
+      }
     });
 
     [...document.querySelectorAll("[class*='coupon' i] .andes-money-amount, [class*='coupon' i] [class*='price' i], .andes-money-amount")]
       .forEach((element) => {
         if (!visible(element)) return;
+        if (isRecommendationContext(element)) return;
         let current = element;
         for (let depth = 0; current && depth < 3; depth += 1, current = current.parentElement) {
           const context = clean(current.textContent);

@@ -36,6 +36,7 @@ test("extension manifest is Manifest V3 and references existing files", () => {
   assert.ok(manifest.permissions.includes("offscreen"));
   assert.ok(manifest.host_permissions.includes("https://*/*"));
   assert.ok(manifest.content_scripts.some((entry) => entry.js.includes("content/stores/generic.js")));
+  assert.ok(manifest.content_scripts.some((entry) => entry.matches.includes("https://*.mercadolivre.com.br/*") && entry.js.includes("content/coupons.js")));
   assert.ok(manifest.content_scripts.some((entry) => entry.matches.includes("https://web.whatsapp.com/*")));
   assert.ok(manifest.content_scripts.some((entry) => entry.matches.includes("https://www.tabaratoofertas.shop/*")));
   assert.ok(manifest.content_scripts.some((entry) => entry.matches.includes("https://tabaratoofertas.shop/*")));
@@ -74,10 +75,14 @@ test("extension action and launcher stay hidden outside allowed pages", () => {
   assert.match(backgroundSource, /chrome\.sidePanel\.setOptions/);
   assert.match(backgroundSource, /chrome\.sidePanel\.close\(\{ windowId: tab\.windowId \}\)/);
   assert.match(backgroundSource, /chrome\.sidePanel\.open\(\{ windowId: sender\.tab\.windowId \}\)/);
-  assert.match(backgroundSource, /openPanelOnActionClick: false/);
+  assert.match(backgroundSource, /message\?\.type === "TABARATO_OPEN_PANEL"/);
+  assert.match(backgroundSource, /openPanelOnActionClick: true/);
   assert.match(backgroundSource, /chrome\.action\.onClicked/);
   assert.match(content, /TABARATO_IS_ALLOWED_PAGE/);
   assert.match(content, /existing\?\.(?:remove|remove\(\))/);
+  assert.match(content, /currentSynchronousProductAdapter/);
+  assert.match(content, /const panelRequest = chrome\.runtime\.sendMessage\(\{ type: "TABARATO_OPEN_PANEL" \}\);[\s\S]+adapter\.prepareAffiliateLink/);
+  assert.doesNotMatch(content, /const adapter = await currentAdapter\(\);[\s\S]{0,240}TABARATO_OPEN_PANEL/);
   assert.match(content, /assets\/icon-128\.png/);
   assert.doesNotMatch(content, /Enviar produto/);
 });
@@ -407,6 +412,8 @@ test("coupon activation uses confirmed filters and trusted Chrome input", () => 
   assert.match(sidePanelHtml, /action-icon-button/);
   assert.match(coupons, /TABARATO_START_COUPONS/);
   assert.match(coupons, /TABARATO_STOP_COUPONS/);
+  assert.match(coupons, /TaBaratoCoupons/);
+  assert.match(coupons, /version: 3/);
   assert.match(coupons, /ensureCouponFilters/);
   assert.match(coupons, /filtrar e ordenar/);
   assert.match(coupons, /nao ativados/);
@@ -422,6 +429,11 @@ test("coupon activation uses confirmed filters and trusted Chrome input", () => 
   assert.match(backgroundSource, /activeOperation\.id !== message\.operationId/);
   assert.match(backgroundSource, /TABARATO_START_COUPONS/);
   assert.match(backgroundSource, /TABARATO_STOP_ML_COUPONS/);
+  assert.match(backgroundSource, /ensureCouponAutomation/);
+  assert.match(backgroundSource, /startCouponAutomation/);
+  assert.match(backgroundSource, /Receiving end does not exist|receiving end does not exist/);
+  assert.match(backgroundSource, /could not establish connection/);
+  assert.match(backgroundSource, /O automatizador de cupons nao foi carregado/);
   assert.match(backgroundSource, /Input\.dispatchMouseEvent/);
   assert.match(backgroundSource, /chrome\.debugger\.attach/);
   assert.match(backgroundSource, /chrome\.debugger\.detach/);
@@ -449,6 +461,69 @@ test("side panel supports persistent light and dark themes", () => {
   assert.match(theme, /tabarato_extension_theme/);
   assert.match(theme, /prefers-color-scheme: dark/);
   assert.doesNotMatch(styles, /font-weight:\s*(?:8|9)00/);
+});
+
+test("Mercado Livre capture prioritizes the product coupon and ignores recommendation prices", () => {
+  const source = readFileSync(join(extensionRoot, "content", "shared.js"), "utf8");
+  class FakeElement {
+    constructor({ text = "", className = "", aria = "", fraction = "", cents = "", parentElement = null }) {
+      this.textContent = text;
+      this.className = className;
+      this.parentElement = parentElement;
+      this.attributes = { "aria-label": aria };
+      this.children = {};
+      if (fraction) this.children[".andes-money-amount__fraction"] = new FakeElement({ text: fraction, className: "andes-money-amount__fraction", parentElement: this });
+      if (cents) this.children[".andes-money-amount__cents"] = new FakeElement({ text: cents, className: "andes-money-amount__cents", parentElement: this });
+    }
+    getAttribute(name) {
+      return this.attributes[name] || "";
+    }
+    getBoundingClientRect() {
+      return { width: 80, height: 20 };
+    }
+    querySelector(selector) {
+      return this.children[selector] || null;
+    }
+    closest(selector) {
+      let current = this;
+      while (current) {
+        if (/poly-card/.test(selector) && /\bpoly-card\b/.test(current.className)) return current;
+        if (/ui-vpp-coupons/.test(selector) && /\bui-vpp-coupons\b/.test(current.className)) return current;
+        current = current.parentElement;
+      }
+      return null;
+    }
+  }
+  const priceContainer = new FakeElement({ text: "R$399,90R$167,6558% OFF5x R$33,53 sem juros", className: "ui-pdp-price__main-container" });
+  const secondLine = new FakeElement({ text: "R$167,6558% OFF", className: "ui-pdp-price__second-line", parentElement: priceContainer });
+  const currentWrapper = new FakeElement({ text: "R$167,65", className: "ui-pdp-price__part__container", parentElement: secondLine });
+  const previous = new FakeElement({ text: "R$399,90", className: "ui-pdp-price__original-value andes-money-amount andes-money-amount--previous", aria: "Antes: 399 reais com 90 centavos", fraction: "399", cents: "90", parentElement: priceContainer });
+  const current = new FakeElement({ text: "R$167,65", className: "andes-money-amount", aria: "167 reais com 65 centavos", fraction: "167", cents: "65", parentElement: currentWrapper });
+  const installment = new FakeElement({ text: "R$33,53", className: "andes-money-amount", aria: "33 reais com 53 centavos", fraction: "33", cents: "53", parentElement: new FakeElement({ text: "5x R$33,53 sem juros", className: "ui-pdp-price__subtitles", parentElement: priceContainer }) });
+  const productCoupon = new FakeElement({ text: "R$134,12 com Cupom", className: "ui-vpp-coupons" });
+  const recommendation = new FakeElement({ text: "R$399,90R$279,90 com Cupom12x R$29,34", className: "poly-card" });
+  const recommendationCoupon = new FakeElement({ text: "R$279,90 com Cupom", className: "poly-component__coupons", parentElement: recommendation });
+  const elements = [previous, current, installment, productCoupon, recommendation, recommendationCoupon];
+  const context = {
+    document: {
+      querySelector(selector) {
+        return this.querySelectorAll(selector)[0] || null;
+      },
+      querySelectorAll(selector) {
+        if (selector.includes("ui-pdp-price__second-line")) return [current, installment];
+        if (selector.includes("ui-pdp-price__original-value")) return [previous];
+        if (selector.includes("span, p, div, a, button")) return [productCoupon, recommendation, recommendationCoupon];
+        if (selector.includes("andes-money-amount")) return [previous, current, installment];
+        return elements;
+      },
+    },
+    getComputedStyle: () => ({ display: "block", visibility: "visible" }),
+  };
+  context.globalThis = context;
+  vm.runInNewContext(source, context, { filename: "shared.js" });
+  assert.equal(context.TaBaratoCapture.priceDetails(".ui-pdp-price__second-line .andes-money-amount").value, "167.65");
+  assert.equal(context.TaBaratoCapture.price(".ui-pdp-price__original-value .andes-money-amount"), "399.90");
+  assert.equal(context.TaBaratoCapture.couponPriceDetails("167.65").value, "134.12");
 });
 
 test("side panel product utilities normalize prices and message benefits", () => {

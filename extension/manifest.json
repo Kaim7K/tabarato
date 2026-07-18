@@ -53,7 +53,8 @@
         "content/shared.js",
         "content/stores/mercado-livre.js",
         "content/stores/generic.js",
-        "content/index.js"
+        "content/index.js",
+        "content/coupons.js"
       ],
       "run_at": "document_idle"
     },
