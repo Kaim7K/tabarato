@@ -6,49 +6,140 @@
   const runtime = globalThis.TaBaratoRuntime;
   const { formatPrice, parsePrice } = globalThis.TaBaratoProductUtils;
 
-  async function publishOfferId(id, payload, options = {}) {
-    const {
-      forceRepublish = false,
-      notifyWhatsApp = true,
-      tolerateWhatsAppFailure = false,
-    } = options;
-    const shareFile = await panel.media.shareImage(payload);
-    const shareImageDataUrl = await panel.media.fileToDataUrl(shareFile);
-    const publication = await panel.api.request(`/api/admin/ofertas/${id}/publicar`, {
-      method: "POST",
-      body: { shareImageDataUrl, forceRepublish, messageHeadline: payload.messageHeadline || "" },
-      timeout: 45000,
-    });
-    if (!publication?.ok) throw new Error(publication?.error || "Nao foi possivel publicar no Telegram.");
+  function failedWhatsAppSummary(result) {
+    const failed = (result?.results || []).filter((item) => !item.ok);
+    if (!failed.length) return "";
+    return failed.map((item) => `${item.groupName}: ${item.error || "não confirmado"}`).join(" | ");
+  }
 
-    if (notifyWhatsApp && groupNames().length) {
-      try {
-        await panel.media.sendOfferToWhatsApp(payload);
-        await panel.api.request(`/api/admin/ofertas/${id}/publicar`, {
-          method: "POST",
-          body: { action: "record-channel", channel: "WHATSAPP", status: "SUCESSO" },
-        }).catch(() => {});
-      } catch (error) {
-        const message = runtime.errorMessage(error);
-        await panel.api.request(`/api/admin/ofertas/${id}/publicar`, {
-          method: "POST",
-          body: { action: "record-channel", channel: "WHATSAPP", status: "ERRO", errorMessage: message },
-        }).catch(() => {});
-        if (tolerateWhatsAppFailure) return { ...publication, whatsappError: message };
-        throw error;
-      }
+  async function recordWhatsApp(id, result, errorMessage = "") {
+    const ok = Boolean(result?.ok);
+    await panel.api.request(`/api/admin/ofertas/${id}/publicar`, {
+      method: "POST",
+      body: {
+        action: "record-channel",
+        channel: "WHATSAPP",
+        status: ok ? "SUCESSO" : "ERRO",
+        errorMessage: ok ? "" : (errorMessage || failedWhatsAppSummary(result)),
+      },
+    }).catch((error) => runtime.reportError("record-whatsapp-publication", error));
+  }
+
+  async function publishOfferId(id, payload, options = {}) {
+    const { forceRepublish = false, notifyWhatsApp = true } = options;
+    const groups = groupNames();
+    const whatsappRequested = notifyWhatsApp && groups.length > 0;
+    const artwork = panel.media.shareImage(payload)
+      .then(async (file) => ({ file, dataUrl: await panel.media.fileToDataUrl(file) }));
+
+    const telegramTask = artwork
+      .catch((error) => {
+        runtime.reportError("prepare-telegram-artwork", error);
+        return { dataUrl: "" };
+      })
+      .then(({ dataUrl }) => panel.api.request(`/api/admin/ofertas/${id}/publicar`, {
+        method: "POST",
+        body: {
+          shareImageDataUrl: dataUrl,
+          forceRepublish,
+          messageHeadline: payload.messageHeadline || "",
+        },
+        timeout: 65000,
+      }));
+
+    const whatsappTask = whatsappRequested
+      ? panel.media.sendOfferToWhatsApp(payload)
+      : Promise.resolve({ ok: true, skipped: true, results: [] });
+
+    const [telegramSettled, whatsappSettled] = await Promise.allSettled([telegramTask, whatsappTask]);
+    const channels = {
+      telegram: {
+        requested: true,
+        ok: telegramSettled.status === "fulfilled" && Boolean(telegramSettled.value?.ok),
+        result: telegramSettled.status === "fulfilled" ? telegramSettled.value : telegramSettled.reason?.payload || null,
+      },
+      whatsapp: {
+        requested: whatsappRequested,
+        ok: !whatsappRequested || (whatsappSettled.status === "fulfilled" && Boolean(whatsappSettled.value?.ok)),
+        partial: whatsappSettled.status === "fulfilled" && Boolean(whatsappSettled.value?.partial),
+        result: whatsappSettled.status === "fulfilled" ? whatsappSettled.value : null,
+      },
+    };
+
+    const telegramError = channels.telegram.ok
+      ? ""
+      : runtime.errorMessage(
+        telegramSettled.status === "rejected" ? telegramSettled.reason : telegramSettled.value?.error,
+        "Não foi possível publicar no site e Telegram.",
+      );
+    const whatsappError = !whatsappRequested || channels.whatsapp.ok
+      ? ""
+      : runtime.errorMessage(
+        whatsappSettled.status === "rejected" ? whatsappSettled.reason : failedWhatsAppSummary(whatsappSettled.value),
+        "O WhatsApp não confirmou todos os envios.",
+      );
+
+    if (whatsappRequested) await recordWhatsApp(id, channels.whatsapp.result, whatsappError);
+
+    const successfulChannels = [channels.telegram.ok, whatsappRequested && (channels.whatsapp.ok || channels.whatsapp.partial)].filter(Boolean).length;
+    const failedChannels = [!channels.telegram.ok, whatsappRequested && !channels.whatsapp.ok].filter(Boolean).length;
+    return {
+      ok: failedChannels === 0,
+      partial: successfulChannels > 0 && failedChannels > 0,
+      channels,
+      telegramError,
+      whatsappError,
+      offer: channels.telegram.result?.offer || null,
+    };
+  }
+
+  function publicationToast(publication, hasWhatsApp) {
+    const telegramOk = publication.channels.telegram.ok;
+    const whatsapp = publication.channels.whatsapp;
+    if (telegramOk && (!hasWhatsApp || whatsapp.ok)) {
+      return {
+        message: hasWhatsApp ? "Oferta publicada no site, Telegram e WhatsApp." : "Oferta publicada no site e Telegram.",
+        tone: "success",
+      };
     }
-    return publication;
+    if (telegramOk && hasWhatsApp) {
+      return {
+        message: `Site e Telegram publicados. WhatsApp incompleto: ${publication.whatsappError}`,
+        tone: "neutral",
+      };
+    }
+    if (!telegramOk && hasWhatsApp && (whatsapp.ok || whatsapp.partial)) {
+      return {
+        message: `WhatsApp enviado, mas o site/Telegram falhou: ${publication.telegramError}`,
+        tone: "neutral",
+      };
+    }
+    return {
+      message: [publication.telegramError, publication.whatsappError].filter(Boolean).join(" | ") || "A publicação não foi concluída.",
+      tone: "error",
+    };
+  }
+
+  function inspectExisting(product) {
+    elements.duplicateWarning.classList.add("hidden");
+    const existing = panel.catalog.findExisting(product);
+    if (!existing) return null;
+    const nextPrice = parsePrice(product.currentPrice);
+    const oldPrice = parsePrice(existing.currentPrice);
+    let message = `Produto já cadastrado: ${existing.productName}.`;
+    if (Number.isFinite(nextPrice) && Number.isFinite(oldPrice)) {
+      if (nextPrice < oldPrice) message = `Já cadastrado por ${formatPrice(oldPrice)}. O novo preço é melhor e será atualizado apenas ao confirmar a publicação.`;
+      else if (nextPrice > oldPrice) message = `Já cadastrado por ${formatPrice(oldPrice)}. O preço atual é pior; nada será removido automaticamente.`;
+      else message = `Este produto já está cadastrado com o mesmo preço: ${formatPrice(oldPrice)}.`;
+    }
+    elements.duplicateWarning.textContent = message;
+    elements.duplicateWarning.classList.remove("hidden");
+    return existing;
   }
 
   async function reconcile(product, options = {}) {
-    const {
-      refreshCatalog = true,
-      notifyWhatsApp = true,
-      notifyUser = true,
-    } = options;
-    elements.duplicateWarning.classList.add("hidden");
-    const existing = panel.catalog.findExisting(product);
+    const { refreshCatalog = true, notifyWhatsApp = true, notifyUser = true } = options;
+    const existing = inspectExisting(product);
     if (!existing) return { action: "none" };
 
     const nextPrice = parsePrice(product.currentPrice);
@@ -56,33 +147,22 @@
     if (!Number.isFinite(nextPrice) || !Number.isFinite(oldPrice)) return { action: "invalid", existing };
 
     if (nextPrice < oldPrice) {
-      elements.duplicateWarning.textContent = `Ja cadastrado por ${formatPrice(oldPrice)}. Preco melhor detectado; atualizando e republicando.`;
-      elements.duplicateWarning.classList.remove("hidden");
       const payload = panel.product.toPayload(product, "APROVADO");
       await panel.api.request(`/api/admin/ofertas/${existing.id}`, { method: "PATCH", body: payload });
-      const publication = await publishOfferId(existing.id, payload, {
-        forceRepublish: true,
-        notifyWhatsApp,
-        tolerateWhatsAppFailure: !notifyUser,
-      });
-      Object.assign(existing, payload);
+      const publication = await publishOfferId(existing.id, payload, { forceRepublish: true, notifyWhatsApp });
+      Object.assign(existing, payload, publication.offer || {});
       if (refreshCatalog) await panel.catalog.synchronize();
-      if (notifyUser) showToast("Preco melhor publicado novamente.", "success");
+      if (notifyUser) {
+        const feedback = publicationToast(publication, notifyWhatsApp && groupNames().length > 0);
+        showToast(feedback.message, feedback.tone);
+      }
       return { action: "updated", existing, publication };
     }
 
     if (nextPrice > oldPrice) {
-      elements.duplicateWarning.textContent = `Preco pior detectado: ${formatPrice(nextPrice)}. Oferta removida do site.`;
-      elements.duplicateWarning.classList.remove("hidden");
-      await panel.api.request(`/api/admin/ofertas/${existing.id}`, { method: "DELETE" });
-      state.synchronizedOffers = state.synchronizedOffers.filter((offer) => offer.id !== existing.id);
-      if (refreshCatalog) await panel.catalog.synchronize();
-      if (notifyUser) showToast("Oferta removida porque o preco piorou.", "success");
-      return { action: "deleted", existing };
+      // Preço pior nunca apaga uma publicação existente. O lote registra e segue.
+      return { action: "worse-price", existing };
     }
-
-    elements.duplicateWarning.textContent = `Este produto ja esta cadastrado com o mesmo preco em: ${existing.productName}.`;
-    elements.duplicateWarning.classList.remove("hidden");
     return { action: "unchanged", existing };
   }
 
@@ -106,21 +186,32 @@
     if (!elements.offerForm.reportValidity()) return;
     const owner = "publish";
     const payload = panel.product.payload("APROVADO");
-    let createdOffer = null;
+    let changedCatalog = false;
     lockActions(owner, elements.publishButton, "Publicando...");
     try {
-      const created = await panel.api.request("/api/admin/ofertas", { method: "POST", body: payload });
-      createdOffer = created.offer;
-      await publishOfferId(created.offer.id, payload, { notifyWhatsApp: true });
-      showToast(
-        groupNames().length ? "Oferta publicada no site, Telegram e WhatsApp." : "Oferta publicada no site e Telegram.",
-        "success",
-      );
+      const existing = panel.catalog.findExisting(state.activeProduct || payload);
+      let offer;
+      let forceRepublish = false;
+      if (existing) {
+        await panel.api.request(`/api/admin/ofertas/${existing.id}`, { method: "PATCH", body: payload });
+        Object.assign(existing, payload);
+        offer = existing;
+        forceRepublish = true;
+      } else {
+        const created = await panel.api.request("/api/admin/ofertas", { method: "POST", body: payload });
+        offer = created.offer;
+        state.synchronizedOffers.unshift(offer);
+      }
+      changedCatalog = true;
+      const publication = await publishOfferId(offer.id, payload, { notifyWhatsApp: true, forceRepublish });
+      if (publication.offer) Object.assign(offer, publication.offer);
+      const feedback = publicationToast(publication, groupNames().length > 0);
+      showToast(feedback.message, feedback.tone);
     } catch (error) {
       runtime.reportError("publish-offer", error);
       showToast(runtime.errorMessage(error), "error");
     } finally {
-      if (createdOffer) await panel.catalog.synchronize().catch((error) => runtime.reportError("sync-after-publish", error));
+      if (changedCatalog) await panel.catalog.synchronize().catch((error) => runtime.reportError("sync-after-publish", error));
       unlockActions(owner, elements.publishButton);
     }
   }
@@ -130,8 +221,10 @@
     const owner = "whatsapp";
     lockActions(owner, elements.whatsappButton, "Preparando...");
     try {
-      await panel.media.sendOfferToWhatsApp(panel.product.payload(), (label) => panel.setBusy(elements.whatsappButton, true, label));
-      showToast("Oferta enviada ao WhatsApp.", "success");
+      const result = await panel.media.sendOfferToWhatsApp(panel.product.payload(), (label) => panel.setBusy(elements.whatsappButton, true, label));
+      if (result.ok) showToast("Oferta enviada a todos os grupos do WhatsApp.", "success");
+      else if (result.partial) showToast(`Envio parcial: ${failedWhatsAppSummary(result)}`, "neutral");
+      else showToast(failedWhatsAppSummary(result) || "O WhatsApp não confirmou o envio.", "error");
     } catch (error) {
       runtime.reportError("share-whatsapp", error);
       showToast(runtime.errorMessage(error), "error");
@@ -146,6 +239,26 @@
     if (!/^image\/(?:png|jpe?g|webp)$/i.test(file.type)) throw new Error("Use PNG, JPG ou WebP.");
     if (file.size > 12 * 1024 * 1024) throw new Error("Imagem muito grande.");
     return panel.media.fileToDataUrl(file);
+  }
+
+  async function sendCustomWhatsApp(message, imageUrl) {
+    const groups = groupNames();
+    if (!groups.length) throw new Error("Registre pelo menos um grupo do WhatsApp.");
+    let imageDataUrl = imageUrl;
+    if (imageUrl && /^https:\/\//i.test(imageUrl)) {
+      const response = await runtime.fetchWithTimeout(imageUrl, {}, 15000);
+      if (!response.ok) throw new Error("Não foi possível carregar a imagem personalizada.");
+      const blob = await response.blob();
+      if (!/^image\//i.test(blob.type)) throw new Error("A URL informada não retornou uma imagem válida.");
+      imageDataUrl = await panel.media.fileToDataUrl(new File([blob], "mensagem.png", { type: blob.type || "image/png" }));
+    }
+    return chrome.runtime.sendMessage({
+      type: "TABARATO_SHARE_WHATSAPP",
+      groupNames: groups,
+      text: message,
+      imageDataUrl,
+      fileName: "mensagem.png",
+    });
   }
 
   async function sendCustomMessage() {
@@ -164,35 +277,26 @@
     lockActions(owner, elements.customSendButton, "Enviando...");
     try {
       const imageUrl = await customImageDataUrl() || elements.customImageUrl.value.trim();
+      const tasks = [];
       if (elements.customTelegram.checked) {
-        await panel.api.request("/api/admin/mensagens?action=send-custom", {
+        tasks.push(["Telegram", panel.api.request("/api/admin/mensagens?action=send-custom", {
           method: "POST",
           body: { message, imageUrl },
-          timeout: 30000,
-        });
+          timeout: 45000,
+        })]);
       }
-      if (elements.customWhatsapp.checked) {
-        const groups = groupNames();
-        if (!groups.length) throw new Error("Registre pelo menos um grupo do WhatsApp.");
-        let imageDataUrl = imageUrl;
-        if (imageUrl && /^https:\/\//i.test(imageUrl)) {
-          const response = await runtime.fetchWithTimeout(imageUrl, {}, 15000);
-          if (!response.ok) throw new Error("Nao foi possivel carregar a imagem personalizada.");
-          const blob = await response.blob();
-          if (!/^image\//i.test(blob.type)) throw new Error("A URL informada nao retornou uma imagem valida.");
-          imageDataUrl = await panel.media.fileToDataUrl(new File([blob], "mensagem.png", { type: blob.type || "image/png" }));
+      if (elements.customWhatsapp.checked) tasks.push(["WhatsApp", sendCustomWhatsApp(message, imageUrl)]);
+      const settled = await Promise.allSettled(tasks.map(([, task]) => task));
+      const failures = settled.flatMap((result, index) => {
+        if (result.status === "rejected") return [`${tasks[index][0]}: ${runtime.errorMessage(result.reason)}`];
+        if (tasks[index][0] === "WhatsApp" && !result.value?.ok) {
+          return [`WhatsApp: ${failedWhatsAppSummary(result.value) || result.value?.error || "envio não confirmado"}`];
         }
-        const result = await chrome.runtime.sendMessage({
-          type: "TABARATO_SHARE_WHATSAPP",
-          groupNames: groups,
-            text: message,
-            imageDataUrl,
-            fileName: "mensagem.png",
-            clipboardPrepared: await panel.media.copyDataUrlToClipboard(imageDataUrl, "mensagem.png").catch(() => false),
-          });
-        if (!result?.ok) throw new Error(result?.error || "Nao foi possivel enviar a mensagem ao WhatsApp.");
-      }
-      showToast("Mensagem enviada.", "success");
+        return [];
+      });
+      if (!failures.length) showToast("Mensagem enviada nos canais selecionados.", "success");
+      else if (failures.length < tasks.length) showToast(`Envio parcial. ${failures.join(" | ")}`, "neutral");
+      else showToast(failures.join(" | "), "error");
     } catch (error) {
       runtime.reportError("custom-message", error);
       showToast(runtime.errorMessage(error), "error");
@@ -201,5 +305,13 @@
     }
   }
 
-  panel.publishing = { publish, publishOfferId, reconcile, save, sendCustomMessage, whatsapp };
+  panel.publishing = {
+    inspectExisting,
+    publish,
+    publishOfferId,
+    reconcile,
+    save,
+    sendCustomMessage,
+    whatsapp,
+  };
 })();

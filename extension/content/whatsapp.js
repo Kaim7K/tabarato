@@ -25,18 +25,13 @@
     if (signal?.aborted) throw new Error("O envio anterior foi cancelado.");
   };
 
-  const waitFor = async (read, timeout = 30000, signal) => {
-    const startedAt = Date.now();
-    aborted(signal);
-    let value = read();
-    while (!value && Date.now() - startedAt < timeout) {
-      aborted(signal);
-      await new Promise((resolve) => window.setTimeout(resolve, 120));
-      value = read();
-    }
-    aborted(signal);
-    return value || null;
-  };
+  const waitFor = (read, timeout = 30000, signal) => runtime.poll(read, {
+    timeout,
+    signal,
+    interval: 100,
+    maxInterval: 480,
+    factor: 1.2,
+  });
 
   const visible = (element) => {
     if (!element) return false;
@@ -115,33 +110,6 @@
       return visible(element) && patterns.some((pattern) => label.includes(pattern));
     });
 
-  const dataUrlFile = async (dataUrl, fileName) => {
-    const response = await runtime.fetchWithTimeout(dataUrl, {}, 8000, "A imagem demorou para ser aberta no WhatsApp.");
-    if (!response.ok) throw new Error("A imagem gerada nao pode ser aberta no WhatsApp.");
-    const sourceBlob = await runtime.withTimeout(response.blob(), 8000, "A imagem demorou para ser lida no WhatsApp.");
-    if (!sourceBlob.size) throw new Error("A imagem gerada esta vazia.");
-    if (sourceBlob.type === "image/png") return new File([sourceBlob], fileName || "oferta.png", { type: "image/png" });
-
-    const bitmap = await runtime.withTimeout(createImageBitmap(sourceBlob), 8000, "A imagem nao pode ser convertida para PNG.");
-    try {
-      const canvas = document.createElement("canvas");
-      canvas.width = bitmap.width;
-      canvas.height = bitmap.height;
-      const context = canvas.getContext("2d");
-      if (!context) throw new Error("O navegador nao conseguiu preparar a imagem.");
-      context.drawImage(bitmap, 0, 0);
-      const pngBlob = await runtime.withTimeout(new Promise((resolve, reject) => {
-        canvas.toBlob(
-          (blob) => blob ? resolve(blob) : reject(new Error("A conversao da imagem falhou.")),
-          "image/png",
-        );
-      }), 8000, "A conversao da imagem demorou demais.");
-      return new File([pngBlob], fileName || "oferta.png", { type: "image/png" });
-    } finally {
-      bitmap.close();
-    }
-  };
-
   const clickableGroupRow = (group) => {
     const semanticRow = group.closest("[role='listitem'], [role='row'], [data-testid='cell-frame-container']");
     if (semanticRow) return semanticRow;
@@ -170,19 +138,34 @@
     aborted(signal);
     if (currentGroupIs(groupName)) return;
 
-    const search = await waitFor(searchBox, 12000, signal);
+    // Caminho rapido: o grupo ja esta visivel na lista lateral.
+    let group = exactGroup(groupName);
+    if (group) {
+      const row = clickableGroupRow(group);
+      activateGroupRow(row);
+      const selected = await waitFor(() => currentGroupIs(groupName), 3200, signal);
+      if (selected) return;
+    }
+
+    const search = await waitFor(searchBox, 8000, signal);
     if (!search) throw new Error("Entre no WhatsApp Web antes de enviar a oferta.");
-    await setEditableText(search, groupName);
-    const group = await waitFor(() => exactGroup(groupName), 15000, signal);
+
+    // Evita pesquisar novamente quando o campo ja contem o mesmo grupo.
+    const currentSearch = clean(search.innerText || search.textContent || "");
+    if (!sameGroupName(currentSearch, groupName)) {
+      await setEditableText(search, groupName);
+    }
+
+    group = await waitFor(() => exactGroup(groupName), 8500, signal);
     if (!group) throw new Error(`Grupo "${groupName}" nao encontrado no WhatsApp.`);
+
     const groupRow = clickableGroupRow(group);
     aborted(signal);
     activateGroupRow(groupRow);
-    let selected = await waitFor(() => currentGroupIs(groupName), 5000, signal);
+    let selected = await waitFor(() => currentGroupIs(groupName), 3200, signal);
     if (!selected && groupRow !== group) {
-      aborted(signal);
       activateGroupRow(group);
-      selected = await waitFor(() => currentGroupIs(groupName), 5000, signal);
+      selected = await waitFor(() => currentGroupIs(groupName), 2500, signal);
     }
     if (!selected) throw new Error(`Nao foi possivel abrir o grupo "${groupName}".`);
   }
@@ -213,50 +196,66 @@
     return messages.slice(countBefore).some((message) => comparable(message.textContent).includes(comparable(signature)));
   };
 
-  async function copyImageToClipboard(file) {
-    if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined") return false;
-    try {
-      window.focus();
-      const pngBlob = new Blob([await file.arrayBuffer()], { type: "image/png" });
-      await navigator.clipboard.write([new ClipboardItem({ "image/png": pngBlob })]);
-      return true;
-    } catch (error) {
-      runtime.reportError("whatsapp-clipboard-fallback", error);
-      return false;
+  async function imageFileFromDataUrl(dataUrl, mimeType, fileName, signal) {
+    aborted(signal);
+    if (!String(dataUrl || "").startsWith("data:image/")) {
+      throw new Error("A extensao nao recebeu uma imagem valida. O envio foi cancelado.");
     }
+    const response = await fetch(dataUrl);
+    if (!response.ok) throw new Error("A imagem nao pôde ser preparada para o WhatsApp.");
+    const blob = await response.blob();
+    if (!blob.size) throw new Error("A imagem recebida esta vazia.");
+    const type = mimeType || blob.type || "image/png";
+    const extension = type.split("/")[1]?.replace("jpeg", "jpg") || "png";
+    const safeName = clean(fileName) || `oferta.${extension}`;
+    return new File([blob], safeName, { type });
   }
 
-  async function pasteOffer(file, caption, signal, clipboardPrepared = false) {
+
+  async function pasteOffer(caption, signal, fileName = "oferta.png", imageDataUrl = "", imageMimeType = "image/png") {
     const composer = await waitFor(messageComposer, 10000, signal);
     if (!composer) throw new Error("O campo de mensagem do WhatsApp nao foi encontrado.");
     const messageCountBefore = outgoingMessages().length;
 
     aborted(signal);
-    const copied = clipboardPrepared || await copyImageToClipboard(file);
-    if (!copied) throw new Error("Nao foi possivel copiar a imagem para o clipboard.");
+    composer.scrollIntoView({ block: "center" });
+    composer.click();
+    composer.focus({ preventScroll: true });
+    await runtime.delay(90, signal);
 
-    composer.focus();
-    document.execCommand("paste");
-    let captionBox = await waitFor(() => captionEditor(composer), 5000, signal);
-    if (!captionBox && await copyImageToClipboard(file)) {
-      composer.focus();
-      document.execCommand("paste");
-      captionBox = await waitFor(() => captionEditor(composer), 5000, signal);
-    }
+    const sourceImage = await imageFileFromDataUrl(
+      imageDataUrl,
+      imageMimeType,
+      fileName,
+      signal,
+    );
+    // A imagem e anexada a um unico evento de colagem, sem depender da API global de clipboard.
+    const transfer = new DataTransfer();
+    transfer.items.add(sourceImage);
+    composer.dispatchEvent(new ClipboardEvent("paste", {
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+      clipboardData: transfer,
+    }));
+
+    const captionBox = await waitFor(() => captionEditor(composer), 7000, signal);
     if (!captionBox) {
-      throw new Error("O WhatsApp bloqueou a colagem da imagem. Mantenha a aba aberta e tente novamente.");
+      throw new Error("O WhatsApp nao aceitou a imagem preparada. Nenhum upload ou envio alternativo foi tentado.");
     }
-    await new Promise((resolve) => window.setTimeout(resolve, 260));
+
+    await runtime.delay(260, signal);
     await setEditableText(captionBox, caption);
-    await new Promise((resolve) => window.setTimeout(resolve, 110));
+    await runtime.delay(110, signal);
 
     const send = await waitFor(() => actionByLabel(["enviar", "send"])
       || [...document.querySelectorAll('[data-icon="send"]')].map((element) => element.closest("button, [role='button']")).find(visible), 10000, signal);
     if (!send) throw new Error("O botao Enviar do WhatsApp nao foi encontrado.");
     aborted(signal);
     send.click();
-    const sent = await waitFor(() => sentMessageAppeared(messageCountBefore, caption) || !visible(captionBox), 7000, signal);
+    const sent = await waitFor(() => sentMessageAppeared(messageCountBefore, caption) || !visible(captionBox), 9000, signal);
     if (!sent) throw new Error("O WhatsApp nao confirmou o envio da imagem.");
+    return { partial: false };
   }
 
   async function sendTextMessage(text, signal) {
@@ -278,11 +277,17 @@
     if (!clean(message.text)) throw new Error("A mensagem do WhatsApp esta vazia.");
     await selectGroup(message.groupName, signal);
     if (message.imageDataUrl) {
-      const file = await dataUrlFile(message.imageDataUrl, message.fileName);
-      await pasteOffer(file, message.text, signal, Boolean(message.clipboardPrepared));
+      const result = await pasteOffer(
+        message.text,
+        signal,
+        message.fileName,
+        message.imageDataUrl,
+        message.imageMimeType,
+      );
+      return { ok: true, partial: Boolean(result?.partial), warning: result?.warning || "" };
     }
-    else await sendTextMessage(message.text, signal);
-    return { ok: true };
+    await sendTextMessage(message.text, signal);
+    return { ok: true, partial: false };
   };
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -298,12 +303,15 @@
     }
     const controller = new AbortController();
     activeController = controller;
-    activeSend = runtime.withTimeout(
-      performSend(message, controller.signal),
-      62000,
-      "O envio para o WhatsApp demorou demais. Tente novamente.",
+    activeSend = runtime.runWithTimeout(
+      (signal) => performSend(message, signal),
+      {
+        milliseconds: 78000,
+        message: "O envio para o WhatsApp demorou demais. Tente novamente.",
+        signal: controller.signal,
+      },
     ).finally(() => {
-      controller.abort();
+      if (!controller.signal.aborted) controller.abort();
       activeSend = null;
       if (activeController === controller) activeController = null;
     });

@@ -1,12 +1,15 @@
 (() => {
+  if (window.top !== window) return;
   const tools = globalThis.TaBaratoCapture;
   if (!tools || globalThis.TaBaratoStores?.some((store) => store.id === "mercado-livre")) return;
 
   const MELI_LINK_PATTERN = /^https:\/\/(?:www\.)?meli\.la\/[A-Za-z0-9_-]+(?:[/?#][^\s"'<>]*)?$/i;
   const MELI_LINK_SEARCH = /https:\/\/(?:www\.)?meli\.la\/[A-Za-z0-9_-]+(?:[/?#][^\s"'<>]*)?/i;
-  let affiliateRequestStartedAt = 0;
+  const AFFILIATE_GUARD_KEY = "tabarato_affiliate_return_url";
   let capturedAffiliateLink = "";
   let capturedAffiliatePage = "";
+  let affiliateCapturePromise = null;
+  let affiliateCapturePromisePage = "";
 
   const scrollTop = () => Number(
     globalThis.scrollY
@@ -30,15 +33,26 @@
     return scrollTop() <= 2;
   };
 
-  const stabilizePageTop = async (timeout = 1200) => {
+  const stabilizePageTop = async (timeout = 900) => {
     let stableSamples = 0;
     const ready = await tools.waitFor(() => {
       pinPageToTop();
       stableSamples = scrollTop() <= 2 ? stableSamples + 1 : 0;
-      return stableSamples >= 3 ? true : "";
+      return stableSamples >= 2 ? true : "";
     }, timeout);
     pinPageToTop();
     return Boolean(ready);
+  };
+
+  const restorePageScroll = (position) => {
+    const top = Math.max(0, Number(position) || 0);
+    const roots = [document.scrollingElement, document.documentElement, document.body].filter(Boolean);
+    roots.forEach((root) => { root.scrollTop = top; });
+    try {
+      globalThis.scrollTo?.({ top, left: 0, behavior: "auto" });
+    } catch {
+      globalThis.scrollTo?.(0, top);
+    }
   };
 
   const contextText = (element, depthLimit = 4) => {
@@ -61,10 +75,14 @@
       element?.getAttribute?.("aria-label") || "",
       element?.getAttribute?.("title") || "",
       element?.getAttribute?.("data-testid") || "",
-      element?.getAttribute?.("name") || "",
       descendants,
     ].join(" "));
   };
+
+  const normalizeLabel = (value = "") => tools.clean(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
 
   const extractMeliLink = (value = "") => {
     const decoded = String(value || "")
@@ -81,68 +99,92 @@
     }
   };
 
+  const meliLinkKey = (value = "") => {
+    const link = extractMeliLink(value);
+    if (!link) return "";
+    try {
+      const url = new URL(link);
+      return `${url.hostname.toLowerCase()}${url.pathname.replace(/\/$/, "")}`;
+    } catch {
+      return "";
+    }
+  };
+
+  const publishProductPatch = async (patch, url = location.href) => {
+    if (!patch || typeof patch !== "object" || !Object.keys(patch).length) return false;
+    const response = await chrome.runtime.sendMessage({
+      type: "TABARATO_PRODUCT_PATCH",
+      url,
+      patch,
+    }).catch(() => null);
+    return Boolean(response?.ok);
+  };
+
   const productRoot = () => document.querySelector(".ui-pdp--sticky-wrapper-right")
     || document.querySelector(".ui-pdp-container--column-right")
     || document.querySelector(".ui-pdp-container__col.col-2")
     || document.querySelector(".ui-pdp-container--pdp")
     || document;
 
-  const productControl = (pattern) => [...productRoot().querySelectorAll("button, a, [role='button']")]
+  const matchingControl = (root, pattern) => [...root.querySelectorAll("button, a, [role='button']")]
     .find((element) => tools.visible(element) && pattern.test(controlLabel(element)));
 
-  const visibleDialog = (pattern) => [...document.querySelectorAll("[role='dialog'], .andes-modal, [class*='modal']")]
-    .find((element) => tools.visible(element) && pattern.test(tools.clean(element.textContent)));
+  const productControl = (pattern) => matchingControl(productRoot(), pattern);
+  const pageControl = (pattern) => productControl(pattern) || matchingControl(document, pattern);
 
-  const affiliateDialog = () => visibleDialog(/gerar link\s*\/\s*id de produto|link do produto.*id do produto|texto sugerido|afiliad|meli\.la/i);
+  const visibleDialogs = (pattern) => [...document.querySelectorAll("[role='dialog'], [aria-modal='true'], .andes-modal, [class*='modal']")]
+    .filter((element) => tools.visible(element) && pattern.test(tools.clean(element.textContent)));
 
-  const productLinkField = (dialog = affiliateDialog()) => {
-    if (!dialog) return null;
-    const candidates = [...dialog.querySelectorAll("input, textarea")]
-      .filter((element) => extractMeliLink(element.value || element.getAttribute("value")))
-      .map((element) => ({
-        element,
-        score: (element.matches("input") ? 30 : 0)
-          + (/link do produto/i.test(contextText(element, 3)) ? 20 : 0)
-          - (/texto sugerido/i.test(contextText(element, 3)) ? 10 : 0),
-      }))
-      .sort((left, right) => right.score - left.score);
-    return candidates[0]?.element || null;
-  };
+  const visibleDialog = (pattern) => visibleDialogs(pattern)[0] || null;
 
-  const readProductLink = (dialog = affiliateDialog()) => {
-    if (!dialog) return "";
-    const field = productLinkField(dialog);
-    if (field) return extractMeliLink(field.value || field.getAttribute("value"));
+  const affiliateDialogs = () => visibleDialogs(/gerar link\s*\/\s*id de produto|link do produto|id do produto|texto sugerido|meli\.la/i)
+    .map((element) => {
+      const text = tools.clean(element.textContent || "");
+      const rectangle = element.getBoundingClientRect();
+      const directLink = extractMeliLink(text);
+      const score = (directLink ? 1000 : 0)
+        + (/link do produto/i.test(text) ? 420 : 0)
+        + (/id do produto/i.test(text) ? 120 : 0)
+        + (/texto sugerido/i.test(text) ? 80 : 0)
+        - Math.max(0, text.length - 6000) / 25
+        - Math.max(0, rectangle.width * rectangle.height - 900000) / 5000;
+      return { element, score };
+    })
+    .sort((left, right) => right.score - left.score)
+    .map((item) => item.element);
 
-    const values = [dialog.innerText, dialog.textContent, dialog.innerHTML];
-    [...dialog.querySelectorAll("a[href], input, textarea, [contenteditable='true'], [data-clipboard-text], [data-copy], code, pre")]
-      .forEach((element) => {
-        values.push(
-          element.href,
-          element.value,
-          element.textContent,
-          element.getAttribute("value"),
-          element.getAttribute("data-clipboard-text"),
-          element.getAttribute("data-copy"),
-        );
-      });
-    return values.map(extractMeliLink).find(Boolean) || "";
-  };
+  const affiliateDialog = () => affiliateDialogs()[0] || null;
 
-  const copyProductLink = async (dialog, link) => {
-    const field = productLinkField(dialog);
-    const copyRoots = [field?.parentElement, dialog].filter(Boolean);
-    const copyControl = copyRoots
-      .flatMap((root) => [...root.querySelectorAll("button, [role='button']")])
-      .filter(tools.visible)
-      .find((element) => /copiar|copy/i.test(controlLabel(element)));
-    if (copyControl) {
-      copyControl.click();
-      return;
-    }
-    if (document.hasFocus() && navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(link).catch(() => {});
-    }
+  const productLinkValue = (element) => extractMeliLink([
+    element?.value || "",
+    element?.getAttribute?.("value") || "",
+    element?.getAttribute?.("aria-label") || "",
+    element?.getAttribute?.("title") || "",
+    element?.textContent || "",
+  ].join(" "));
+
+  const productLinkField = (dialog) => {
+    const roots = dialog ? [dialog] : affiliateDialogs();
+    if (!roots.length) return null;
+    return roots.flatMap((root) => [...root.querySelectorAll("input, textarea, a, span, p, [data-testid], [role='textbox'], div")])
+      .filter((element, index, values) => values.indexOf(element) === index && tools.visible(element))
+      .map((element) => {
+        const context = normalizeLabel(contextText(element, 5));
+        const value = productLinkValue(element);
+        const ownText = tools.clean(element.textContent || "");
+        const compactText = ownText.length <= 220;
+        const directValue = extractMeliLink([element.value || "", element.getAttribute?.("value") || ""].join(" "));
+        const score = (value ? 420 : 0)
+          + (directValue ? 260 : 0)
+          + (/link do produto/.test(context) ? 300 : 0)
+          + (element.matches("input, textarea, [role='textbox']") ? 80 : 0)
+          + (compactText ? 40 : -160)
+          - (/texto sugerido/.test(context) ? 120 : 0)
+          - (/id do produto/.test(context) && !/link do produto/.test(context) ? 180 : 0);
+        return { element, score };
+      })
+      .filter((item) => item.score > 0 && productLinkValue(item.element))
+      .sort((left, right) => right.score - left.score)[0]?.element || null;
   };
 
   const closeDialog = (dialog) => {
@@ -159,236 +201,413 @@
     await tools.closeTransientDialogs();
   };
 
-  const affiliateContextScore = (element) => {
+  const exactControlLabel = (element, expected) => [
+    element?.textContent || "",
+    element?.getAttribute?.("aria-label") || "",
+    element?.getAttribute?.("title") || "",
+  ].some((value) => normalizeLabel(value) === expected);
+
+  const darkWideSurface = (element) => {
+    const viewportWidth = Number(globalThis.innerWidth || document.documentElement?.clientWidth || 0);
     let current = element;
-    let score = 0;
-    for (let depth = 0; current && depth < 9; depth += 1) {
-      const text = tools.clean(current.textContent);
-      if (/ganh(?:e|os?)\s*(?:extras?)?\s*(?:at[eé]\s*)?\d+(?:[.,]\d+)?\s*%/i.test(text)) score = Math.max(score, 120 - depth * 8);
-      if (/programa\s+de\s+afiliados?|link\s+de\s+afiliado|afiliados?\s+e\s+criadores/i.test(text)) score = Math.max(score, 140 - depth * 8);
-      current = current.parentElement;
+    for (let depth = 0; current && depth < 7; depth += 1, current = current.parentElement) {
+      const rectangle = current.getBoundingClientRect();
+      const background = String(getComputedStyle(current).backgroundColor || "");
+      const channels = background.match(/\d+(?:\.\d+)?/g)?.slice(0, 3).map(Number) || [];
+      const dark = channels.length === 3 && channels.reduce((sum, value) => sum + value, 0) < 420;
+      const wide = viewportWidth <= 0 || rectangle.width >= viewportWidth * 0.45;
+      if (dark && wide && rectangle.top < 120) return true;
     }
-    return score;
+    return false;
   };
 
-  const shareControls = () => [...document.querySelectorAll("button, a, [role='button']")]
+  const strictShareControl = () => [...document.querySelectorAll("button, [role='button']")]
     .filter((element) => element.id !== "tabarato-launcher" && tools.visible(element))
+    .filter((element) => exactControlLabel(element, "compartilhar"))
+    .filter((element) => !element.closest("a[href*='/afiliados-home']"))
     .map((element) => {
-      const label = controlLabel(element);
-      const shareLabel = /compartilhar|compartilhe|\bshare\b|gerar\s+link|link\s+de\s+afiliado|afiliad/i.test(label);
-      if (!shareLabel) return null;
-      const contextScore = affiliateContextScore(element);
-      const explicitAffiliateLabel = /afiliad|gerar\s+link|link\s+de\s+afiliado/i.test(label);
       const rectangle = element.getBoundingClientRect();
-      const viewportWidth = Number(globalThis.innerWidth || document.documentElement?.clientWidth || 0);
-      const topProductControl = rectangle.top >= 0
-        && rectangle.top < 560
-        && (viewportWidth <= 0 || rectangle.left > viewportWidth * 0.42);
-      if (!contextScore && !explicitAffiliateLabel && !topProductControl) return null;
-      const score = contextScore
-        + (/compartilh|\bshare\b/i.test(label) ? 60 : 0)
-        + (explicitAffiliateLabel ? 80 : 0)
-        + (rectangle.top >= 0 && rectangle.top < 420 ? 35 : 0)
-        - (rectangle.top > 900 ? 80 : 0)
-        + (viewportWidth > 0 && rectangle.left > viewportWidth * 0.45 ? 10 : 0);
-      return { element, score };
+      if (rectangle.top < -8 || rectangle.top > 170 || rectangle.width < 50 || rectangle.height < 24) return null;
+      let current = element;
+      let affiliateBar = false;
+      for (let depth = 0; current && depth < 7; depth += 1, current = current.parentElement) {
+        const text = normalizeLabel(current.textContent || "");
+        if (/ganhos? extras?/.test(text)) affiliateBar = true;
+      }
+      const darkSurface = darkWideSurface(element);
+      if (!affiliateBar && !darkSurface) return null;
+      return {
+        element,
+        score: (affiliateBar ? 200 : 0) + (darkSurface ? 120 : 0) + Math.max(0, 170 - rectangle.top),
+      };
     })
     .filter(Boolean)
-    .sort((left, right) => right.score - left.score)
-    .map((item) => item.element);
+    .sort((left, right) => right.score - left.score)[0]?.element || null;
 
-  const affiliateRequestPending = () => Date.now() - affiliateRequestStartedAt < 1800;
-
-  const prepareAffiliateLink = (force = false) => {
+  const prepareAffiliateLink = () => {
     pinPageToTop();
-    if (affiliateDialog()) return true;
-    if (!force && affiliateRequestPending()) return true;
-    const control = shareControls()[0];
-    if (!control) return false;
-    affiliateRequestStartedAt = Date.now();
-    control.click();
-    return true;
+    return Boolean(strictShareControl());
   };
 
-  const affiliateOutputControls = (dialog) => [...dialog.querySelectorAll("button, [role='button'], [role='tab'], a")]
-    .filter(tools.visible);
+  function affiliateGuardPayload(expectedUrl) {
+    return { url: expectedUrl, expiresAt: Date.now() + 30000 };
+  }
 
-  const activateAffiliateOutput = async (dialog) => {
-    const controls = affiliateOutputControls(dialog);
-    const productLinkTab = controls.find((element) => /^(?:link\s+do\s+produto|produto)$/i.test(controlLabel(element)));
-    if (productLinkTab) {
-      productLinkTab.click();
-      await new Promise((resolve) => window.setTimeout(resolve, 180));
-    }
-    const generateControl = affiliateOutputControls(dialog)
-      .find((element) => /^(?:gerar|gerar\s+link|criar\s+link)$/i.test(controlLabel(element)));
-    generateControl?.click();
-  };
+  async function startAffiliateGuard(expectedUrl) {
+    const payload = affiliateGuardPayload(expectedUrl);
+    try { sessionStorage.setItem(AFFILIATE_GUARD_KEY, JSON.stringify(payload)); } catch { /* Storage may be unavailable in isolated pages. */ }
+    const response = await chrome.runtime.sendMessage({
+      type: "TABARATO_START_AFFILIATE_GUARD",
+      productUrl: expectedUrl,
+      ttl: 30000,
+    }).catch(() => null);
+    return Boolean(response?.ok);
+  }
 
-  const openAffiliateDialog = async (attempt = 0) => {
+  async function stopAffiliateGuard() {
+    try { sessionStorage.removeItem(AFFILIATE_GUARD_KEY); } catch { /* Storage may be unavailable in isolated pages. */ }
+    await chrome.runtime.sendMessage({ type: "TABARATO_STOP_AFFILIATE_GUARD" }).catch(() => {});
+  }
+
+  function copyControlForField(field, dialog) {
+    if (!field || !dialog) return null;
+    const fieldRect = field.getBoundingClientRect();
+    const directRoots = [field.parentElement, field.parentElement?.parentElement].filter(Boolean);
+    const roots = [...directRoots, dialog];
+    const candidates = roots.flatMap((root, rootIndex) => [...root.querySelectorAll("button, [role='button']")]
+      .map((element) => ({ element, rootIndex })))
+      .filter((item, index, values) => values.findIndex((candidate) => candidate.element === item.element) === index)
+      .filter(({ element }) => tools.visible(element))
+      .map(({ element, rootIndex }) => {
+        const label = normalizeLabel(controlLabel(element));
+        if (/fechar|close|^x$|^×$/.test(label)) return null;
+        const rect = element.getBoundingClientRect();
+        const verticalOverlap = Math.min(fieldRect.bottom, rect.bottom) - Math.max(fieldRect.top, rect.top);
+        const sameRow = verticalOverlap > Math.min(fieldRect.height, rect.height) * 0.3;
+        const adjacent = rect.left >= fieldRect.right - 24
+          && rect.left <= fieldRect.right + 140
+          && sameRow;
+        const explicitCopy = /copiar|copy/.test(label);
+        const rowText = normalizeLabel(contextText(element, 4));
+        const inProductLinkRow = /link do produto/.test(rowText) && !/id do produto/.test(rowText.replace("link do produto", ""));
+        const compactIcon = rect.width <= 80 && rect.height <= 80;
+        const directSiblingControl = rootIndex <= 1 && compactIcon && sameRow;
+        if (!explicitCopy && !adjacent && !(inProductLinkRow && compactIcon) && !directSiblingControl) return null;
+        return {
+          element,
+          score: (explicitCopy ? 260 : 0)
+            + (adjacent ? 180 : 0)
+            + (inProductLinkRow ? 180 : 0)
+            + (directSiblingControl ? 220 : 0)
+            + (compactIcon ? 30 : 0)
+            - Math.abs(rect.left - fieldRect.right),
+        };
+      })
+      .filter(Boolean)
+      .sort((left, right) => right.score - left.score);
+    return candidates[0]?.element || null;
+  }
+
+  async function copyAffiliateLinkFromDialog(dialog, expectedUrl) {
+    const field = await tools.waitFor(() => {
+      if (location.href !== expectedUrl) return "";
+      // Alguns produtos ja exibem o meli.la imediatamente ao abrir o painel,
+      // sem qualquer etapa "Gerar link". Procure em todas as superficies
+      // afiliadas visiveis e priorize a linha real "Link do produto".
+      const candidate = productLinkField() || productLinkField(dialog);
+      return candidate && productLinkValue(candidate) ? candidate : "";
+    }, 3200);
+    if (!field) return "";
+
+    const expectedLink = productLinkValue(field);
+    if (!MELI_LINK_PATTERN.test(expectedLink)) return "";
+    const fieldDialog = affiliateDialogs().find((candidate) => candidate.contains(field)) || affiliateDialog() || dialog;
+    const copyControl = copyControlForField(field, fieldDialog);
+    if (!copyControl) return "";
+
+    copyControl.scrollIntoView?.({ block: "center", inline: "center", behavior: "auto" });
+    copyControl.focus?.({ preventScroll: true });
+    copyControl.click();
+
+    // A coleta continua obrigatoriamente pelo botao real de copia. O link e
+    // confirmado pela mesma linha "Link do produto", sem tentar reler o
+    // clipboard a partir do service worker, que nao possui foco de documento.
+    await new Promise((resolve) => window.setTimeout(resolve, 180));
+    // O textarea que originou o clique e a fonte mais confiavel. Reexecutar a
+    // busca global pode selecionar um ancestral duplicado ou outra superficie
+    // aninhada do modal e descartar um link que ja foi gerado corretamente.
+    const confirmedLink = productLinkValue(field);
+    return meliLinkKey(confirmedLink) === meliLinkKey(expectedLink) ? confirmedLink : "";
+  }
+
+  const openAffiliateDialog = async (attempt = 0, expectedUrl = location.href) => {
+    if (location.href !== expectedUrl) return null;
     await stabilizePageTop();
+    if (location.href !== expectedUrl) return null;
     const existing = affiliateDialog();
     if (existing) return existing;
-    if (affiliateRequestPending()) {
-      const pendingDialog = await tools.waitFor(affiliateDialog, 1800);
-      if (pendingDialog) return pendingDialog;
-    }
-    const controlWaits = [4500, 2500, 1800];
-    const dialogWaits = [2500, 2000, 1500];
-    const control = await tools.waitFor(() => shareControls()[0] || "", controlWaits[attempt] || 1800);
-    if (!control) return null;
-    affiliateRequestStartedAt = 0;
-    prepareAffiliateLink(true);
-    return tools.waitFor(affiliateDialog, dialogWaits[attempt] || 1500);
+    const controlWaits = [5000, 3500, 2500];
+    const dialogWaits = [5000, 3800, 2800];
+    const control = await tools.waitFor(
+      () => location.href === expectedUrl ? strictShareControl() || "" : "",
+      controlWaits[attempt] || 2500,
+    );
+    if (!control || location.href !== expectedUrl) return null;
+    control.click();
+    return tools.waitFor(() => location.href === expectedUrl ? affiliateDialog() || "" : "", dialogWaits[attempt] || 2800);
   };
 
-  const captureAffiliateLink = async ({ force = false } = {}) => {
-    if (!force && capturedAffiliatePage === location.href && MELI_LINK_PATTERN.test(capturedAffiliateLink)) {
+  const captureAffiliateLink = async ({ force = false, expectedUrl = location.href } = {}) => {
+    if (location.href !== expectedUrl || /\/afiliados-home(?:\/|$)/i.test(location.pathname)) return "";
+    if (!force && capturedAffiliatePage === expectedUrl && MELI_LINK_PATTERN.test(capturedAffiliateLink)) {
       return capturedAffiliateLink;
     }
-    if (force || capturedAffiliatePage !== location.href) affiliateRequestStartedAt = 0;
-    capturedAffiliatePage = location.href;
-    capturedAffiliateLink = "";
-    await stabilizePageTop();
+    if (affiliateCapturePromise && affiliateCapturePromisePage === expectedUrl) return affiliateCapturePromise;
 
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      await stabilizePageTop();
-      if (attempt > 0) {
-        await closeAffiliateDialog().catch(() => {});
-        await new Promise((resolve) => window.setTimeout(resolve, 350 * attempt));
-      }
-      const dialog = await openAffiliateDialog(attempt);
-      if (!dialog) continue;
-      let link = readProductLink(dialog);
-      if (!link) {
-        const linkWaits = [2500, 1800, 1200];
-        await activateAffiliateOutput(dialog);
-        link = await tools.waitFor(() => readProductLink(affiliateDialog() || dialog), linkWaits[attempt] || 1200);
-      }
-      if (MELI_LINK_PATTERN.test(link)) {
-        await copyProductLink(dialog, link);
+    affiliateCapturePromisePage = expectedUrl;
+    const initialScrollPosition = scrollTop();
+    affiliateCapturePromise = (async () => {
+      capturedAffiliatePage = expectedUrl;
+      capturedAffiliateLink = "";
+      await startAffiliateGuard(expectedUrl);
+      try {
+        const dialog = await openAffiliateDialog(0, expectedUrl);
+        if (!dialog || location.href !== expectedUrl) return "";
+        const link = await copyAffiliateLinkFromDialog(dialog, expectedUrl);
+        if (!MELI_LINK_PATTERN.test(link)) return "";
         capturedAffiliateLink = link;
+        await publishProductPatch({
+          affiliateLink: link,
+          affiliateLinkType: "mercado-livre-generated",
+        }, expectedUrl);
         return link;
+      } finally {
+        await closeAffiliateDialog().catch(() => {});
+        await stopAffiliateGuard();
+        if (location.href === expectedUrl) restorePageScroll(initialScrollPosition);
       }
-      affiliateRequestStartedAt = 0;
-    }
-    await closeAffiliateDialog().catch(() => {});
-    return "";
+    })().finally(() => {
+      affiliateCapturePromise = null;
+      affiliateCapturePromisePage = "";
+    });
+    return affiliateCapturePromise;
   };
 
-  const couponDialog = () => visibleDialog(/cupons? do mercado livre|cupom|conferir produtos|com\s*(?:\.{2,}|:|-)?\s*[A-Z][A-Z0-9_-]{3,24}/i);
+  const couponTrigger = () => {
+    const labels = [
+      "ver cupons disponiveis",
+      "ver cupom disponivel",
+      "ver cupons",
+    ];
+    return [...document.querySelectorAll("button, a, [role='button']")]
+      .filter((element) => tools.visible(element))
+      .find((element) => {
+        const label = normalizeLabel([
+          element.textContent || "",
+          element.getAttribute("aria-label") || "",
+          element.getAttribute("title") || "",
+        ].join(" "));
+        return labels.some((expected) => label === expected || label.startsWith(`${expected} `));
+      }) || null;
+  };
 
-  const usefulCoupon = (root = productRoot()) => tools.couponCandidates(root)[0]?.value || "";
+  const couponFrame = () => [...document.querySelectorAll("iframe.ui-pdp-iframe")]
+    .find((frame) => frame.isConnected && (
+      /cupons\/pdp/i.test(frame.getAttribute("src") || "")
+      || /ver cupons disponiveis/i.test(frame.getAttribute("title") || "")
+    )) || null;
 
-  const couponDialogCodes = (root) => {
-    if (!root) return [];
-    const codes = [];
-    const pushText = (value = "") => {
-      globalThis.TaBaratoCouponCode.extractExplicitComCodes(value).forEach((code) => {
-        if (!codes.includes(code)) codes.push(code);
-      });
+
+
+  const closeCouponModal = async () => {
+    const frame = couponFrame();
+    if (!frame) return true;
+
+    const isCloseControl = (element) => {
+      if (!element || !tools.visible(element)) return false;
+      const label = normalizeLabel([
+        element.getAttribute?.("aria-label") || "",
+        element.getAttribute?.("title") || "",
+        element.getAttribute?.("data-testid") || "",
+        element.textContent || "",
+      ].join(" "));
+      return /^(?:fechar|close)(?: modal| janela| dialogo| cupons)?$/.test(label)
+        || label === "x"
+        || label === "×"
+        || /(?:close|fechar).*(?:modal|dialog|coupon|cupom)/.test(label);
     };
-    const rootText = root.innerText || root.textContent || "";
-    const knownCouponSurface = root.matches?.("[role='dialog'], [aria-modal='true'], .andes-modal, [class*='modal' i]")
-      || /cupons? do mercado livre|ver todos os meus cupons|conferir produtos/i.test(rootText);
-    if (!knownCouponSurface) return [];
 
-    // O modal pode ser grande. Leia o texto completo primeiro para capturar
-    // rótulos como "Com MELIMODA" e "Com VALEDESCONTO" mesmo quando os
-    // cartões não possuem classes com a palavra coupon/cupom.
-    pushText(rootText);
-    [...root.querySelectorAll("span, p, strong, b, label, small, div")]
-      .filter(tools.visible)
-      .map((element) => tools.clean(element.innerText || element.textContent || ""))
-      .filter((text) => text && text.length <= 96 && /^com(?:\s+|(?:\.{2,}|:|-)\s*)[A-Z0-9]/i.test(text))
-      .forEach(pushText);
-    return codes;
-  };
+    const clickableAncestor = (element) => element?.closest?.("button, [role='button'], a") || element;
+    const candidates = [];
 
-  const explicitCouponCode = (root = productRoot()) => {
-    if (!root) return "";
-    const modalCode = couponDialogCodes(root)[0] || "";
-    if (modalCode) return modalCode;
-
-    const selectors = [
-      ".ui-vpp-coupons",
-      "[class*='coupon' i]",
-      "[class*='cupom' i]",
-      "[data-testid*='coupon' i]",
-      "[data-testid*='cupom' i]",
-      ".ui-pdp-price__main-container",
-      ".ui-pdp-price__second-line",
-    ].join(", ");
-    const candidates = [root, ...root.querySelectorAll(selectors)]
-      .filter((element, index, values) => values.indexOf(element) === index)
-      .filter((element) => element === root || tools.visible(element));
-    for (const element of candidates) {
-      const text = tools.clean(element.innerText || element.textContent || "");
-      if (!text || text.length > 260 || !/\bcom\b/i.test(text)) continue;
-      const code = globalThis.TaBaratoCouponCode.extractExplicitComCode(text);
-      if (!code) continue;
-      const couponContext = /cupom|coupon|desconto|\boff\b|R\$|ui-vpp-coupons/i.test(
-        `${text} ${element.className || ""} ${element.getAttribute?.("data-testid") || ""}`,
-      );
-      if (couponContext) return code;
+    let container = frame.parentElement;
+    for (let depth = 0; container && depth < 10; depth += 1) {
+      candidates.push(...container.querySelectorAll?.("button, [role='button'], a, [aria-label], [title], [data-testid]") || []);
+      container = container.parentElement;
     }
-    return "";
-  };
 
-  const captureCoupon = async (hasCouponPrice = false) => {
-    const root = productRoot();
-    const existing = explicitCouponCode(root) || usefulCoupon(root);
-    if (existing) return { code: existing, status: "code" };
-    const control = productControl(/ver cupons dispon[ií]veis|ver.*cupons?|cupons? dispon[ií]veis/i);
-    const pageState = globalThis.TaBaratoCouponCode.classify(root.innerText || root.textContent || "", { hasCouponPrice });
-    let dialog = couponDialog();
-    if (!dialog && control) {
-      control.click();
-      dialog = await tools.waitFor(couponDialog, 3200);
+    candidates.push(...document.querySelectorAll("button, [role='button'], a, [aria-label], [title], [data-testid]"));
+
+    let button = candidates
+      .map(clickableAncestor)
+      .find(isCloseControl) || null;
+
+    if (button) {
+      button.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, view: globalThis }));
+      button.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, cancelable: true, view: globalThis }));
+      button.click();
     }
-    try {
-      if (!dialog) {
-        const status = pageState.status !== "none"
-          ? pageState.status
-          : hasCouponPrice || control
-            ? "activation-required"
-            : "none";
-        return { code: "", status };
+
+    let closed = await tools.waitFor(() => (couponFrame() ? "" : true), 2200);
+    if (!closed) {
+      for (const target of [document.activeElement, document.body, document]) {
+        target?.dispatchEvent?.(new KeyboardEvent("keydown", {
+          key: "Escape",
+          code: "Escape",
+          keyCode: 27,
+          which: 27,
+          bubbles: true,
+          cancelable: true,
+        }));
+        target?.dispatchEvent?.(new KeyboardEvent("keyup", {
+          key: "Escape",
+          code: "Escape",
+          keyCode: 27,
+          which: 27,
+          bubbles: true,
+          cancelable: true,
+        }));
       }
-      const code = await tools.waitFor(() => {
-        const activeDialog = couponDialog() || dialog;
-        return explicitCouponCode(activeDialog) || usefulCoupon(activeDialog);
-      }, 3600) || "";
-      if (code) return { code, status: "code" };
-      const dialogState = globalThis.TaBaratoCouponCode.classify(dialog.innerText || dialog.textContent || "", { hasCouponPrice });
-      return dialogState.status === "none" && (hasCouponPrice || control)
-        ? { code: "", status: "activation-required" }
-        : dialogState;
-    } finally {
-      if (dialog && tools.visible(dialog)) closeDialog(dialog);
-      await tools.closeTransientDialogs();
+      closed = await tools.waitFor(() => (couponFrame() ? "" : true), 1600);
     }
+
+    return Boolean(closed);
+  };
+
+  const captureCoupon = async () => {
+    const initialScrollPosition = scrollTop();
+    const expectedProductUrl = location.href;
+    const existingFrame = couponFrame();
+    const control = couponTrigger();
+    if (!existingFrame && !control) return { code: "", status: "none" };
+
+    await chrome.runtime.sendMessage({ type: "TABARATO_CLEAR_COUPON_FRAME_STATE" }).catch(() => {});
+    const startedAt = Date.now();
+    if (!existingFrame && control) {
+      control.scrollIntoView?.({ block: "center", inline: "nearest", behavior: "auto" });
+      control.focus?.({ preventScroll: true });
+      control.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, view: globalThis }));
+      control.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, cancelable: true, view: globalThis }));
+      control.click();
+    }
+
+    try {
+      const frame = existingFrame || await tools.waitFor(() => couponFrame(), 8000);
+      if (!frame) return { code: "", status: "none" };
+      await chrome.runtime.sendMessage({ type: "TABARATO_ENSURE_COUPON_FRAME_SCRIPT" }).catch(() => null);
+
+      const frameSrc = frame.getAttribute("src") || frame.src || "";
+      let expectedItemId = "";
+      try { expectedItemId = new URL(frameSrc, location.href).searchParams.get("item_id") || ""; } catch {}
+
+      let stableStatus = "pending";
+      let stableCount = 0;
+
+      while (Date.now() - startedAt < 16000) {
+        const response = await chrome.runtime.sendMessage({
+          type: "TABARATO_GET_COUPON_FRAME_STATE",
+          itemId: expectedItemId,
+        }).catch(() => null);
+        const state = response?.state;
+
+        if (state?.updatedAt >= startedAt && (!expectedItemId || state.itemId === expectedItemId)) {
+          if (state.status === "code" && state.code) {
+            return { code: state.code, status: "code" };
+          }
+
+          if (state.status && state.status !== "pending") {
+            if (state.status === stableStatus) stableCount += 1;
+            else {
+              stableStatus = state.status;
+              stableCount = 1;
+            }
+
+            const elapsed = Date.now() - startedAt;
+            const terminalIsExplicitNone = state.status === "none";
+            const requiredSamples = terminalIsExplicitNone ? 4 : 8;
+            const minimumElapsed = terminalIsExplicitNone ? 2500 : 5000;
+            if (stableCount >= requiredSamples && elapsed >= minimumElapsed) {
+              return { code: "", status: state.status };
+            }
+          } else {
+            stableStatus = "pending";
+            stableCount = 0;
+          }
+        }
+
+        await new Promise((resolve) => window.setTimeout(resolve, 250));
+      }
+
+      return { code: "", status: stableStatus === "pending" ? "none" : stableStatus };
+    } finally {
+      await closeCouponModal().catch(() => {});
+      await chrome.runtime.sendMessage({ type: "TABARATO_CLEAR_COUPON_FRAME_STATE" }).catch(() => {});
+      if (location.href === expectedProductUrl) restorePageScroll(initialScrollPosition);
+    }
+  };
+
+  const paymentTextElements = (root = productRoot()) => [...root.querySelectorAll(
+    ".ui-pdp-price__subtitles, .ui-pdp-payment, [class*='installment' i], [class*='payment' i]"
+  )]
+    .filter(tools.visible)
+    .filter((element) => !element.closest?.(".poly-card, [class*='recommend' i], [class*='recos' i]"));
+
+  const bestInstallmentSummary = (root = productRoot()) => paymentTextElements(root)
+    .map((element) => tools.clean(element.textContent))
+    .filter((text) => /sem\s+juros/i.test(text))
+    .map((text) => tools.installmentSummary(text))
+    .filter(Boolean)
+    .sort((left, right) => {
+      const score = (value) => (/R\$/.test(value) ? 100 : 0) + (/de\s+R\$/i.test(value) ? 50 : 0) + Number(value.match(/(\d{1,2})x/i)?.[1] || 0);
+      return score(right) - score(left);
+    })[0] || "";
+
+  const visiblePaymentBenefits = () => {
+    const root = productRoot();
+    const benefits = [];
+    const installment = bestInstallmentSummary(root);
+    if (installment) benefits.push(installment);
+    if (tools.hasExplicitFreeShipping(root)) benefits.push("Frete gratis.");
+    return benefits.join(" ");
   };
 
   const paymentBenefits = async () => {
     const root = productRoot();
-    const pagePaymentText = [...root.querySelectorAll(".ui-pdp-price__subtitles, .ui-pdp-payment, [class*='installment' i], [class*='payment' i]")]
-      .filter(tools.visible)
-      .map((element) => tools.clean(element.textContent))
-      .join(" ");
     const benefits = [];
-    let installment = tools.installmentSummary(pagePaymentText);
+    let installment = bestInstallmentSummary(root);
     const control = !installment && productControl(/meios de pagamento|formas de pagamento|ver.*pagamento/i);
+    let dialog = null;
     if (!installment && control) {
       control.click();
-      await tools.waitFor(() => (/meios de pagamento|cart[oõ]es de cr[eé]dito|aproveite estas promo[cç][oõ]es/i.test(document.body.innerText) ? true : ""), 3500);
-      const dialog = visibleDialog(/meios de pagamento|cart[oõ]es de cr[eé]dito|aproveite estas promo[cç][oõ]es/i);
-      installment = tools.installmentSummary(`${pagePaymentText} ${dialog?.innerText || ""}`);
-      if (dialog && tools.visible(dialog)) closeDialog(dialog);
+      dialog = await tools.waitFor(
+        () => visibleDialog(/meios de pagamento|cart[oõ]es de cr[eé]dito|aproveite estas promo[cç][oõ]es/i) || "",
+        3500,
+      );
+      if (dialog) installment = bestInstallmentSummary(dialog);
     }
     if (installment) benefits.push(installment);
     if (tools.hasExplicitFreeShipping(root)) benefits.push("Frete gratis.");
+    if (dialog && tools.visible(dialog)) closeDialog(dialog);
+    await tools.closeTransientDialogs();
     return benefits.join(" ");
+  };
+
+  const quickCouponState = (hasCouponPrice = false) => {
+    // O código do cupom nunca é inferido pelo texto geral da página. A única
+    // fonte autorizada é o modal /cupons/pdp, lido pelo coupon-frame.js.
+    return hasCouponPrice || Boolean(couponTrigger())
+      ? { code: "", status: "pending" }
+      : { code: "", status: "none" };
   };
 
   const listProducts = (limit = 20) => {
@@ -436,6 +655,158 @@
     return candidates;
   };
 
+  const cachedAffiliateLinkForPage = () => capturedAffiliatePage === location.href
+    && MELI_LINK_PATTERN.test(capturedAffiliateLink)
+    ? capturedAffiliateLink
+    : "";
+
+  const mergedImageCandidates = (structured = {}) => {
+    const candidates = mainGalleryImageCandidates();
+    const push = (value, score, reason) => {
+      const url = absoluteImageUrl(value);
+      if (!/^https?:\/\/[^?#]*mlstatic\.com\//i.test(url)) return;
+      if (/sprite|logo|avatar|icon/i.test(url)) return;
+      if (candidates.some((item) => item.url === url)) return;
+      candidates.push({ url, score, reason });
+    };
+    push(tools.meta("og:image") || tools.meta("twitter:image"), 75, "metadata");
+    const structuredImages = tools.productImages(structured);
+    structuredImages.forEach((value, index) => push(value, Math.max(35, 65 - index), "structured-data"));
+    return candidates.sort((left, right) => right.score - left.score);
+  };
+
+  const fastProductSnapshot = () => {
+    const structured = tools.jsonProduct();
+    const productId = location.href.match(/\b(MLB-?\d{6,})\b/i)?.[1]?.replace("-", "").toUpperCase() || "";
+    const priceInfo = tools.priceDetails(
+      ".ui-pdp-price__main-container .ui-pdp-price__second-line > .ui-pdp-price__part__container > .andes-money-amount",
+      ".ui-pdp-price__main-container .ui-pdp-price__second-line .andes-money-amount",
+      ".ui-pdp-price__second-line .andes-money-amount"
+    );
+    const basePrice = priceInfo.value || tools.productPrice(structured);
+    const couponPrice = tools.couponPriceDetails(basePrice);
+    const couponState = quickCouponState(Boolean(couponPrice.value));
+    const currentPrice = couponPrice.value || basePrice;
+    const capturedPreviousPrice = tools.price(
+      ".ui-pdp-price__main-container .ui-pdp-price__original-value.andes-money-amount",
+      ".ui-pdp-price__main-container .ui-pdp-price__original-value .andes-money-amount",
+      ".ui-pdp-price__main-container .andes-money-amount--previous"
+    );
+    const previousPrice = Number(capturedPreviousPrice) > Number(currentPrice)
+      ? capturedPreviousPrice
+      : Number(basePrice) >= Number(currentPrice)
+        ? basePrice
+        : currentPrice;
+    const affiliateLink = cachedAffiliateLinkForPage();
+    const product = {
+      productName: tools.text(".ui-pdp-title", "h1") || tools.clean(structured.name) || tools.meta("og:title"),
+      shortDescription: tools.description(".ui-pdp-description__content", ".ui-pdp-description") || tools.firstUsefulParagraph(structured.description) || tools.firstUsefulParagraph(tools.meta("og:description")),
+      sourceCategory: tools.text(".andes-breadcrumb__container", ".ui-pdp-breadcrumb"),
+      currentPrice,
+      previousPrice,
+      regularPrice: basePrice,
+      coupon: couponState.code,
+      couponStatus: couponState.status,
+      imageUrl: "",
+      imageCandidates: mergedImageCandidates(structured),
+      affiliateLink,
+      affiliateLinkType: affiliateLink ? "mercado-livre-generated" : "pending",
+      sourceUrl: tools.canonicalUrl(),
+      externalProductId: productId,
+      platform: "Mercado Livre",
+      pricePaymentMethod: priceInfo.method === "Pix" ? "Pix" : couponPrice.value ? "Cupom" : "",
+      extraText: visiblePaymentBenefits(),
+      captureStage: "instant",
+      confidence: 0,
+    };
+    product.imageUrl = product.imageCandidates[0]?.url || "";
+    const required = [product.productName, product.currentPrice, product.imageUrl, product.externalProductId];
+    product.confidence = required.filter(Boolean).length / required.length;
+    return product;
+  };
+
+  const enrichProduct = async (baseProduct = {}) => {
+    const expectedUrl = location.href;
+    const assertCurrentPage = () => {
+      if (location.href !== expectedUrl) throw new Error("A pagina mudou durante a captura complementar.");
+    };
+    const freshSnapshot = fastProductSnapshot();
+    const product = {
+      ...freshSnapshot,
+      ...baseProduct,
+      imageCandidates: baseProduct.imageCandidates?.length
+        ? baseProduct.imageCandidates
+        : freshSnapshot.imageCandidates,
+    };
+    try {
+      if (!MELI_LINK_PATTERN.test(product.affiliateLink || "")) {
+        product.affiliateLink = await captureAffiliateLink({ expectedUrl });
+      }
+      assertCurrentPage();
+    } finally {
+      await closeAffiliateDialog().catch(() => {});
+    }
+
+    assertCurrentPage();
+    const couponIndicated = Boolean(
+      product.pricePaymentMethod === "Cupom"
+      || product.coupon
+      || (product.couponStatus && product.couponStatus !== "none")
+      || couponTrigger(),
+    );
+    if (couponIndicated) {
+      const couponState = await captureCoupon();
+      assertCurrentPage();
+      // O iframe /cupons/pdp e a fonte autorizada para o codigo. Um codigo
+      // confirmado e publicado imediatamente; estados genericos nunca o
+      // sobrescrevem depois.
+      if (couponState.status === "code" && couponState.code) {
+        product.coupon = couponState.code;
+        product.couponStatus = "code";
+      } else {
+        // Limpa qualquer valor antigo ou inferido. Sem código gravável, o
+        // painel decide entre aviso de ativação e campo vazio pelo status.
+        product.coupon = "";
+        product.couponStatus = couponState.status || "none";
+      }
+      await publishProductPatch({ coupon: product.coupon, couponStatus: product.couponStatus }, expectedUrl);
+    }
+
+    assertCurrentPage();
+    const completeBenefits = await paymentBenefits();
+    assertCurrentPage();
+    if (completeBenefits) {
+      product.extraText = completeBenefits;
+      await publishProductPatch({ extraText: completeBenefits }, expectedUrl);
+    }
+    const latestSnapshot = fastProductSnapshot();
+    [
+      "productName",
+      "shortDescription",
+      "sourceCategory",
+      "currentPrice",
+      "previousPrice",
+      "regularPrice",
+      "imageUrl",
+      "imageCandidates",
+      "externalProductId",
+      "sourceUrl",
+      "pricePaymentMethod",
+    ].forEach((key) => {
+      const value = latestSnapshot[key];
+      if (Array.isArray(value) ? value.length : value) product[key] = value;
+    });
+    product.affiliateLinkType = MELI_LINK_PATTERN.test(product.affiliateLink || "")
+      ? "mercado-livre-generated"
+      : "missing";
+    product.captureStage = "complete";
+    const required = [product.productName, product.currentPrice, product.imageUrl, product.externalProductId, MELI_LINK_PATTERN.test(product.affiliateLink || "")];
+    product.confidence = required.filter(Boolean).length / required.length;
+    await closeAffiliateDialog().catch(() => {});
+    await tools.closeTransientDialogs();
+    return product;
+  };
+
   globalThis.TaBaratoStores.push({
     id: "mercado-livre",
     platform: "Mercado Livre",
@@ -445,63 +816,8 @@
     prepareAffiliateLink,
     captureAffiliateLink,
     listProducts,
-    extract: async () => {
-      try {
-      let affiliateLink = "";
-      try {
-        affiliateLink = await captureAffiliateLink();
-      } finally {
-        await closeAffiliateDialog();
-      }
-      const structured = tools.jsonProduct();
-      const productId = location.href.match(/\b(MLB-?\d{6,})\b/i)?.[1]?.replace("-", "").toUpperCase() || "";
-      const priceInfo = tools.priceDetails(
-        ".ui-pdp-price__main-container .ui-pdp-price__second-line > .ui-pdp-price__part__container > .andes-money-amount",
-        ".ui-pdp-price__main-container .ui-pdp-price__second-line .andes-money-amount",
-        ".ui-pdp-price__second-line .andes-money-amount"
-      );
-      const basePrice = priceInfo.value || tools.productPrice(structured);
-      const couponPrice = tools.couponPriceDetails(basePrice);
-      const couponState = await captureCoupon(Boolean(couponPrice.value));
-      const currentPrice = couponPrice.value || basePrice;
-      const capturedPreviousPrice = tools.price(
-        ".ui-pdp-price__main-container .ui-pdp-price__original-value.andes-money-amount",
-        ".ui-pdp-price__main-container .ui-pdp-price__original-value .andes-money-amount",
-        ".ui-pdp-price__main-container .andes-money-amount--previous"
-      );
-      const previousPrice = Number(capturedPreviousPrice) > Number(currentPrice)
-        ? capturedPreviousPrice
-        : Number(basePrice) >= Number(currentPrice)
-          ? basePrice
-          : currentPrice;
-      const product = {
-        productName: tools.text(".ui-pdp-title", "h1") || tools.clean(structured.name) || tools.meta("og:title"),
-        shortDescription: tools.description(".ui-pdp-description__content", ".ui-pdp-description") || tools.firstUsefulParagraph(structured.description) || tools.firstUsefulParagraph(tools.meta("og:description")),
-        sourceCategory: tools.text(".andes-breadcrumb__container", ".ui-pdp-breadcrumb"),
-        currentPrice,
-        previousPrice,
-        regularPrice: basePrice,
-        coupon: couponState.code,
-        couponStatus: couponState.status,
-        imageUrl: "",
-        imageCandidates: mainGalleryImageCandidates(),
-        affiliateLink,
-        affiliateLinkType: affiliateLink ? "mercado-livre-generated" : "missing",
-        sourceUrl: tools.canonicalUrl(),
-        externalProductId: productId,
-        platform: "Mercado Livre",
-        pricePaymentMethod: priceInfo.method === "Pix" ? "Pix" : couponPrice.value ? "Cupom" : "",
-        confidence: 0,
-      };
-      product.imageUrl = product.imageCandidates[0]?.url || "";
-      product.extraText = await paymentBenefits();
-      const required = [product.productName, product.currentPrice, product.imageUrl, product.externalProductId, MELI_LINK_PATTERN.test(product.affiliateLink)];
-      product.confidence = required.filter(Boolean).length / required.length;
-      return product;
-      } finally {
-        await closeAffiliateDialog().catch(() => {});
-        await tools.closeTransientDialogs();
-      }
-    },
+    extract: async () => fastProductSnapshot(),
+    enrich: enrichProduct,
   });
+
 })();

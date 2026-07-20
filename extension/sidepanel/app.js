@@ -3,51 +3,6 @@
   const runtime = globalThis.TaBaratoRuntime;
   const { STORAGE, activeTab, elements, renderThemeControl, setBusy, setMode, setStatus, showToast, state } = panel;
   const { comparableUrl, normalizeCouponValue } = globalThis.TaBaratoProductUtils;
-
-  function changeCouponLimit(delta) {
-    const current = Number(elements.couponLimit.value) || 5;
-    elements.couponLimit.value = String(Math.max(1, Math.min(100, current + delta)));
-  }
-
-  function renderCouponActivationState() {
-    const running = state.couponActivationRunning;
-    elements.activateCouponsButton.classList.toggle("is-running", running);
-    elements.activateCouponsButton.title = running ? "Parar ativacao de cupons" : "Ativar cupons do Mercado Livre";
-    const label = elements.activateCouponsButton.querySelector("span");
-    if (label) label.textContent = running ? "Parar cupons" : "Ativar cupons";
-    elements.couponLimit.disabled = running;
-    elements.couponDecrease.disabled = running;
-    elements.couponIncrease.disabled = running;
-  }
-
-  async function activateCoupons() {
-    if (state.couponActivationRunning) {
-      await chrome.runtime.sendMessage({ type: "TABARATO_STOP_ML_COUPONS" }).catch(() => {});
-      showToast("Interrompendo a ativacao de cupons...", "neutral");
-      return;
-    }
-    state.couponActivationRunning = true;
-    renderCouponActivationState();
-    try {
-      const result = await chrome.runtime.sendMessage({
-        type: "TABARATO_ACTIVATE_ML_COUPONS",
-        limit: Number(elements.couponLimit.value) || 5,
-      });
-      if (!result?.ok) throw new Error(result?.error || "Nao foi possivel ativar os cupons.");
-      if (result.stopped) showToast(`Ativacao interrompida. ${result.activated || 0} cupons foram ativados.`, "neutral");
-      else if (result.activated) {
-        const failures = result.failed ? ` ${result.failed} nao foram confirmados.` : "";
-        showToast(`${result.activated} cupons ativados.${failures}`, result.failed ? "neutral" : "success");
-      } else showToast("Nao ha cupons nao ativados com o botao Aplicar.", "neutral");
-    } catch (error) {
-      runtime.reportError("activate-coupons", error);
-      showToast(runtime.errorMessage(error), "error");
-    } finally {
-      state.couponActivationRunning = false;
-      renderCouponActivationState();
-    }
-  }
-
   async function login(event) {
     event.preventDefault();
     setBusy(elements.loginButton, true, "Conectando...");
@@ -74,22 +29,27 @@
     elements.adminPanelButton.addEventListener("click", () => panel.api.openAdminPanel().catch((error) => showToast(runtime.errorMessage(error), "error")));
     elements.themeToggle.addEventListener("click", () => globalThis.TaBaratoTheme?.toggle());
     window.addEventListener("tabarato-theme-change", renderThemeControl);
-    elements.groupsToggle.addEventListener("click", () => elements.groupsPanel.classList.toggle("hidden"));
+    panel.automation.bind();
+    elements.groupsToggle.addEventListener("click", () => {
+      const opening = elements.groupsPanel.classList.contains("hidden");
+      elements.groupsPanel.classList.toggle("hidden", !opening);
+      elements.groupsToggle.setAttribute("aria-expanded", String(opening));
+    });
     elements.saveGroupsButton.addEventListener("click", async () => {
       await chrome.storage.local.set({ [STORAGE.groups]: elements.whatsappGroups.value });
       showToast(`${panel.groupNames().length} grupos registrados.`, "success");
     });
-    elements.stopMacroButton.addEventListener("click", panel.batch.stop);
     elements.batchStopButton.addEventListener("click", panel.batch.stop);
+    elements.batchPauseButton.addEventListener("click", panel.batch.pause);
     elements.refreshButton.addEventListener("click", () => panel.capture.current());
-    elements.couponDecrease.addEventListener("click", () => changeCouponLimit(-1));
-    elements.couponIncrease.addEventListener("click", () => changeCouponLimit(1));
-    elements.couponLimit.addEventListener("change", () => changeCouponLimit(0));
-    elements.activateCouponsButton.addEventListener("click", activateCoupons);
     elements.modeSingle.addEventListener("click", () => setMode("single"));
     elements.modeBatch.addEventListener("click", () => setMode("batch"));
     elements.batchStartButton.addEventListener("click", panel.batch.start);
-    elements.customToggle.addEventListener("click", () => elements.customBody.classList.toggle("hidden"));
+    elements.customToggle.addEventListener("click", () => {
+      const opening = elements.customBody.classList.contains("hidden");
+      elements.customBody.classList.toggle("hidden", !opening);
+      elements.customToggle.setAttribute("aria-expanded", String(opening));
+    });
     elements.customSendButton.addEventListener("click", panel.publishing.sendCustomMessage);
     elements.logoutButton.addEventListener("click", async () => {
       await panel.api.clearSession();
@@ -108,13 +68,17 @@
     [elements.fields.currentPrice, elements.fields.previousPrice]
       .forEach((field) => field.addEventListener("change", panel.product.normalizePriceFields));
 
-    chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+    chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
       if ((!changeInfo.url && changeInfo.status !== "complete") || !tab.active) return;
-      panel.capture.highlightNavigation({ ...tab, id: tabId, url: changeInfo.url || tab.url });
+      const updated = { ...tab, id: tabId, url: changeInfo.url || tab.url };
+      if (changeInfo.url) await panel.sync.restoreProductForTab(updated).catch(() => {});
+      panel.capture.highlightNavigation(updated);
     });
     chrome.tabs.onActivated.addListener(async ({ tabId }) => {
       try {
-        panel.capture.highlightNavigation(await chrome.tabs.get(tabId));
+        const tab = await chrome.tabs.get(tabId);
+        await panel.sync.restoreProductForTab(tab);
+        panel.capture.highlightNavigation(tab);
       } catch { /* Closed tabs are ignored. */ }
     });
   }
@@ -138,7 +102,8 @@
       && !panel.capture.isPrimarySiteUrl(tab.url)
       && !/web\.whatsapp\.com/i.test(tab.url)
       && (!state.activeProduct || comparableUrl(tab.url) !== state.capturedPageUrl)) {
-      await panel.capture.current();
+      elements.captureSource.textContent = "Produto aberto. Clique em Capturar para iniciar a coleta.";
+      elements.refreshButton.classList.add("needs-refresh");
     }
   }
 
@@ -147,8 +112,8 @@
     bindEvents();
     const stored = await chrome.storage.local.get(Object.values(STORAGE));
     await panel.api.restoreSession(stored);
-    elements.whatsappGroups.value = stored[STORAGE.groups] || "";
-    panel.product.restoreDraft(stored[STORAGE.productDraft]);
+    await panel.sync.initialize(stored);
+    await panel.automation.initialize();
     panel.api.renderAuth();
     await captureCurrentPageAfterAuth(stored);
   }

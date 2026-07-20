@@ -39,6 +39,11 @@
       [...url.searchParams.keys()].forEach((key) => {
         if (trackingParameter.test(key)) url.searchParams.delete(key);
       });
+      const sortedParameters = [...url.searchParams.entries()].sort(([leftKey, leftValue], [rightKey, rightValue]) => (
+        leftKey.localeCompare(rightKey) || leftValue.localeCompare(rightValue)
+      ));
+      url.search = "";
+      for (const [key, value] of sortedParameters) url.searchParams.append(key, value);
       return {
         key: `${url.hostname}${url.pathname}${url.search}`,
         url: url.href,

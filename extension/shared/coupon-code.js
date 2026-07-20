@@ -39,7 +39,7 @@
     const matches = [];
     const patterns = [
       /(?:cupom|c[o\u00f3]digo)(?:\s+de\s+desconto)?\s*[:#-]\s*([A-Za-z0-9][A-Za-z0-9_-]{3,24})\b/gi,
-      /\bcom(?:\s+|(?:\.{2,}|:|-)\s*)([A-Z][A-Z0-9_-]{3,24})\b(?=[\s\S]{0,60}(?:\d{1,3}(?:[.,]\d+)?\s*%\s*OFF|R\$\s*[\d.,]+|compra\s+m[i\u00ed]nima|limite\s+de|cupom))/gi,
+      /\bcom\s*(?:(?:\.{2,}|[:\-])\s*)?\[?\s*([A-Z][A-Z0-9_-]{3,24})\s*\]?(?=\s|$|[.,;:!?]|[\s\S]{0,60}(?:\d{1,3}(?:[.,]\d+)?\s*%\s*OFF|R\$\s*[\d.,]+|compra\s+m[i\u00ed]nima|limite\s+de|cupom))/gi,
     ];
     patterns.forEach((pattern) => {
       for (const match of text.matchAll(pattern)) {
@@ -51,11 +51,19 @@
   }
 
   function extractExplicitComCodes(value = "") {
-    const text = String(value || "");
+    const text = String(value || "")
+      .replace(/[\u200B-\u200D\uFEFF]/g, "")
+      .replace(/\u00a0/g, " ");
     const codes = [];
-    for (const match of text.matchAll(/\bcom(?:\s+|(?:\.{2,}|:|-)\s*)([A-Z][A-Z0-9_-]{3,24})\b/gi)) {
-      const code = normalize(match[1]);
-      if (code && !codes.includes(code)) codes.push(code);
+    const patterns = [
+      /(?:^|[\n\r])\s*com\s*(?:(?:\.{2,}|[:\-])\s*)?\[?\s*([A-Z][A-Z0-9_-]{3,24})\s*\]?\s*(?=$|[\n\r]|\d{1,3}(?:[.,]\d+)?\s*%\s*OFF)/gim,
+      /\bcom\s*(?:(?:\.{2,}|[:\-])\s*)?\[?\s*([A-Z][A-Z0-9_-]{3,24})\s*\]?(?=\s|$|[.,;:!?]|\d{1,3}(?:[.,]\d+)?\s*%\s*OFF)/gi,
+    ];
+    for (const pattern of patterns) {
+      for (const match of text.matchAll(pattern)) {
+        const code = normalize(match[1]);
+        if (code && !codes.includes(code)) codes.push(code);
+      }
     }
     return codes;
   }

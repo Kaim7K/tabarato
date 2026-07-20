@@ -35,25 +35,61 @@
     await chrome.storage.local.remove(STORAGE.session);
   }
 
+  async function responsePayload(response) {
+    const text = await response.text().catch(() => "");
+    if (!text) return {};
+    try {
+      return JSON.parse(text);
+    } catch {
+      return { error: text.slice(0, 300) };
+    }
+  }
+
+  function responseError(response, payload) {
+    const error = new Error(payload?.error || `O painel respondeu com status ${response.status}.`);
+    error.status = response.status;
+    error.payload = payload;
+    return error;
+  }
+
   async function request(path, options = {}) {
     if (!sessionIsValid()) throw new Error("Conecte a extensao ao painel.");
-    const response = await runtime.fetchWithTimeout(`${state.session.baseUrl}${path}`, {
-      method: options.method || "GET",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${state.session.token}`,
-      },
-      body: options.body ? JSON.stringify(options.body) : undefined,
-      signal: options.signal,
-    }, options.timeout || LIMITS.requestTimeout);
-    const payload = await response.json().catch(() => ({}));
-    if (response.status === 401) {
-      await clearSession();
-      renderAuth();
-      throw new Error("Sua sessao expirou. Entre novamente.");
+    const method = String(options.method || "GET").toUpperCase();
+    const safeToRetry = ["GET", "HEAD"].includes(method) || options.retryable === true;
+    const attempts = safeToRetry ? Math.max(1, Number(options.attempts) || 3) : 1;
+    const url = `${state.session.baseUrl}${path}`;
+    const body = options.body ? JSON.stringify(options.body) : undefined;
+
+    try {
+      return await runtime.retry(async () => {
+        const response = await runtime.fetchWithTimeout(url, {
+          method,
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${state.session.token}`,
+          },
+          body,
+          signal: options.signal,
+        }, options.timeout || LIMITS.requestTimeout);
+        const payload = await responsePayload(response);
+        if (response.status === 401) throw responseError(response, payload);
+        if (!response.ok) throw responseError(response, payload);
+        return payload;
+      }, {
+        attempts,
+        signal: options.signal,
+        baseDelay: 350,
+        maxDelay: 1800,
+        shouldRetry: (error) => error?.status !== 401 && runtime.isTransientError(error),
+      });
+    } catch (error) {
+      if (error?.status === 401) {
+        await clearSession();
+        renderAuth();
+        throw new Error("Sua sessao expirou. Entre novamente.");
+      }
+      throw error;
     }
-    if (!response.ok) throw new Error(payload.error || "Nao foi possivel acessar o painel.");
-    return payload;
   }
 
   async function requestOriginPermission(baseUrl) {

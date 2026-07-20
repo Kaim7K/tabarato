@@ -8,7 +8,7 @@
     .trim();
 
   const normalizeCouponCode = (value = "") => globalThis.TaBaratoCouponCode?.normalize(value) || "";
-  const COUPON_ACTIVATION_MESSAGE = "disponível no anúncio. Ative antes de comprar.";
+  const COUPON_ACTIVATION_MESSAGE = "Disponível no anúncio. Ative antes de comprar.";
 
   function parsePrice(value) {
     const raw = String(value || "").replace(/[^\d.,]/g, "");

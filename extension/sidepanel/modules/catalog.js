@@ -44,7 +44,7 @@
 
   async function synchronize() {
     if (state.catalogPromise) return state.catalogPromise;
-    state.catalogPromise = panel.api.request("/api/admin/ofertas")
+    state.catalogPromise = panel.api.request("/api/admin/ofertas", { timeout: 12000, attempts: 2 })
       .then(async (data) => {
         state.synchronizedOffers = Array.isArray(data.offers) ? data.offers : [];
         const categories = data.categories?.length
@@ -148,14 +148,19 @@
   }
 
   function findExisting(product) {
-    const productId = normalizeText(product.externalProductId || product.sourceProductId || "");
+    const productId = normalizedSourceProductId(product.externalProductId || product.sourceProductId || "");
     const platform = normalizeText(product.platform || "");
+    const identity = batchUtils?.productIdentityFromUrl?.(product.sourceUrl || product.affiliateLink || "") || null;
     const link = comparableUrl(product.affiliateLink || product.sourceUrl || "");
     const name = normalizeText(product.productName || "");
     return state.synchronizedOffers.find((offer) => {
       const samePlatform = normalizeText(offer.platform) === platform;
-      if (samePlatform && productId && normalizeText(offer.sourceProductId) === productId) return true;
-      if (link && comparableUrl(offer.affiliateLink) === link) return true;
+      const offerProductId = normalizedSourceProductId(offer.sourceProductId);
+      if (samePlatform && productId && offerProductId === productId) return true;
+
+      const offerIdentity = batchUtils?.productIdentityFromUrl?.(offer.affiliateLink || offer.sourceUrl || "") || null;
+      if (identity?.key && offerIdentity?.key === identity.key) return true;
+      if (link && comparableUrl(offer.affiliateLink || offer.sourceUrl || "") === link) return true;
       return samePlatform && name && normalizeText(offer.productName) === name;
     }) || null;
   }

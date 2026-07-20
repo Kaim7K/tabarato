@@ -12,6 +12,7 @@
     normalizeCouponValue,
     previousPriceFor,
   } = globalThis.TaBaratoProductUtils;
+  const MAX_DRAFTS = 40;
 
   function valuesFor(product) {
     const currentPrice = product.currentPrice || "";
@@ -83,15 +84,12 @@
     invalidateShareImage();
   }
 
-  function fill(product) {
-    state.activeProduct = product;
-    const values = valuesFor(product);
-    Object.entries(values).forEach(([key, value]) => { elements.fields[key].value = value; });
+  function renderCaptureState(product, values) {
     const couponPlaceholders = {
       "activation-required": "Cupom precisa ser ativado antes da compra.",
       "applied-without-code": "Cupom aplicado, mas sem codigo exibido.",
       "available-without-code": "Cupom disponivel, mas sem codigo exibido.",
-      none: "Nenhum cupom identificado.",
+      none: "",
     };
     elements.fields.coupon.placeholder = couponPlaceholders[product.couponStatus] || "Codigo do cupom";
     const reviewItems = [
@@ -102,23 +100,86 @@
       Number(product.confidence || 1) < LIMITS.minimumBatchConfidence && "dados incertos",
     ].filter(Boolean);
     elements.captureQuality.classList.toggle("hidden", reviewItems.length === 0);
-    elements.captureQuality.textContent = reviewItems.length ? `Revise antes de publicar: ${reviewItems.join(", ")}.` : "";
-    elements.captureSource.textContent = product.externalProductId ? `${values.platform} - ${product.externalProductId}` : values.platform;
+    elements.captureQuality.textContent = product.captureStage === "instant"
+      ? "Dados principais prontos. Completando link, cupom e pagamento em segundo plano..."
+      : reviewItems.length
+        ? `Revise antes de publicar: ${reviewItems.join(", ")}.`
+        : "";
+    const stage = product.captureStage === "instant" ? " · leitura instantanea" : "";
+    elements.captureSource.textContent = product.externalProductId
+      ? `${values.platform} - ${product.externalProductId}${stage}`
+      : `${values.platform}${stage}`;
     elements.offerForm.classList.remove("hidden");
     elements.empty.classList.add("hidden");
     updatePreview();
   }
 
+  function fill(product) {
+    state.activeProduct = product;
+    const values = valuesFor(product);
+    Object.entries(values).forEach(([key, value]) => { elements.fields[key].value = value; });
+    state.autoFieldValues = { ...values };
+    renderCaptureState(product, values);
+  }
+
+  function mergeEnrichment(product) {
+    const previousProduct = state.activeProduct || {};
+    const previousValues = valuesFor(previousProduct);
+    const mergedProduct = { ...previousProduct, ...product };
+    const nextValues = valuesFor(mergedProduct);
+    state.activeProduct = mergedProduct;
+    Object.entries(nextValues).forEach(([key, value]) => {
+      const field = elements.fields[key];
+      if (!field) return;
+      const previousAutomatic = Object.hasOwn(state.autoFieldValues || {}, key)
+        ? state.autoFieldValues[key]
+        : previousValues[key];
+      const replaceableCouponNotice = key === "coupon" && [
+        "Disponível no anúncio. Ative antes de comprar.",
+        "Cupom aplicado, mas sem codigo exibido.",
+        "Cupom disponivel, mas sem codigo exibido.",
+        "Cupom precisa ser ativado antes da compra.",
+      ].includes(field.value.trim());
+      if (!field.value || field.value === previousAutomatic || replaceableCouponNotice) field.value = value;
+    });
+    state.autoFieldValues = { ...nextValues };
+    renderCaptureState(mergedProduct, nextValues);
+    return mergedProduct;
+  }
+
+  function draftKey(tabId, pageUrl) {
+    const normalizedUrl = comparableUrl(pageUrl || "");
+    return tabId && normalizedUrl ? `${tabId}::${normalizedUrl}` : "";
+  }
+
+  function draftRecord() {
+    return {
+      product: state.activeProduct,
+      values: Object.fromEntries(Object.entries(elements.fields).map(([key, field]) => [key, field.value])),
+      capturedTabId: state.capturedTabId,
+      capturedPageUrl: state.capturedPageUrl,
+      savedAt: Date.now(),
+    };
+  }
+
+  function pruneDrafts(drafts) {
+    return Object.fromEntries(Object.entries(drafts || {})
+      .filter(([, draft]) => draft?.product && Number(draft.savedAt || 0) > Date.now() - 14 * 24 * 60 * 60 * 1000)
+      .sort((left, right) => Number(right[1].savedAt || 0) - Number(left[1].savedAt || 0))
+      .slice(0, MAX_DRAFTS));
+  }
+
   async function persistDraft() {
     if (!state.activeProduct) return;
+    const key = draftKey(state.capturedTabId, state.capturedPageUrl || state.activeProduct.sourceUrl);
+    if (!key) return;
+    const stored = await chrome.storage.local.get(STORAGE.productDrafts);
+    const drafts = pruneDrafts(stored[STORAGE.productDrafts]);
+    const currentDraft = draftRecord();
+    drafts[key] = currentDraft;
     await chrome.storage.local.set({
-      [STORAGE.productDraft]: {
-        product: state.activeProduct,
-        values: Object.fromEntries(Object.entries(elements.fields).map(([key, field]) => [key, field.value])),
-        capturedTabId: state.capturedTabId,
-        capturedPageUrl: state.capturedPageUrl,
-        savedAt: Date.now(),
-      },
+      [STORAGE.productDrafts]: pruneDrafts(drafts),
+      [STORAGE.lastActiveProduct]: currentDraft,
     });
   }
 
@@ -141,8 +202,39 @@
       state.activeProduct.regularPrice || elements.fields.currentPrice.value,
     );
     updatePreview();
-    elements.captureSource.textContent = "Produto restaurado";
+    elements.captureSource.textContent = "Produto restaurado nesta aba";
     return true;
+  }
+
+  function draftForTab(drafts, tab) {
+    const exact = draftKey(tab?.id, tab?.url);
+    if (exact && drafts?.[exact]) return drafts[exact];
+    return Object.values(drafts || {})
+      .filter((draft) => draft?.capturedTabId === tab?.id && comparableUrl(draft?.capturedPageUrl) === comparableUrl(tab?.url))
+      .sort((left, right) => Number(right.savedAt || 0) - Number(left.savedAt || 0))[0] || null;
+  }
+
+  function restoreDraftForTab(drafts, tab, legacyDraft = null) {
+    const draft = draftForTab(drafts, tab)
+      || (legacyDraft?.capturedTabId === tab?.id && comparableUrl(legacyDraft?.capturedPageUrl) === comparableUrl(tab?.url)
+        ? legacyDraft
+        : null);
+    return restoreDraft(draft);
+  }
+
+  function clearForTab() {
+    state.activeProduct = null;
+    state.capturedTabId = null;
+    state.capturedPageUrl = "";
+    Object.values(elements.fields).forEach((field) => { field.value = ""; });
+    state.autoFieldValues = {};
+    elements.offerForm.classList.add("hidden");
+    elements.loading.classList.add("hidden");
+    elements.empty.classList.remove("hidden");
+    elements.captureQuality.classList.add("hidden");
+    elements.captureQuality.textContent = "";
+    elements.captureSource.textContent = "Abra um produto para capturar.";
+    updatePreview();
   }
 
   function normalizePriceFields() {
@@ -156,12 +248,16 @@
   }
 
   panel.product = {
+    clearForTab,
+    draftForTab,
     fill,
+    mergeEnrichment,
     invalidateShareImage,
     normalizePriceFields,
     payload,
     persistDraft,
     restoreDraft,
+    restoreDraftForTab,
     scheduleDraftPersist,
     toPayload,
     updatePreview,

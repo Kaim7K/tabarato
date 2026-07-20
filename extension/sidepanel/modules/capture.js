@@ -45,16 +45,32 @@
     const files = scriptsForUrl(tab.url);
     if (!files.length) throw new Error("Esta pagina nao oferece captura de produtos.");
     await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
+      target: { tabId: tab.id, frameIds: [0] },
       files: ["shared/runtime.js", "shared/coupon-code.js", ...files],
     });
   }
 
   async function extractFromTab(tab) {
     const send = () => runtime.withTimeout(
-      chrome.tabs.sendMessage(tab.id, { type: "TABARATO_EXTRACT_PRODUCT" }),
+      chrome.tabs.sendMessage(tab.id, { type: "TABARATO_EXTRACT_PRODUCT" }, { frameId: 0 }),
       LIMITS.captureTimeout,
       "A loja demorou para responder. Recarregue a pagina e tente novamente.",
+    );
+    try {
+      return await send();
+    } catch (error) {
+      const missingReceiver = /receiving end does not exist|could not establish connection|message port closed|extension context invalidated/i.test(error?.message || "");
+      if (!missingReceiver) throw error;
+      await ensureScripts(tab);
+      return send();
+    }
+  }
+
+  async function enrichFromTab(tab, product) {
+    const send = () => runtime.withTimeout(
+      chrome.tabs.sendMessage(tab.id, { type: "TABARATO_ENRICH_PRODUCT", product }, { frameId: 0 }),
+      36000,
+      "O Mercado Livre demorou para completar link, cupom e pagamento.",
     );
     try {
       return await send();
@@ -88,7 +104,7 @@
 
   async function requestAffiliateLink(tabId) {
     const send = () => runtime.withTimeout(
-      chrome.tabs.sendMessage(tabId, { type: "TABARATO_CAPTURE_AFFILIATE_LINK" }),
+      chrome.tabs.sendMessage(tabId, { type: "TABARATO_CAPTURE_AFFILIATE_LINK" }, { frameId: 0 }),
       30000,
       "O Mercado Livre demorou para gerar o link afiliado.",
     );
@@ -103,25 +119,13 @@
     }
   }
 
-  async function recoverAffiliateLink(tabId, product, signal, { reloadOnFailure = true } = {}) {
+  async function recoverAffiliateLink(tabId, product, signal) {
     if (product?.platform !== "Mercado Livre" || isMeliAffiliateLink(product?.affiliateLink)) return product;
     if (signal?.aborted) throw new Error("Envio interrompido.");
 
     const direct = await requestAffiliateLink(tabId).catch(() => null);
     if (isMeliAffiliateLink(direct?.affiliateLink)) return withRecoveredAffiliateLink(product, direct.affiliateLink);
-    if (!reloadOnFailure) return product;
-
-    const tab = await chrome.tabs.get(tabId);
-    const expectedUrl = tab.url || product.sourceUrl;
-    await chrome.tabs.reload(tabId);
-    await waitForProductDom(tabId, expectedUrl, signal, 32000);
-    if (signal?.aborted) throw new Error("Envio interrompido.");
-    await runtime.delay(350);
-
-    const refreshed = await requestAffiliateLink(tabId).catch(() => null);
-    return isMeliAffiliateLink(refreshed?.affiliateLink)
-      ? withRecoveredAffiliateLink(product, refreshed.affiliateLink)
-      : product;
+    return product;
   }
 
   async function enrich(product) {
@@ -146,15 +150,12 @@
     }
   }
 
-  async function apply(product, tab, reconcile = true) {
+  async function apply(product, tab) {
     panel.product.fill(product);
     state.capturedTabId = tab.id;
     state.capturedPageUrl = comparableUrl(tab.url);
     await panel.product.persistDraft();
     elements.refreshButton.classList.remove("needs-refresh");
-    if (reconcile) {
-      await panel.publishing?.reconcile(product).catch((error) => runtime.reportError("reconcile-product", error));
-    }
   }
 
   function showFailure(error) {
@@ -166,7 +167,7 @@
     if (state.activeProduct) elements.offerForm.classList.remove("hidden");
   }
 
-  async function current({ reconcile = true } = {}) {
+  async function current() {
     const runId = ++state.captureSequence;
     let productVisible = false;
     setBusy(elements.refreshButton, true, "...");
@@ -176,20 +177,44 @@
     try {
       const tab = await activeTab();
       if (!tab?.id) throw new Error("Nenhuma aba ativa encontrada.");
-      if (isCouponManagementUrl(tab.url)) return;
-      const catalogRequest = panel.catalog.synchronize().catch(() => null);
+      if (isCouponManagementUrl(tab.url)) {
+        throw new Error("Volte para a pagina do produto e clique em Capturar.");
+      }
+      const catalogRequest = panel.catalog.synchronize().catch((error) => {
+        runtime.reportError("capture-catalog-sync", error);
+        return null;
+      });
       const result = await extractFromTab(tab);
       if (!result?.ok) throw new Error(result?.error || "Produto nao encontrado.");
       if (runId !== state.captureSequence) return;
-      await apply(result.product, tab, false);
+      await apply(result.product, tab);
       productVisible = true;
       elements.loading.classList.add("hidden");
-      setBusy(elements.refreshButton, false);
+      setBusy(elements.refreshButton, true, "Completando...");
       panel.renderActionLocks();
 
-      const product = await enrich(result.product);
+      const storeEnrichment = result.product.platform === "Mercado Livre"
+        ? enrichFromTab(tab, result.product).catch((error) => {
+          runtime.reportError("mercado-livre-enrichment", error);
+          return null;
+        })
+        : Promise.resolve(null);
+
+      let product = await enrich(result.product);
       if (runId !== state.captureSequence) return;
-      if (product !== result.product) await apply(product, tab, false);
+      if (product !== result.product) {
+        product = panel.product.mergeEnrichment(product);
+        await panel.product.persistDraft();
+      }
+      // Link, cupom e pagamento devem aparecer assim que a loja responder.
+      // A sincronizacao do catalogo nao pode bloquear esses dados visiveis.
+      const enrichedResult = await storeEnrichment;
+      if (runId !== state.captureSequence) return;
+      if (enrichedResult?.ok && enrichedResult.product) {
+        product = panel.product.mergeEnrichment(enrichedResult.product);
+        await panel.product.persistDraft();
+      }
+
       await catalogRequest;
       if (runId !== state.captureSequence) return;
       const suggestedCategory = panel.catalog.suggestCategory(product);
@@ -198,13 +223,11 @@
         panel.product.updatePreview();
         await panel.product.persistDraft();
       }
-      if (reconcile) {
-        await panel.publishing?.reconcile(product).catch((error) => runtime.reportError("reconcile-product", error));
-      }
+      panel.publishing?.inspectExisting(product);
     } catch (error) {
       if (runId === state.captureSequence) showFailure(error);
     } finally {
-      if (runId === state.captureSequence && !productVisible) {
+      if (runId === state.captureSequence) {
         elements.loading.classList.add("hidden");
         setBusy(elements.refreshButton, false);
         panel.renderActionLocks();
@@ -217,10 +240,10 @@
     if (!tab?.id) throw new Error("Nenhuma aba ativa encontrada.");
     let result;
     try {
-      result = await chrome.tabs.sendMessage(tab.id, { type: "TABARATO_LIST_VISIBLE_PRODUCTS", limit });
+      result = await chrome.tabs.sendMessage(tab.id, { type: "TABARATO_LIST_VISIBLE_PRODUCTS", limit }, { frameId: 0 });
     } catch {
       await ensureScripts(tab);
-      result = await chrome.tabs.sendMessage(tab.id, { type: "TABARATO_LIST_VISIBLE_PRODUCTS", limit });
+      result = await chrome.tabs.sendMessage(tab.id, { type: "TABARATO_LIST_VISIBLE_PRODUCTS", limit }, { frameId: 0 });
     }
     if (!result?.ok) throw new Error(result?.error || "Nao foi possivel listar produtos na tela.");
     return globalThis.TaBaratoBatchUtils.normalizeProductUrls(result.urls, result.storeId, limit);
@@ -249,94 +272,24 @@
   async function reloadWorker(tabId, expectedUrl, signal, timeout = 45000) {
     assertBatchActive(signal);
     const tab = await focusWorker(tabId);
-    await chrome.tabs.reload(tabId);
-    await waitForProductDom(tabId, expectedUrl || tab.url, signal, timeout);
-    assertBatchActive(signal);
-    await runtime.delay(250);
-    return chrome.tabs.get(tabId);
-  }
-
-  async function pinWorkerToTop(tabId, expectedUrl, signal) {
-    if (!/mercadolivre|mercadolibre/i.test(expectedUrl || "")) return true;
-    assertBatchActive(signal);
-    const result = await chrome.scripting.executeScript({
-      target: { tabId },
-      func: async () => {
-        const scrollTop = () => Number(
-          globalThis.scrollY
-            || document.scrollingElement?.scrollTop
-            || document.documentElement?.scrollTop
-            || document.body?.scrollTop
-            || 0
-        );
-        const pin = () => {
-          [document.scrollingElement, document.documentElement, document.body].filter(Boolean).forEach((root) => {
-            root.scrollTop = 0;
-            root.scrollLeft = 0;
-          });
-          try {
-            globalThis.scrollTo?.({ top: 0, left: 0, behavior: "auto" });
-          } catch {
-            globalThis.scrollTo?.(0, 0);
-          }
-        };
-        for (let sample = 0; sample < 3; sample += 1) {
-          pin();
-          await new Promise((resolve) => globalThis.setTimeout(resolve, 80));
-        }
-        pin();
-        return scrollTop() <= 2;
-      },
-    }).catch(() => []);
-    assertBatchActive(signal);
-    return Boolean(result[0]?.result);
-  }
-
-  async function waitForAffiliateSurface(tabId, expectedUrl, signal, timeout = 7000) {
-    if (!/mercadolivre|mercadolibre/i.test(expectedUrl || "")) return true;
-    const startedAt = Date.now();
-    while (Date.now() - startedAt < timeout) {
-      assertBatchActive(signal);
-      const ready = await chrome.scripting.executeScript({
-        target: { tabId },
-        func: () => {
-          const visible = (element) => {
-            if (!element) return false;
-            const style = getComputedStyle(element);
-            const rect = element.getBoundingClientRect();
-            return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
-          };
-          const controls = [...document.querySelectorAll("button, [role='button'], a")].filter(visible);
-          return controls.some((element) => {
-            const label = [
-              element.textContent,
-              element.getAttribute("aria-label"),
-              element.getAttribute("title"),
-              element.getAttribute("data-testid"),
-            ].filter(Boolean).join(" ");
-            if (!/compartilhar|compartilhe|gerar\s+link|link\s+de\s+afiliado|afiliad/i.test(label)) return false;
-            let context = element;
-            for (let depth = 0; context && depth < 6; depth += 1, context = context.parentElement) {
-              if (/programa\s+de\s+afiliados?|afiliados?\s+e\s+criadores|ganhos?\s+extras?/i.test(context.textContent || "")) return true;
-            }
-            return /afiliad|gerar\s+link/i.test(label);
-          });
-        },
-      }).then((results) => Boolean(results[0]?.result)).catch(() => false);
-      if (ready) return true;
-      await runtime.delay(200);
+    const targetUrl = expectedUrl || tab.url;
+    if (isCouponManagementUrl(tab.url) && targetUrl && !isCouponManagementUrl(targetUrl)) {
+      await chrome.tabs.update(tabId, { url: targetUrl, active: true });
+    } else {
+      await chrome.tabs.reload(tabId);
     }
-    return false;
+    await waitForProductDom(tabId, targetUrl, signal, timeout);
+    assertBatchActive(signal);
+    await runtime.delay(250, signal);
+    return chrome.tabs.get(tabId);
   }
 
   async function loadedWorker(tabId, url, signal, windowId = null, { reloadOnIncomplete = true } = {}) {
     assertBatchActive(signal);
     await focusWorker(tabId, windowId);
     await waitForProductDom(tabId, url, signal, 45000);
-    await pinWorkerToTop(tabId, url, signal);
-    await waitForAffiliateSurface(tabId, url, signal);
     assertBatchActive(signal);
-    await runtime.delay(180);
+    await runtime.delay(80, signal);
 
     let tab = await chrome.tabs.get(tabId);
     let result = await extractFromTab(tab);
@@ -344,8 +297,6 @@
     if (!reloadOnIncomplete) throw new Error(result?.error || "A pagina ainda nao terminou de carregar os dados do produto.");
 
     await reloadWorker(tabId, url, signal);
-    await pinWorkerToTop(tabId, url, signal);
-    await waitForAffiliateSurface(tabId, url, signal, 9000);
     assertBatchActive(signal);
     tab = await chrome.tabs.get(tabId);
     result = await extractFromTab(tab);
@@ -364,10 +315,11 @@
     const startedAt = Date.now();
     let stableSignature = "";
     let stableSamples = 0;
+    let pollDelay = 220;
     while (Date.now() - startedAt < timeout) {
       assertBatchActive(signal);
       const snapshot = await chrome.scripting.executeScript({
-        target: { tabId },
+        target: { tabId, frameIds: [0] },
         func: (targetUrl) => {
           const productKey = (value) => {
             const mercadoLivre = String(value).match(/\bMLB-?(\d{6,})\b/i);
@@ -452,7 +404,8 @@
         stableSignature = "";
         stableSamples = 0;
       }
-      await runtime.delay(180);
+      await runtime.delay(pollDelay, signal);
+      pollDelay = Math.min(850, Math.round(pollDelay * 1.2));
     }
     throw new Error("O produto nao terminou de carregar nome, preco e imagem dentro do tempo esperado.");
   }
@@ -462,30 +415,40 @@
     const nextUrl = comparableUrl(tab?.url);
     if (!state.session || !tab?.id || !nextUrl || isCouponManagementUrl(tab.url) || !scriptsForUrl(nextUrl).length) return;
     if (tab.id === state.capturedTabId && nextUrl === state.capturedPageUrl) return;
-    elements.captureSource.textContent = "Pagina mudou. Capturando o novo produto...";
-    elements.refreshButton.classList.add("needs-refresh");
-    const marketplaceProduct = /mercadolivre|mercadolibre/i.test(tab.url || "")
-      ? /(?:^|[/?-])MLB-?\d{6,}(?:$|[/?#-])/i.test(tab.url || "")
-      : /shopee/i.test(tab.url || "") && /(?:\/product\/|[-.]i\.\d+\.\d+)/i.test(tab.url || "");
-    if (!marketplaceProduct || isPrimarySiteUrl(tab.url) || /web\.whatsapp\.com/i.test(tab.url || "")) return;
     window.clearTimeout(state.navigationCaptureTimer);
-    state.navigationCaptureTimer = window.setTimeout(async () => {
-      const selected = await activeTab().catch(() => null);
-      if (selected?.id === tab.id && comparableUrl(selected?.url) === nextUrl) current();
-    }, 550);
+    elements.captureSource.textContent = "Produto aberto. Clique em Capturar para iniciar a coleta.";
+    elements.refreshButton.classList.add("needs-refresh");
+  }
+
+  function isMarketplaceProductUrl(value) {
+    const url = String(value || "");
+    if (/mercadolivre|mercadolibre/i.test(url)) return /(?:^|[/?-])MLB-?\d{6,}(?:$|[/?#-])/i.test(url);
+    if (/shopee/i.test(url)) return /(?:\/product\/|[-.]i\.\d+\.\d+)/i.test(url);
+    return false;
+  }
+
+  async function productTabsToRight(sourceTab, limit = 50) {
+    if (!sourceTab?.windowId || !Number.isInteger(sourceTab.index)) return [];
+    const tabs = await chrome.tabs.query({ windowId: sourceTab.windowId });
+    return tabs
+      .filter((tab) => tab.id && tab.index > sourceTab.index && isMarketplaceProductUrl(tab.url))
+      .sort((left, right) => left.index - right.index)
+      .slice(0, Math.max(0, limit))
+      .map((tab) => ({ tabId: tab.id, url: tab.url, owned: false }));
   }
 
   panel.capture = {
     current,
     ensureScripts,
+    enrichFromTab,
     extractFromTab,
     highlightNavigation,
     isCouponManagementUrl,
     isPrimarySiteUrl,
     recoverAffiliateLink,
     reloadWorker,
-    pinWorkerToTop,
     loadedWorker,
+    productTabsToRight,
     scriptsForUrl,
     showFailure,
     waitForProductDom,

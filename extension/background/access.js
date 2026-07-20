@@ -84,6 +84,7 @@
 
   async function closePanelIfDisallowed(tab) {
     if (!tab?.id || !tab?.windowId || await isAllowedUrl(tab.url)) return;
+    if (typeof chrome.sidePanel?.close !== "function") return;
     await chrome.sidePanel.close({ windowId: tab.windowId }).catch((error) => runtime.reportError("close-side-panel", error));
   }
 
@@ -101,7 +102,7 @@
     if (!hosts.length) return;
     await chrome.scripting.registerContentScripts([{
       id: DYNAMIC_CONTENT_SCRIPT_ID,
-      matches: hosts.map((host) => `https://*.${host}/*`),
+      matches: hosts.flatMap((host) => [`https://${host}/*`, `https://*.${host}/*`]),
       js: STORE_CONTENT_FILES,
       runAt: "document_idle",
       persistAcrossSessions: true,
@@ -110,7 +111,10 @@
 
   async function refreshAllTabs() {
     const tabs = await chrome.tabs.query({});
-    await Promise.all(tabs.map((tab) => updateTab(tab.id, tab.url)));
+    const chunkSize = 20;
+    for (let index = 0; index < tabs.length; index += chunkSize) {
+      await Promise.all(tabs.slice(index, index + chunkSize).map((tab) => updateTab(tab.id, tab.url)));
+    }
   }
 
   async function initialize() {

@@ -253,10 +253,23 @@
 
   const installmentSummary = (value = "") => {
     const source = clean(value);
-    const total = source.match(/(?:^|\bou\s+)R\$\s*([\d.]+(?:,\d{2})?)\s+em\s+(\d{1,2})x(?:\s+(?:de\s+)?R\$\s*[\d.,]+)?\s+sem\s+juros\b/i);
-    if (total) return `R$ ${total[1]} em ${total[2]}x sem juros.`;
-    const installments = source.match(/\b(\d{1,2})x\s+(?:de\s+)?R\$\s*[\d.,]+\s+sem\s+juros\b/i);
-    return installments ? `${installments[1]}x sem juros.` : "";
+    if (!source) return "";
+    const isMercadoPagoOnly = (match) => {
+      const startIndex = Number(match.index || 0);
+      const endIndex = startIndex + String(match[0] || "").length;
+      const tiedContext = source.slice(Math.max(0, startIndex - 18), Math.min(source.length, endIndex + 42));
+      return /(?:com|no|via|pelo)\s+mercado\s+pago/i.test(tiedContext);
+    };
+    const totalPattern = /(?:^|\bou\s+)R\$\s*([\d.]+(?:,\d{1,2})?)\s+em\s+(\d{1,2})x(?:\s+(?:de\s+)?R\$\s*([\d.]+(?:,\d{1,2})?))?\s+sem\s+juros\b/gi;
+    const total = [...source.matchAll(totalPattern)].find((match) => !isMercadoPagoOnly(match));
+    if (total) {
+      return total[3]
+        ? `R$ ${total[1]} em ${total[2]}x de R$ ${total[3]} sem juros.`
+        : `R$ ${total[1]} em ${total[2]}x sem juros.`;
+    }
+    const installmentPattern = /\b(\d{1,2})x\s+(?:de\s+)?R\$\s*([\d.]+(?:,\d{1,2})?)\s+sem\s+juros\b/gi;
+    const installments = [...source.matchAll(installmentPattern)].find((match) => !isMercadoPagoOnly(match));
+    return installments ? `${installments[1]}x de R$ ${installments[2]} sem juros.` : "";
   };
 
   const hasExplicitFreeShipping = (root = document) => {

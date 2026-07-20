@@ -62,39 +62,6 @@
     }), 15000, "A imagem demorou para ser preparada.");
   }
 
-  async function copyImageToClipboard(file) {
-    if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined") return false;
-    const sourceBlob = file.type === "image/png"
-      ? new Blob([await file.arrayBuffer()], { type: "image/png" })
-      : await (async () => {
-        const bitmap = await createImageBitmap(file);
-        try {
-          const canvas = document.createElement("canvas");
-          canvas.width = bitmap.width;
-          canvas.height = bitmap.height;
-          const context = canvas.getContext("2d");
-          if (!context) throw new Error("O navegador nao conseguiu preparar a imagem.");
-          context.drawImage(bitmap, 0, 0);
-          return await new Promise((resolve, reject) => canvas.toBlob(
-            (blob) => blob ? resolve(blob) : reject(new Error("Nao foi possivel converter a imagem para PNG.")),
-            "image/png",
-          ));
-        } finally {
-          bitmap.close();
-        }
-      })();
-    await navigator.clipboard.write([new ClipboardItem({ "image/png": sourceBlob })]);
-    return true;
-  }
-
-  async function copyDataUrlToClipboard(dataUrl, fileName = "oferta.png") {
-    if (!dataUrl) return false;
-    const response = await runtime.fetchWithTimeout(dataUrl, {}, 12000, "A imagem demorou para ser preparada.");
-    if (!response.ok) throw new Error("Nao foi possivel ler a imagem para o clipboard.");
-    const blob = await response.blob();
-    return copyImageToClipboard(new File([blob], fileName, { type: blob.type || "image/png" }));
-  }
-
   async function shareImage(payload) {
     const candidateKey = (state.activeProduct?.imageCandidates || []).map((item) => item.url).join("|");
     const key = JSON.stringify([
@@ -127,11 +94,11 @@
     return state.shareImagePromise;
   }
 
-  function whatsappMessage(payload, product = state.activeProduct) {
+  function whatsappMessage(payload, product = null) {
     const benefits = messageBenefits(payload.extraText);
     const headline = String(payload.messageHeadline || "").trim().replace(/^\s*\u{1F525}\s*/u, "") || "TA BARATO!";
-    const previousPrice = previousPriceFor(payload.currentPrice, payload.previousPrice, product?.regularPrice || payload.currentPrice);
-    const pixLabel = product?.pricePaymentMethod === "Pix" || benefits.pix ? " (no Pix)" : "";
+    const previousPrice = previousPriceFor(payload.currentPrice, payload.previousPrice, payload.currentPrice);
+    const pixLabel = benefits.pix ? " (no Pix)" : "";
     const lines = [
       `\u{1F525} *${headline}*`,
       "",
@@ -151,27 +118,30 @@
     onProgress("Gerando arte...");
     const file = await shareImage(payload);
     const imageDataUrl = await fileToDataUrl(file);
-    const clipboardPrepared = await copyImageToClipboard(file).catch(() => false);
     onProgress("Abrindo WhatsApp...");
-    const result = await runtime.withTimeout(
-      chrome.runtime.sendMessage({
+    const result = await runtime.runWithTimeout(
+      () => chrome.runtime.sendMessage({
         type: "TABARATO_SHARE_WHATSAPP",
         groupNames: groups,
         text: whatsappMessage(payload),
         imageDataUrl,
         fileName: file.name,
-        clipboardPrepared,
       }),
-      panel.LIMITS.whatsappTimeout + groups.length * 70000,
-      "O WhatsApp demorou para responder. Tente novamente.",
+      {
+        milliseconds: 55000 + groups.length * 95000,
+        message: "O WhatsApp excedeu o tempo limite geral.",
+      },
     );
-    if (!result?.ok) throw new Error(result?.error || "Nao foi possivel enviar para o WhatsApp.");
+    if (!result?.ok && !result?.partial) {
+      const details = (result?.results || []).filter((item) => !item.ok)
+        .map((item) => `${item.groupName}: ${item.error || "nao confirmado"}`)
+        .join(" | ");
+      throw new Error(details || result?.error || "Nao foi possivel enviar para o WhatsApp.");
+    }
     return result;
   }
 
   panel.media = {
-    copyDataUrlToClipboard,
-    copyImageToClipboard,
     fileToDataUrl,
     sendOfferToWhatsApp,
     shareImage,
