@@ -22,6 +22,20 @@
   }
 
   function bindEvents() {
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area !== "local" || !changes[STORAGE.shopeeAffiliateResult]?.newValue) return;
+      const result = changes[STORAGE.shopeeAffiliateResult].newValue;
+      if (!result?.affiliateLink || state.activeProduct?.platform !== "Shopee") return;
+      if (result.selectedProductUrl && comparableUrl(result.selectedProductUrl) !== comparableUrl(state.activeProduct?.sourceUrl || "")) return;
+      panel.product.mergeEnrichment({
+        ...state.activeProduct,
+        affiliateLink: result.affiliateLink,
+        affiliateLinkType: "shopee-generated",
+        captureStage: "complete",
+      });
+      elements.fields.affiliateLink.value = result.affiliateLink;
+      panel.product.persistDraft().catch(() => {});
+    });
     elements.loginForm.addEventListener("submit", login);
     elements.offerForm.addEventListener("submit", (event) => { event.preventDefault(); panel.publishing.save(); });
     elements.publishButton.addEventListener("click", panel.publishing.publish);
@@ -36,12 +50,24 @@
       elements.groupsToggle.setAttribute("aria-expanded", String(opening));
     });
     elements.saveGroupsButton.addEventListener("click", async () => {
-      await chrome.storage.local.set({ [STORAGE.groups]: elements.whatsappGroups.value });
-      showToast(`${panel.groupNames().length} grupos registrados.`, "success");
+      await chrome.storage.local.set({
+        [STORAGE.groups]: elements.whatsappGroups.value,
+        [STORAGE.sendDestinations]: panel.selectedDestinations(),
+      });
+      showToast(`Configurações salvas. ${panel.groupNames().length} grupos registrados.`, "success");
+    });
+    [elements.destinationSite, elements.destinationTelegram, elements.destinationWhatsapp].forEach((input) => {
+      input.addEventListener("change", () => chrome.storage.local.set({
+        [STORAGE.sendDestinations]: panel.selectedDestinations(),
+      }).catch(() => {}));
     });
     elements.batchStopButton.addEventListener("click", panel.batch.stop);
     elements.batchPauseButton.addEventListener("click", panel.batch.pause);
     elements.refreshButton.addEventListener("click", () => panel.capture.current());
+    elements.collectCurrentButton.addEventListener("click", () => panel.capture.current());
+    elements.emptyCaptureButton.addEventListener("click", () => panel.capture.current());
+    elements.shopeeLinkButton.addEventListener("click", () => panel.capture.requestShopeeAffiliateLink());
+    elements.bestOptionButton.addEventListener("click", () => panel.capture.searchBestOption());
     elements.modeSingle.addEventListener("click", () => setMode("single"));
     elements.modeBatch.addEventListener("click", () => setMode("batch"));
     elements.batchStartButton.addEventListener("click", panel.batch.start);

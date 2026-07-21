@@ -673,6 +673,18 @@
     return candidates.sort((left, right) => right.score - left.score);
   };
 
+  const productBreadcrumb = () => {
+    const roots = document.querySelectorAll(".andes-breadcrumb__container, .ui-pdp-breadcrumb, nav[aria-label*='breadcrumb' i]");
+    for (const root of roots) {
+      const parts = [...root.querySelectorAll("a, span")]
+        .map((item) => tools.clean(item.textContent))
+        .filter((item) => item && !/^voltar$/i.test(item));
+      const unique = [...new Set(parts)];
+      if (unique.length) return unique.join(" > ");
+    }
+    return "";
+  };
+
   const fastProductSnapshot = () => {
     const structured = tools.jsonProduct();
     const productId = location.href.match(/\b(MLB-?\d{6,})\b/i)?.[1]?.replace("-", "").toUpperCase() || "";
@@ -699,7 +711,7 @@
     const product = {
       productName: tools.text(".ui-pdp-title", "h1") || tools.clean(structured.name) || tools.meta("og:title"),
       shortDescription: tools.description(".ui-pdp-description__content", ".ui-pdp-description") || tools.firstUsefulParagraph(structured.description) || tools.firstUsefulParagraph(tools.meta("og:description")),
-      sourceCategory: tools.text(".andes-breadcrumb__container", ".ui-pdp-breadcrumb"),
+      sourceCategory: productBreadcrumb(),
       currentPrice,
       previousPrice,
       regularPrice: basePrice,
@@ -753,8 +765,24 @@
       || couponTrigger(),
     );
     if (couponIndicated) {
+      const priceBeforeCoupon = Number(product.currentPrice || 0);
       const couponState = await captureCoupon();
       assertCurrentPage();
+      if (/^applied/.test(couponState.status || "")) {
+        const changed = await tools.waitFor(() => {
+          const snapshot = fastProductSnapshot();
+          const nextPrice = Number(snapshot.currentPrice || 0);
+          return nextPrice > 0 && priceBeforeCoupon > 0 && nextPrice < priceBeforeCoupon ? snapshot : "";
+        }, 5000, 300);
+        if (changed) {
+          product.currentPrice = changed.currentPrice;
+          product.regularPrice = changed.regularPrice || product.regularPrice || String(priceBeforeCoupon);
+          product.previousPrice = Number(product.previousPrice || 0) > Number(changed.currentPrice || 0)
+            ? product.previousPrice
+            : String(priceBeforeCoupon);
+          product.pricePaymentMethod = "Cupom";
+        }
+      }
       // O iframe /cupons/pdp e a fonte autorizada para o codigo. Um codigo
       // confirmado e publicado imediatamente; estados genericos nunca o
       // sobrescrevem depois.

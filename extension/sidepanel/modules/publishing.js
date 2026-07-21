@@ -2,7 +2,7 @@
   const panel = globalThis.TaBaratoPanel;
   if (!panel || panel.publishing) return;
 
-  const { elements, groupNames, lockActions, showToast, state, unlockActions } = panel;
+  const { elements, groupNames, lockActions, selectedDestinations, showToast, state, unlockActions } = panel;
   const runtime = globalThis.TaBaratoRuntime;
   const { formatPrice, parsePrice } = globalThis.TaBaratoProductUtils;
 
@@ -41,9 +41,13 @@
   }
 
   async function publishOfferId(id, payload, options = {}) {
-    const { forceRepublish = false, notifyWhatsApp = true } = options;
+    const { forceRepublish = false, notifyWhatsApp = true, destinations = selectedDestinations() } = options;
     const groups = groupNames();
-    const whatsappRequested = notifyWhatsApp && groups.length > 0;
+    const siteRequested = destinations.site !== false;
+    const telegramRequested = destinations.telegram !== false;
+    const remoteRequested = siteRequested || telegramRequested;
+    const whatsappRequested = notifyWhatsApp && destinations.whatsapp !== false && groups.length > 0;
+    if (!remoteRequested && !whatsappRequested) throw new Error("Selecione pelo menos um destino para enviar.");
     const operationId = publicationOperationId(id, payload);
     await operationMessage("TABARATO_OPERATION_CREATE", {
       operation: {
@@ -55,32 +59,35 @@
         price: payload.currentPrice || "",
         coupon: payload.coupon || "",
         payload: { productName: payload.productName || "" },
-        requestedChannels: { site: true, telegram: true, whatsapp: whatsappRequested },
+        requestedChannels: { site: siteRequested, telegram: telegramRequested, whatsapp: whatsappRequested },
       },
     });
     await Promise.all([
-      channelPatch(operationId, "site", { status: "running", attempts: 1 }),
-      channelPatch(operationId, "telegram", { status: "running", attempts: 1 }),
+      siteRequested ? channelPatch(operationId, "site", { status: "running", attempts: 1 }) : Promise.resolve(),
+      telegramRequested ? channelPatch(operationId, "telegram", { status: "running", attempts: 1 }) : Promise.resolve(),
       whatsappRequested ? channelPatch(operationId, "whatsapp", { status: "running", attempts: 1 }) : Promise.resolve(),
     ]);
 
     const artwork = panel.media.shareImage(payload)
       .then(async (file) => ({ file, dataUrl: await panel.media.fileToDataUrl(file) }));
 
-    const telegramTask = artwork
-      .catch((error) => {
-        runtime.reportError("prepare-telegram-artwork", error);
-        return { dataUrl: "" };
-      })
-      .then(({ dataUrl }) => panel.api.request(`/api/admin/ofertas/${id}/publicar`, {
-        method: "POST",
-        body: {
-          shareImageDataUrl: dataUrl,
-          forceRepublish,
-          messageHeadline: payload.messageHeadline || "",
-        },
-        timeout: 65000,
-      }));
+    const telegramTask = remoteRequested
+      ? artwork
+        .catch((error) => {
+          runtime.reportError("prepare-telegram-artwork", error);
+          return { dataUrl: "" };
+        })
+        .then(({ dataUrl }) => panel.api.request(`/api/admin/ofertas/${id}/publicar`, {
+          method: "POST",
+          body: {
+            shareImageDataUrl: dataUrl,
+            forceRepublish,
+            messageHeadline: payload.messageHeadline || "",
+            destinations: { site: siteRequested, telegram: telegramRequested },
+          },
+          timeout: 65000,
+        }))
+      : Promise.resolve({ ok: true, skipped: true });
 
     const whatsappTask = whatsappRequested
       ? panel.media.sendOfferToWhatsApp(payload)
@@ -89,8 +96,8 @@
     const [telegramSettled, whatsappSettled] = await Promise.allSettled([telegramTask, whatsappTask]);
     const channels = {
       telegram: {
-        requested: true,
-        ok: telegramSettled.status === "fulfilled" && Boolean(telegramSettled.value?.ok),
+        requested: telegramRequested,
+        ok: !telegramRequested || (telegramSettled.status === "fulfilled" && Boolean(telegramSettled.value?.ok)),
         result: telegramSettled.status === "fulfilled" ? telegramSettled.value : telegramSettled.reason?.payload || null,
       },
       whatsapp: {
@@ -117,16 +124,16 @@
     if (whatsappRequested) await recordWhatsApp(id, channels.whatsapp.result, whatsappError);
 
     await Promise.all([
-      channelPatch(operationId, "site", {
+      siteRequested ? channelPatch(operationId, "site", {
         status: channels.telegram.ok ? "completed" : "failed",
         errorCode: channels.telegram.ok ? "" : "SITE_TELEGRAM_FAILED",
         errorMessage: telegramError,
-      }),
-      channelPatch(operationId, "telegram", {
+      }) : Promise.resolve(),
+      telegramRequested ? channelPatch(operationId, "telegram", {
         status: channels.telegram.ok ? "completed" : "failed",
         errorCode: channels.telegram.ok ? "" : "TELEGRAM_FAILED",
         errorMessage: telegramError,
-      }),
+      }) : Promise.resolve(),
       whatsappRequested ? channelPatch(operationId, "whatsapp", {
         status: channels.whatsapp.ok ? "completed" : "failed",
         errorCode: channels.whatsapp.ok ? "" : "WHATSAPP_FAILED",
@@ -256,9 +263,10 @@
         state.synchronizedOffers.unshift(offer);
       }
       changedCatalog = true;
-      const publication = await publishOfferId(offer.id, payload, { notifyWhatsApp: true, forceRepublish });
+      const destinations = selectedDestinations();
+      const publication = await publishOfferId(offer.id, payload, { notifyWhatsApp: true, forceRepublish, destinations });
       if (publication.offer) Object.assign(offer, publication.offer);
-      const feedback = publicationToast(publication, groupNames().length > 0);
+      const feedback = publicationToast(publication, selectedDestinations().whatsapp && groupNames().length > 0);
       showToast(feedback.message, feedback.tone);
     } catch (error) {
       runtime.reportError("publish-offer", error);

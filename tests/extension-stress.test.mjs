@@ -19,7 +19,7 @@ function loadUtilities() {
   return context;
 }
 
-test("extension utilities survive 42,501 deterministic stress assertions", () => {
+test("extension utilities survive 32,501 deterministic stress assertions", () => {
   const context = loadUtilities();
   const coupons = context.TaBaratoCouponCode;
   const products = context.TaBaratoProductUtils;
@@ -56,12 +56,11 @@ test("extension utilities survive 42,501 deterministic stress assertions", () =>
     const parsedCurrent = products.parsePrice(br(current));
     const parsedPrevious = products.parsePrice(br(previous));
     const parsedRegular = products.parsePrice(br(regular));
-    const result = products.parsePrice(products.previousPriceFor(br(current), br(previous), br(regular)));
-    check(Number.isFinite(result), "Preco anterior nao numerico");
-    check(result + 0.001 >= parsedCurrent, `Preco anterior abaixo do atual: ${result} < ${parsedCurrent}`);
+    const rawResult = products.previousPriceFor(br(current), br(previous), br(regular));
+    const result = products.parsePrice(rawResult);
     if (parsedPrevious > parsedCurrent) check(Math.abs(result - parsedPrevious) < 0.001, "Nao priorizou preco anterior valido");
-    else if (parsedRegular >= parsedCurrent) check(Math.abs(result - parsedRegular) < 0.001, "Nao usou preco regular valido");
-    else check(Math.abs(result - parsedCurrent) < 0.001, "Nao recuou para preco atual");
+    else if (parsedRegular > parsedCurrent) check(Math.abs(result - parsedRegular) < 0.001, "Nao usou preco regular valido");
+    else check(rawResult === "", "Preco anterior deveria ser opcional quando nao ha valor maior que o atual");
   }
 
   for (let index = 0; index < 5000; index += 1) {
@@ -84,5 +83,5 @@ test("extension utilities survive 42,501 deterministic stress assertions", () =>
     `Rota nao canonica: ${url}`,
   ));
 
-  assert.equal(assertions, 42_501);
+  assert.equal(assertions, 32_501);
 });

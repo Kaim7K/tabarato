@@ -213,11 +213,33 @@
     }
   };
 
+
+  const isSafeProductImageUrl = (value = "") => {
+    const source = clean(value);
+    if (!source) return false;
+    let url;
+    try { url = new URL(source, location.href); } catch { return false; }
+    if (!/^https?:$/.test(url.protocol)) return false;
+    const combined = normalized(`${url.hostname} ${url.pathname} ${url.search}`);
+    if (/\.(?:mp4|webm|m3u8|mov|avi|mkv)(?:$|[?#])/i.test(url.href)) return false;
+    if (/(?:^|[\/_-])(?:video|videos|videoplayback|live|stream|reel)(?:[\/_-]|$)/i.test(combined)) return false;
+    if (/[?&](?:type|format|mime)=video/i.test(url.search)) return false;
+    return true;
+  };
+
+  const isVideoImageElement = (element) => Boolean(element?.closest?.(
+    "video, [class*='video' i], [data-testid*='video' i], [aria-label*='video' i], [aria-label*='vídeo' i]"
+  )) || /(?:video|play|reproduzir|assistir)/i.test(clean([
+    element?.alt || "",
+    element?.getAttribute?.("aria-label") || "",
+    element?.getAttribute?.("data-testid") || "",
+  ].join(" ")));
+
   const imageCandidates = (...selectors) => {
     const candidates = [];
     const push = (url, score = 0, reason = "") => {
       const href = absoluteUrl(url);
-      if (!/^https?:\/\//i.test(href)) return;
+      if (!isSafeProductImageUrl(href)) return;
       if (candidates.some((item) => item.url === href)) return;
       candidates.push({ url: href, score, reason });
     };
@@ -225,6 +247,7 @@
     push(meta("og:image") || meta("twitter:image"), 30, "metadata");
     selectors.forEach((selector, selectorIndex) => {
       document.querySelectorAll(selector).forEach((image) => {
+        if (isVideoImageElement(image)) return;
         if (image.closest("[class*='description' i], [class*='descricao' i], [class*='review' i], [class*='rating' i], [class*='testimonial' i], [data-testid*='description' i], [data-testid*='review' i]")) return;
         const rect = image.getBoundingClientRect();
         const src = image.currentSrc || image.src || image.getAttribute("data-src") || image.getAttribute("srcset")?.split(/\s+/)[0] || "";
@@ -329,8 +352,8 @@
   const findAffiliateLink = (pattern) => candidateUrls().find((value) => pattern.test(value)) || "";
 
   const affiliateLink = () => {
-    const affiliatePattern = /(?:meli\.la|amzn\.to|shopee\.ee|s\.shopee\.|[?&](?:tag|ascsubtag|matt_tool|matt_word|matt_source|affiliate_id|aff_id|utm_source)=)/i;
-    return findAffiliateLink(affiliatePattern) || location.href;
+    const affiliatePattern = /(?:https:\/\/(?:www\.)?meli\.la\/|https:\/\/(?:s\.)?shopee\.(?:ee|com\.br)\/(?:[^\s?#]+)?[?&](?:af_siteid|af_sub_siteid|af_click_lookback|utm_source|affiliate_id|aff_id)=|[?&](?:tag|ascsubtag|matt_tool|matt_word|matt_source|affiliate_id|aff_id)=)/i;
+    return findAffiliateLink(affiliatePattern);
   };
 
   const waitFor = async (read, timeout = 7000) => {
@@ -386,6 +409,7 @@
     firstUsefulParagraph,
     hasExplicitFreeShipping,
     imageCandidates,
+    isSafeProductImageUrl,
     installmentSummary,
     jsonProduct,
     meta,

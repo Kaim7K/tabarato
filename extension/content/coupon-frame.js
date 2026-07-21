@@ -19,6 +19,8 @@
   let lastPayload = "";
   let observer = null;
   let timeoutId = 0;
+  let applyAttempted = false;
+  let applyConfirmed = false;
 
   function unavailableCard(card) {
     if (!card) return false;
@@ -58,10 +60,35 @@
     }
 
     if (hasRelevantCoupon) {
-      return { status: "available-without-code", code: "" };
+      return { status: applyConfirmed ? "applied-without-code" : "available-without-code", code: "" };
     }
 
     return { status: "pending", code: "" };
+  }
+
+
+  function attemptApplyCoupon() {
+    if (applyAttempted) return false;
+    const controls = [...document.querySelectorAll("button, [role='button'], a")];
+    const button = controls.find((element) => {
+      const label = normalize(`${element.textContent || ""} ${element.getAttribute?.("aria-label") || ""}`);
+      const card = element.closest?.(".smart-coupon-special, [class*='coupon' i]");
+      return card && !unavailableCard(card) && /^(aplicar|ativar|resgatar)$/.test(label);
+    });
+    if (!button) return false;
+    applyAttempted = true;
+    button.scrollIntoView?.({ block: "center", behavior: "auto" });
+    button.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, view: window }));
+    button.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, cancelable: true, view: window }));
+    button.click();
+    window.setTimeout(() => {
+      const text = normalize(document.body?.innerText || "");
+      applyConfirmed = /aplicado|cupom aplicado|remover cupom|ativado/.test(text)
+        || !button.isConnected
+        || /aplicado|ativado/.test(normalize(button.textContent || ""));
+      publish(true);
+    }, 900);
+    return true;
   }
 
   function publish(force = false) {
@@ -85,7 +112,11 @@
 
   function start() {
     publish(true);
-    observer = new MutationObserver(() => publish());
+    window.setTimeout(() => attemptApplyCoupon(), 450);
+    observer = new MutationObserver(() => {
+      publish();
+      if (!applyAttempted) attemptApplyCoupon();
+    });
     observer.observe(document.documentElement, {
       childList: true,
       subtree: true,

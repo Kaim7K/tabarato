@@ -62,6 +62,7 @@
 
       <section id="editor-view" class="hidden">
         <section class="command-bar" aria-label="Controles da extensão">
+          <button id="collect-current-button" class="button button-secondary collect-current-button" type="button">Coletar produto da tela aberta</button>
           <div class="segmented" role="group" aria-label="Modo da extensão">
             <button id="mode-single" type="button" class="active" aria-pressed="true">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2 9 5v10l-9 5-9-5V7l9-5Zm0 2.3L6 7.63v8.74l5 2.78v-7.57L6.5 9.1l1-1.74 4.5 2.5 4.5-2.5 1 1.74-4.5 2.48v7.57l6-3.33V7.63l-7-3.33Z"/></svg>
@@ -100,6 +101,13 @@
             <span>Grupos do WhatsApp</span>
             <textarea id="whatsapp-groups" rows="5" placeholder="Um grupo por linha">🏷️ Tá Barato | Ofertas e Achados</textarea>
           </label>
+          <fieldset class="destination-settings">
+            <legend>Destinos padrão das ofertas</legend>
+            <label class="check-row"><input id="destination-site" type="checkbox" checked /> Site</label>
+            <label class="check-row"><input id="destination-telegram" type="checkbox" checked /> Telegram</label>
+            <label class="check-row"><input id="destination-whatsapp" type="checkbox" checked /> WhatsApp</label>
+            <p class="field-hint">Essas opções ficam pré-selecionadas e podem ser alteradas antes de cada envio.</p>
+          </fieldset>
           <div class="panel-actions">
             <button id="save-groups-button" class="button button-primary" type="button">Salvar grupos</button>
           </div>
@@ -120,7 +128,8 @@
 
           <div id="empty-state" class="state hidden">
             <strong>Nenhum produto identificado</strong>
-            <p>Use uma página de produto ou uma loja conectada ao site.</p>
+            <p>Abra um produto da Shopee ou Mercado Livre e faça a coleta sem fechar o painel.</p>
+            <button id="empty-capture-button" class="button button-primary" type="button">Captar produto da tela aberta</button>
           </div>
 
           <form id="offer-form" class="hidden">
@@ -146,7 +155,7 @@
               <div class="product-fields">
                 <label class="field-wide field-affiliate">
                   <span class="field-label"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.6 13.4a2 2 0 0 0 2.8 0l4-4a2 2 0 1 0-2.8-2.8l-1.2 1.2L12 6.4l1.2-1.2a4 4 0 0 1 5.6 5.6l-4 4a4 4 0 0 1-5.6 0l-1-1 1.4-1.4 1 1Zm2.8-2.8a2 2 0 0 0-2.8 0l-4 4a2 2 0 1 0 2.8 2.8l1.2-1.2 1.4 1.4-1.2 1.2a4 4 0 0 1-5.6-5.6l4-4a4 4 0 0 1 5.6 0l1 1-1.4 1.4-1-1Z"/></svg>Link de afiliado</span>
-                  <input id="affiliate-link" type="url" required />
+                  <div class="inline-field-action"><input id="affiliate-link" type="url" required /><button id="best-option-button" class="mini-button" type="button">Buscar melhor opção</button><button id="shopee-link-button" class="mini-button hidden" type="button">Gerar link Shopee</button></div>
                 </label>
                 <label class="field-name">
                   <span class="field-label"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18v14H3V5Zm2 2v10h14V7H5Zm2 8 3-4 2 2 2-3 3 5H7Z"/></svg>Nome do produto</span>

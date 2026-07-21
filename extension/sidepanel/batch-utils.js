@@ -85,6 +85,23 @@
     return chunks;
   };
 
+  const validShopeeAffiliateLink = (value, sourceProductId = "") => {
+    try {
+      const url = new URL(value);
+      if (!/^(?:s\.)?shopee\.(?:com\.br|ee)$/i.test(url.hostname)) return false;
+      if (/careers|about|seller|m\/web|buyer\/login/i.test(`${url.hostname}${url.pathname}`)) return false;
+      const hasAffiliateMarker = /(?:af_siteid|af_sub_siteid|affiliate_id|aff_id|utm_source)/i.test(url.search)
+        || /^s\.shopee\./i.test(url.hostname)
+        || /shopee\.ee$/i.test(url.hostname);
+      if (!hasAffiliateMarker) return false;
+      if (sourceProductId && /shopee\.com\.br$/i.test(url.hostname)) {
+        const [shopId, itemId] = String(sourceProductId).split(".");
+        if (shopId && itemId && !url.href.includes(shopId) && !url.href.includes(itemId)) return false;
+      }
+      return true;
+    } catch { return false; }
+  };
+
   const reviewProduct = (product, minimumConfidence, parsePrice) => {
     const reasons = [];
     const validHttpsUrl = (value) => {
@@ -99,6 +116,8 @@
     if (!validHttpsUrl(product?.imageUrl || product?.imageCandidates?.[0]?.url)) reasons.push("imagem");
     if (product?.platform === "Mercado Livre") {
       if (!/^https:\/\/(?:www\.)?meli\.la\/[A-Za-z0-9_-]+/i.test(product?.affiliateLink || "")) reasons.push("link afiliado meli.la");
+    } else if (product?.platform === "Shopee") {
+      if (!validShopeeAffiliateLink(product?.affiliateLink, product?.externalProductId || product?.sourceProductId)) reasons.push("link afiliado Shopee");
     } else if (!validHttpsUrl(product?.affiliateLink)) reasons.push("link de afiliado");
     if (Number(product?.confidence || 0) < minimumConfidence) reasons.push("confianca");
     return [...new Set(reasons)];
@@ -109,5 +128,6 @@
     normalizeProductUrls,
     productIdentityFromUrl,
     reviewProduct,
+    validShopeeAffiliateLink,
   };
 })();

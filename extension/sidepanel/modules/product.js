@@ -17,9 +17,7 @@
   function valuesFor(product) {
     const currentPrice = product.currentPrice || "";
     return {
-      affiliateLink: product.platform === "Mercado Livre"
-        ? product.affiliateLink || ""
-        : product.affiliateLink || product.sourceUrl || "",
+      affiliateLink: product.affiliateLink || "",
       productName: product.productName || "",
       messageHeadline: product.messageHeadline || "",
       currentPrice,
@@ -111,6 +109,7 @@
       : `${values.platform}${stage}`;
     elements.offerForm.classList.remove("hidden");
     elements.empty.classList.add("hidden");
+    elements.shopeeLinkButton.classList.toggle("hidden", values.platform !== "Shopee" || Boolean(values.affiliateLink));
     updatePreview();
   }
 
@@ -229,6 +228,7 @@
     Object.values(elements.fields).forEach((field) => { field.value = ""; });
     state.autoFieldValues = {};
     elements.offerForm.classList.add("hidden");
+    elements.shopeeLinkButton.classList.add("hidden");
     elements.loading.classList.add("hidden");
     elements.empty.classList.remove("hidden");
     elements.captureQuality.classList.add("hidden");

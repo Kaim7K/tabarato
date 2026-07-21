@@ -15,6 +15,79 @@
     { categories: ["moda", "roupas", "calcados"], words: ["tenis", "sapato", "camisa", "calca", "jaqueta", "bolsa", "relogio"] },
   ];
 
+
+  const CATEGORY_ALIASES = new Map([
+    ["celulares e smartphones", "Celulares e smartphones"],
+    ["smartphones", "Celulares e smartphones"],
+    ["telefonia", "Celulares e smartphones"],
+    ["suplementos alimentares", "Suplementos alimentares"],
+    ["suplementos", "Suplementos alimentares"],
+    ["componentes para pc", "Componentes para PC"],
+    ["informatica", "Informática"],
+    ["roupas masculinas", "Moda masculina"],
+    ["roupas femininas", "Moda feminina"],
+    ["beleza e cuidado pessoal", "Beleza e cuidados"],
+    ["beleza e cuidados", "Beleza e cuidados"],
+  ]);
+
+  const categoryKey = (value = "") => normalizeText(value).replace(/[^a-z0-9]+/g, " ").trim();
+  const usefulWords = (value = "") => new Set(categoryKey(value).split(" ").filter((word) => word.length >= 4));
+  const overlap = (left, right) => {
+    const a = usefulWords(left);
+    const b = usefulWords(right);
+    if (!a.size || !b.size) return 0;
+    let matches = 0;
+    a.forEach((word) => { if (b.has(word)) matches += 1; });
+    return matches / Math.min(a.size, b.size);
+  };
+
+  function trustedSourceCategory(product) {
+    const parts = String(product.sourceCategory || "")
+      .split(/>|\/|→|›/)
+      .map((part) => part.replace(/^voltar\s*/i, "").trim())
+      .filter(Boolean);
+    const leaf = parts.at(-1) || "";
+    if (leaf.length < 3 || leaf.length > 55) return "";
+    if (/^(inicio|home|produto|produtos|oferta|ofertas|todos)$/i.test(leaf)) return "";
+    if (overlap(leaf, product.productName || "") > 0.85 && leaf.split(/\s+/).length > 5) return "";
+    return CATEGORY_ALIASES.get(categoryKey(leaf)) || leaf.replace(/\b\w/g, (letter) => letter.toUpperCase());
+  }
+
+  function similarOfferCategory(product) {
+    const target = `${product.productName || ""} ${product.shortDescription || ""}`;
+    const ranked = state.synchronizedOffers
+      .filter((offer) => offer.category && offer.productName)
+      .map((offer) => ({ category: offer.category, score: overlap(target, `${offer.productName} ${offer.shortDescription || ""}`) }))
+      .sort((left, right) => right.score - left.score);
+    return ranked[0]?.score >= 0.45 ? ranked[0].category : "";
+  }
+
+  async function ensureCategory(product) {
+    const source = trustedSourceCategory(product);
+    const similar = similarOfferCategory(product);
+    const proposed = source || similar || suggestCategory(product);
+    if (!proposed) return "";
+    const exact = state.availableCategories.find((category) => categoryKey(category) === categoryKey(proposed));
+    if (exact) return exact;
+    const synonym = state.availableCategories
+      .map((category) => ({ category, score: overlap(category, proposed) }))
+      .sort((left, right) => right.score - left.score)[0];
+    if (synonym?.score >= 0.72) return synonym.category;
+    if (!source) return proposed;
+    try {
+      const response = await panel.api.request("/api/admin/ofertas", {
+        method: "POST",
+        body: { resource: "category", name: proposed },
+        timeout: 12000,
+      });
+      const created = response?.category?.name || proposed;
+      updateCategoryOptions([...state.availableCategories, created]);
+      return created;
+    } catch {
+      return similar || suggestCategory(product);
+    }
+  }
+
   function connectedHostsFromOffers(offers) {
     const hosts = new Set();
     offers.forEach((offer) => {
@@ -169,6 +242,7 @@
     findExisting,
     previouslyPostedUrls,
     suggestCategory,
+    ensureCategory,
     synchronize,
     updateCategoryOptions,
   };

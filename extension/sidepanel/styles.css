@@ -337,3 +337,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
   .action-icon-button.needs-refresh { animation: none; }
 }
+
+.inline-field-action { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+.mini-button { min-height: 38px; padding: 0 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-strong); color: var(--text); font-weight: 700; cursor: pointer; }
+.collect-current-button { margin-right: auto; white-space: nowrap; }
+@media (max-width: 620px) { .command-bar { flex-wrap: wrap; } .collect-current-button { width: 100%; } .inline-field-action { grid-template-columns: 1fr; } }

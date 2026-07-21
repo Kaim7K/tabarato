@@ -15,6 +15,9 @@
     captureRequest: "tabarato_capture_request",
     batchCadence: "tabarato_batch_cadence_v1",
     batchOpenTabsOnly: "tabarato_batch_open_tabs_only_v1",
+    shopeeAffiliateRequest: "tabarato_shopee_affiliate_request_v1",
+    shopeeAffiliateResult: "tabarato_shopee_affiliate_result_v1",
+    sendDestinations: "tabarato_send_destinations_v1",
   });
 
   const LIMITS = Object.freeze({
@@ -43,6 +46,9 @@
     groupsPanel: byId("groups-panel"),
     whatsappGroups: byId("whatsapp-groups"),
     saveGroupsButton: byId("save-groups-button"),
+    destinationSite: byId("destination-site"),
+    destinationTelegram: byId("destination-telegram"),
+    destinationWhatsapp: byId("destination-whatsapp"),
     status: byId("connection-status"),
     modeSingle: byId("mode-single"),
     modeBatch: byId("mode-batch"),
@@ -52,6 +58,10 @@
     empty: byId("empty-state"),
     captureSource: byId("capture-source"),
     refreshButton: byId("refresh-button"),
+    collectCurrentButton: byId("collect-current-button"),
+    emptyCaptureButton: byId("empty-capture-button"),
+    shopeeLinkButton: byId("shopee-link-button"),
+    bestOptionButton: byId("best-option-button"),
     logoutButton: byId("logout-button"),
     saveButton: byId("save-button"),
     publishButton: byId("publish-button"),
@@ -139,6 +149,14 @@
   const actionLocks = new Set();
   const idleButtonContent = new WeakMap();
   let toastTimer = null;
+
+  function selectedDestinations() {
+    return {
+      site: Boolean(elements.destinationSite.checked),
+      telegram: Boolean(elements.destinationTelegram.checked),
+      whatsapp: Boolean(elements.destinationWhatsapp.checked),
+    };
+  }
 
   function groupNames() {
     const groups = [...new Set(String(elements.whatsappGroups.value || "")
@@ -241,6 +259,7 @@
     lockActions,
     renderActionLocks,
     renderThemeControl,
+    selectedDestinations,
     setBusy,
     setMode,
     setStatus,

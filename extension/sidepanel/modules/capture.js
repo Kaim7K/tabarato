@@ -2,7 +2,7 @@
   const panel = globalThis.TaBaratoPanel;
   if (!panel || panel.capture) return;
 
-  const { LIMITS, activeTab, elements, setBusy, state } = panel;
+  const { LIMITS, STORAGE, activeTab, elements, setBusy, showToast, state } = panel;
   const runtime = globalThis.TaBaratoRuntime;
   const { comparableUrl, parsePrice } = globalThis.TaBaratoProductUtils;
 
@@ -215,7 +215,7 @@
 
       await catalogRequest;
       if (runId !== state.captureSequence) return;
-      const suggestedCategory = panel.catalog.suggestCategory(product);
+      const suggestedCategory = await panel.catalog.ensureCategory(product);
       if (suggestedCategory && elements.fields.category.value !== suggestedCategory) {
         elements.fields.category.value = suggestedCategory;
         panel.product.updatePreview();
@@ -435,7 +435,184 @@
       .map((tab) => ({ tabId: tab.id, url: tab.url, owned: false }));
   }
 
+
+  async function waitForTabComplete(tabId, timeout = 30000) {
+    const started = Date.now();
+    while (Date.now() - started < timeout) {
+      const tab = await chrome.tabs.get(tabId).catch(() => null);
+      if (tab?.status === "complete") return tab;
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    }
+    throw new Error("A pagina do produto escolhido demorou para carregar.");
+  }
+
+  async function requestShopeeAffiliateLink() {
+    let product = state.activeProduct;
+    if (!product || product.platform !== "Shopee") throw new Error("Capture primeiro um produto da Shopee.");
+    if (!product.sourceUrl || !product.externalProductId) throw new Error("O produto da Shopee não possui identificação suficiente.");
+    const requestId = `shopee:${product.externalProductId}:${Date.now()}`;
+    await chrome.storage.local.set({
+      [STORAGE.shopeeAffiliateRequest]: {
+        requestId,
+        sourceUrl: product.sourceUrl,
+        productName: product.productName,
+        externalProductId: product.externalProductId,
+        createdAt: Date.now(),
+        sourceTabId: state.capturedTabId,
+        sourceWindowId: (await activeTab().catch(() => null))?.windowId || null,
+        expiresAt: Date.now() + 5 * 60 * 1000,
+      },
+    });
+    setBusy(elements.shopeeLinkButton, true, "Abrindo...");
+    try {
+      const existing = await chrome.tabs.query({ url: "https://affiliate.shopee.com.br/*" });
+      let tab = existing[0];
+      if (tab?.id) {
+        await chrome.tabs.update(tab.id, { active: true });
+        await chrome.windows.update(tab.windowId, { focused: true }).catch(() => {});
+      } else {
+        tab = await chrome.tabs.create({ url: "https://affiliate.shopee.com.br/", active: true });
+      }
+      showToast("O painel da Shopee foi aberto. A extensão tentará preencher e coletar o link automaticamente.", "neutral");
+      const started = Date.now();
+      while (Date.now() - started < 60000) {
+        await new Promise((resolve) => setTimeout(resolve, 700));
+        const stored = await chrome.storage.local.get(STORAGE.shopeeAffiliateResult);
+        const result = stored[STORAGE.shopeeAffiliateResult];
+        if (result?.requestId !== requestId || !result.affiliateLink) continue;
+        await chrome.storage.local.remove(STORAGE.shopeeAffiliateResult);
+        const selectedUrl = String(result.selectedProductUrl || "").trim();
+        const selectedIsDifferent = selectedUrl && comparableUrl(selectedUrl) !== comparableUrl(product.sourceUrl || "");
+        if (selectedIsDifferent && result.sourceTabId) {
+          await chrome.tabs.update(result.sourceTabId, { url: selectedUrl, active: true });
+          if (result.sourceWindowId) await chrome.windows.update(result.sourceWindowId, { focused: true }).catch(() => {});
+          const selectedTab = await waitForTabComplete(result.sourceTabId);
+          await ensureScripts(selectedTab);
+          const selectedCapture = await extractFromTab(selectedTab);
+          if (!selectedCapture?.ok || !selectedCapture.product?.externalProductId) {
+            throw new Error("A melhor oferta foi encontrada, mas os dados dela nao puderam ser capturados.");
+          }
+          product = selectedCapture.product;
+          await apply(product, selectedTab);
+        }
+        const merged = panel.product.mergeEnrichment({
+          ...product,
+          affiliateLink: result.affiliateLink,
+          affiliateLinkType: "shopee-generated",
+          captureStage: "complete",
+        });
+        elements.fields.affiliateLink.value = result.affiliateLink;
+        await panel.product.persistDraft();
+        if (result.sourceTabId) {
+          await chrome.tabs.update(result.sourceTabId, { active: true }).catch(() => {});
+          if (result.sourceWindowId) await chrome.windows.update(result.sourceWindowId, { focused: true }).catch(() => {});
+        }
+        showToast(selectedIsDifferent
+          ? "Melhor oferta escolhida, dados atualizados e link afiliado coletado."
+          : "Link de afiliado da Shopee coletado e preenchido.", "success");
+        return merged;
+      }
+      throw new Error("O link não apareceu automaticamente. Envie prints do painel de geração para eu ajustar os seletores exatos.");
+    } finally {
+      setBusy(elements.shopeeLinkButton, false);
+    }
+  }
+
+
+  async function searchBestMercadoLivreOption(product) {
+    const query = String(product.productName || "").replace(/\s+/g, " ").trim();
+    if (!query) throw new Error("O produto nao possui nome para pesquisa.");
+    const slug = encodeURIComponent(query).replace(/%20/g, "-");
+    const searchTab = await chrome.tabs.create({ url: `https://lista.mercadolivre.com.br/${slug}`, active: true });
+    try {
+      await waitForTabComplete(searchTab.id, 30000);
+      const [{ result } = {}] = await chrome.scripting.executeScript({
+        target: { tabId: searchTab.id, frameIds: [0] },
+        func: (productName) => {
+          const clean = (value = "") => String(value).replace(/\s+/g, " ").trim();
+          const norm = (value = "") => clean(value).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+          const words = (value) => new Set(norm(value).split(/[^a-z0-9]+/).filter((word) => word.length > 2));
+          const similarity = (left, right) => {
+            const a = words(left); const b = words(right);
+            if (!a.size || !b.size) return 0;
+            let matches = 0; a.forEach((word) => { if (b.has(word)) matches += 1; });
+            return matches / Math.min(a.size, b.size);
+          };
+          const money = (text) => {
+            const match = clean(text).match(/R\$\s*([\d.]+(?:,\d{1,2})?)/i);
+            return match ? Number(match[1].replace(/\./g, "").replace(",", ".")) : 0;
+          };
+          const sales = (text) => {
+            const match = norm(text).match(/(?:\+?\s*)?(\d+(?:[.,]\d+)?)\s*(mil|k)?\+?\s*vendid[oa]s?/i);
+            if (!match) return 0;
+            const base = Number(match[1].replace(",", "."));
+            return Number.isFinite(base) ? base * (match[2] ? 1000 : 1) : 0;
+          };
+          const cards = [...document.querySelectorAll(".ui-search-layout__item, .poly-card, li.ui-search-layout__item")];
+          const candidates = cards.map((card) => {
+            const titleElement = card.querySelector("h2, h3, .poly-component__title, .ui-search-item__title");
+            const link = titleElement?.closest("a[href]") || card.querySelector("a[href*='MLB']");
+            const title = clean(titleElement?.textContent || link?.textContent || "");
+            const text = clean(card.textContent || "");
+            const price = money(text);
+            const relevance = similarity(productName, title);
+            return { url: link?.href || "", title, price, sales: sales(text), relevance };
+          }).filter((item) => item.url && item.price > 0 && item.relevance >= 0.35);
+          if (!candidates.length) return null;
+          const maxSales = Math.max(...candidates.map((item) => item.sales), 1);
+          const minPrice = Math.min(...candidates.map((item) => item.price));
+          const maxPrice = Math.max(...candidates.map((item) => item.price));
+          candidates.forEach((item) => {
+            const salesScore = Math.log10(item.sales + 1) / Math.log10(maxSales + 1);
+            const priceScore = maxPrice === minPrice ? 1 : (maxPrice - item.price) / (maxPrice - minPrice);
+            item.score = Math.min(1, item.relevance) * 0.4 + salesScore * 0.35 + priceScore * 0.25;
+          });
+          candidates.sort((a, b) => b.score - a.score || b.sales - a.sales || a.price - b.price);
+          return candidates[0];
+        },
+        args: [query],
+      });
+      if (!result?.url) throw new Error("Nenhuma oferta suficientemente parecida foi encontrada no Mercado Livre.");
+      const targetTabId = state.capturedTabId || (await activeTab())?.id;
+      if (!targetTabId) throw new Error("A aba original do produto nao foi encontrada.");
+      await chrome.tabs.update(targetTabId, { url: result.url, active: true });
+      const targetTab = await waitForTabComplete(targetTabId, 30000);
+      await ensureScripts(targetTab);
+      const captured = await extractFromTab(targetTab);
+      if (!captured?.ok) throw new Error(captured?.error || "A melhor oferta nao pôde ser capturada.");
+      await apply(captured.product, targetTab);
+      let enriched = await enrich(captured.product);
+      const storeEnriched = await enrichFromTab(targetTab, enriched).catch(() => null);
+      if (storeEnriched?.ok && storeEnriched.product) enriched = panel.product.mergeEnrichment(storeEnriched.product);
+      const category = await panel.catalog.ensureCategory(enriched);
+      if (category) elements.fields.category.value = category;
+      await panel.product.persistDraft();
+      showToast(`Melhor opção encontrada: ${result.title} por R$ ${result.price.toFixed(2).replace(".", ",")}.`, "success");
+      return enriched;
+    } finally {
+      await chrome.tabs.remove(searchTab.id).catch(() => {});
+    }
+  }
+
+  async function searchBestOption() {
+    const product = state.activeProduct;
+    if (!product) throw new Error("Capture primeiro um produto.");
+    setBusy(elements.bestOptionButton, true, "Buscando...");
+    try {
+      if (product.platform === "Shopee") return await requestShopeeAffiliateLink();
+      if (product.platform === "Mercado Livre") return await searchBestMercadoLivreOption(product);
+      throw new Error("A busca inteligente esta disponível apenas para Shopee e Mercado Livre.");
+    } catch (error) {
+      showToast(runtime.errorMessage(error), "error");
+      throw error;
+    } finally {
+      setBusy(elements.bestOptionButton, false);
+    }
+  }
+
   panel.capture = {
+    requestShopeeAffiliateLink,
+    searchBestOption,
     current,
     ensureScripts,
     enrichFromTab,

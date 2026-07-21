@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Ta Barato - Central de Ofertas",
   "description": "Capture ofertas, gere artes e publique no site, Telegram e WhatsApp somente nas lojas conectadas.",
-  "version": "4.0.1",
+  "version": "4.5.0",
   "minimum_chrome_version": "116",
   "icons": {
     "16": "assets/icon-16.png",
@@ -23,6 +23,9 @@
     "https://*.mercadolivre.com.br/*",
     "https://*.mercadolibre.com/*",
     "https://*.shopee.com.br/*",
+    "https://*.shopeeusercontent.com/*",
+    "https://*.susercontent.com/*",
+    "https://affiliate.shopee.com.br/*",
     "https://web.whatsapp.com/*",
     "https://www.tabaratoofertas.shop/*",
     "https://tabaratoofertas.shop/*",
@@ -123,6 +126,17 @@
       "js": [
         "shared/runtime.js",
         "content/whatsapp.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": false
+    },
+    {
+      "matches": [
+        "https://affiliate.shopee.com.br/*"
+      ],
+      "js": [
+        "shared/runtime.js",
+        "content/shopee-affiliate.js"
       ],
       "run_at": "document_idle",
       "all_frames": false

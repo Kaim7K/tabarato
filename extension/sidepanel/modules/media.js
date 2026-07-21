@@ -7,18 +7,71 @@
   const artwork = globalThis.TaBaratoArtwork;
   const { formatPrice, messageBenefits, normalizeText, previousPriceFor } = globalThis.TaBaratoProductUtils;
 
+  function safeImageSource(source) {
+    try {
+      const url = new URL(source);
+      const combined = `${url.hostname}${url.pathname}${url.search}`.toLowerCase();
+      if (!/^https:$/.test(url.protocol)) return false;
+      if (/\.(?:mp4|webm|m3u8|mov|avi|mkv)(?:$|[?#])/i.test(url.href)) return false;
+      if (/(?:^|[\/_-])(?:video|videos|videoplayback|stream|reel)(?:[\/_-]|$)/i.test(combined)) return false;
+      return true;
+    } catch { return false; }
+  }
+
   async function evaluateImageCandidate(source) {
+    if (!safeImageSource(source)) return null;
     const response = await runtime.fetchWithTimeout(source, {}, 8000, "A imagem demorou para carregar.");
     if (!response.ok) return null;
     const blob = await response.blob();
-    if (!/^image\/(?:png|jpe?g|webp)$/i.test(blob.type) || blob.size > 12 * 1024 * 1024) return null;
-    const bitmap = await createImageBitmap(blob);
+    if (blob.size <= 0 || blob.size > 12 * 1024 * 1024) return null;
+    if (blob.type && !/^image\//i.test(blob.type) && !/^(?:application\/octet-stream|binary\/octet-stream)$/i.test(blob.type)) return null;
+    async function decodeWithImage(candidateBlob) {
+      const objectUrl = URL.createObjectURL(candidateBlob);
+      try {
+        const image = new Image();
+        image.decoding = "async";
+        image.src = objectUrl;
+        await runtime.withTimeout(image.decode(), 10000, "A imagem da loja nao pôde ser decodificada.");
+        return { source: image, width: image.naturalWidth, height: image.naturalHeight, close: () => {} };
+      } finally {
+        URL.revokeObjectURL(objectUrl);
+      }
+    }
+
+    async function decodeCandidate(candidateBlob) {
+      const variants = [candidateBlob];
+      if (!candidateBlob.type || /octet-stream/i.test(candidateBlob.type)) {
+        ["image/webp", "image/avif", "image/jpeg", "image/png"].forEach((type) => {
+          variants.push(new Blob([candidateBlob], { type }));
+        });
+      }
+      for (const variant of variants) {
+        try {
+          const decoded = await decodeWithImage(variant);
+          if (decoded.width && decoded.height) return decoded;
+        } catch {
+          try {
+            const bitmap = await createImageBitmap(variant);
+            return { source: bitmap, width: bitmap.width, height: bitmap.height, close: () => bitmap.close?.() };
+          } catch { /* tenta a proxima indicação de formato */ }
+        }
+      }
+      return null;
+    }
+
+    const decoded = await decodeCandidate(blob);
+    if (!decoded) return null;
     try {
-      const ratio = bitmap.width / Math.max(1, bitmap.height);
-      if (ratio > 3.2 || ratio < 0.32 || Math.min(bitmap.width, bitmap.height) < 180) return null;
-      return blob;
+      const ratio = decoded.width / Math.max(1, decoded.height);
+      if (ratio > 3.2 || ratio < 0.32 || Math.min(decoded.width, decoded.height) < 180) return null;
+      const canvas = document.createElement("canvas");
+      canvas.width = decoded.width;
+      canvas.height = decoded.height;
+      const context = canvas.getContext("2d", { alpha: true });
+      context.drawImage(decoded.source, 0, 0);
+      return await new Promise((resolve) => canvas.toBlob(resolve, "image/png", 0.94));
     } finally {
-      bitmap.close?.();
+      decoded.close?.();
     }
   }
 
@@ -99,12 +152,15 @@
     const headline = String(payload.messageHeadline || "").trim().replace(/^\s*\u{1F525}\s*/u, "") || "TA BARATO!";
     const previousPrice = previousPriceFor(payload.currentPrice, payload.previousPrice, payload.currentPrice);
     const pixLabel = benefits.pix ? " (no Pix)" : "";
+    const priceLine = previousPrice
+      ? `\u{1F4B0} *${formatPrice(payload.currentPrice)}*${pixLabel}   |   \u{274C} ~${formatPrice(previousPrice)}~`
+      : `\u{1F4B0} *${formatPrice(payload.currentPrice)}*${pixLabel}`;
     const lines = [
       `\u{1F525} *${headline}*`,
       "",
       `*${payload.productName}*`,
       "",
-      `\u{1F4B0} *${formatPrice(payload.currentPrice)}*${pixLabel}   |   \u{274C} ~${formatPrice(previousPrice)}~`,
+      priceLine,
     ];
     if (payload.coupon) lines.push("", `\u{1F39F}\u{FE0F} Cupom: *${payload.coupon}*`);
     if (benefits.lines.length) lines.push("", ...benefits.lines.map((line) => line.replace(/\.$/, "")));

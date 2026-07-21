@@ -259,7 +259,8 @@ test("capture extracts requested product fields and closes store popups", () => 
   assert.doesNotMatch(meli, /promotionSummary/);
   assert.match(couponCode, /extractExplicitComCodes/);
   assert.match(meli, /await tools\.closeTransientDialogs/);
-  assert.match(shopee, /couponCandidates/);
+  assert.doesNotMatch(shopee, /tools\.couponCandidates\(\)/);
+  assert.match(shopee, /Cupons da Shopee variam por conta/);
   assert.match(shopee, /confidence/);
   assert.match(shopee, /regularPrice: basePrice/);
 });
@@ -835,4 +836,12 @@ test("catalog resolves already published product IDs locally and from the databa
   assert.match(requestedPaths[0], /resource=posted-products/);
   assert.match(requestedPaths[0], /MLB222222222/);
   assert.match(requestedPaths[0], /MLB333333333/);
+});
+
+
+test("Shopee affiliate action imports its panel dependencies", () => {
+  const source = readFileSync(join(extensionRoot, "sidepanel", "modules", "capture.js"), "utf8");
+  assert.match(source, /const \{[^}]*STORAGE[^}]*showToast[^}]*\} = panel;/s);
+  assert.match(source, /\[STORAGE\.shopeeAffiliateRequest\]/);
+  assert.match(source, /showToast\("O painel da Shopee foi aberto/);
 });

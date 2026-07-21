@@ -20,6 +20,12 @@
   }
 
   function applyGlobalSettings(stored = {}) {
+    if (Object.hasOwn(stored, STORAGE.sendDestinations)) {
+      const destinations = stored[STORAGE.sendDestinations] || {};
+      elements.destinationSite.checked = destinations.site !== false;
+      elements.destinationTelegram.checked = destinations.telegram !== false;
+      elements.destinationWhatsapp.checked = destinations.whatsapp !== false;
+    }
     if (Object.hasOwn(stored, STORAGE.groups)) {
       elements.whatsappGroups.value = String(stored[STORAGE.groups] ?? "");
     } else if (!String(elements.whatsappGroups.value || "").trim()) {
@@ -65,22 +71,27 @@
       const whatsappStored = stored || await chrome.storage.local.get(STORAGE.lastActiveProduct);
       return panel.product.restoreDraft(whatsappStored[STORAGE.lastActiveProduct]);
     }
-    const saved = stored || await chrome.storage.local.get([STORAGE.productDrafts, STORAGE.legacyProductDraft]);
+    const saved = stored || await chrome.storage.local.get([STORAGE.productDrafts, STORAGE.legacyProductDraft, STORAGE.lastActiveProduct]);
     const restored = panel.product.restoreDraftForTab(
       saved[STORAGE.productDrafts],
       tab,
       saved[STORAGE.legacyProductDraft],
     );
-    if (!restored && (state.capturedTabId !== tab.id || comparableUrl(state.capturedPageUrl) !== comparableUrl(tab.url))) {
-      panel.product.clearForTab();
+    if (restored) return true;
+
+    // Navegar por páginas permitidas não apaga nem troca o produto atual.
+    // O conteúdo só muda após uma captura confirmar outro produto real.
+    if (state.activeProduct) {
+      elements.offerForm.classList.remove("hidden");
+      return true;
     }
-    return restored;
+    return panel.product.restoreDraft(saved[STORAGE.lastActiveProduct]);
   }
 
   function handleStorageChanges(changes, area) {
     if (area !== "local") return;
     const next = {};
-    [STORAGE.session, STORAGE.groups, STORAGE.lastBaseUrl, STORAGE.couponLimit, STORAGE.batchCadence, STORAGE.batchOpenTabsOnly].forEach((key) => {
+    [STORAGE.session, STORAGE.groups, STORAGE.lastBaseUrl, STORAGE.couponLimit, STORAGE.batchCadence, STORAGE.batchOpenTabsOnly, STORAGE.sendDestinations].forEach((key) => {
       if (changes[key]) next[key] = changes[key].newValue;
     });
     if (Object.keys(next).length) applyGlobalSettings(next);

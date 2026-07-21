@@ -49,8 +49,8 @@
     const previous = parsePrice(previousValue);
     if (Number.isFinite(previous) && previous > current) return String(previous);
     const regular = parsePrice(regularValue);
-    if (Number.isFinite(regular) && regular >= current) return String(regular);
-    return String(current);
+    if (Number.isFinite(regular) && regular > current) return String(regular);
+    return "";
   }
 
   function comparableUrl(value) {
