@@ -7,6 +7,7 @@
   const BUTTON_POSITION_KEY = "tabarato_launcher_position_v1";
   const BUTTON_MARGIN = 12;
   const runtime = globalThis.TaBaratoRuntime;
+  const pageContext = globalThis.TaBaratoPageContext;
   let extractionPromise = null;
   let extractionUrl = "";
   let enrichmentPromise = null;
@@ -126,6 +127,7 @@
       button.style.cursor = "grabbing";
       button.style.transform = "scale(1.03)";
       button.style.top = `${Math.round(clamp(startTop + deltaY, minimumTop, maximumTop))}px`;
+      document.getElementById("tabarato-quick-actions")?.dispatchEvent(new Event("mouseenter"));
     });
 
     button.addEventListener("pointerup", finish);
@@ -133,6 +135,74 @@
     button.addEventListener("lostpointercapture", finish);
 
     return () => suppressClick;
+  }
+
+
+  const QUICK_LINKS = [
+    { key: "shopee", label: "Afiliados Shopee", url: "https://affiliate.shopee.com.br/offer/product_offer", icon: "S" },
+    { key: "meli", label: "Afiliados Mercado Livre", url: "https://www.mercadolivre.com.br/afiliados/hub#menu-lateral", icon: "ML" },
+    { key: "coupons", label: "Cupons Mercado Livre", url: "https://www.pelando.com.br/cupons-de-descontos/mercado-livre", icon: "%" },
+  ];
+
+  function createQuickActions(button) {
+    const menu = document.createElement("div");
+    menu.id = "tabarato-quick-actions";
+    Object.assign(menu.style, {
+      position: "fixed",
+      right: "76px",
+      zIndex: "2147483646",
+      display: "grid",
+      gap: "8px",
+      opacity: "0",
+      pointerEvents: "none",
+      transform: "translateX(8px)",
+      transition: "opacity .16s ease, transform .16s ease",
+    });
+    QUICK_LINKS.forEach((item) => {
+      const action = document.createElement("button");
+      action.type = "button";
+      action.title = item.label;
+      action.setAttribute("aria-label", item.label);
+      action.textContent = item.icon;
+      Object.assign(action.style, {
+        width: "42px", height: "42px", borderRadius: "50%", border: "1px solid rgba(17,17,17,.14)",
+        background: "#fff", color: item.key === "shopee" ? "#ee4d2d" : item.key === "meli" ? "#111" : "#f97316",
+        fontWeight: "800", fontSize: item.key === "meli" ? "11px" : "15px", cursor: "pointer",
+        boxShadow: "0 10px 26px rgba(17,17,17,.18)",
+      });
+      action.addEventListener("click", async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        action.disabled = true;
+        try {
+          const result = await chrome.runtime.sendMessage({ type: "TABARATO_OPEN_EXTERNAL", url: item.url });
+          if (!result?.ok) throw new Error(result?.error || "Nao foi possivel abrir o atalho.");
+          action.style.transform = "scale(.92)";
+          window.setTimeout(() => { action.style.transform = ""; }, 160);
+        } catch (error) {
+          action.title = runtime.errorMessage(error, "Nao foi possivel abrir o atalho.");
+        } finally {
+          action.disabled = false;
+        }
+      });
+      menu.appendChild(action);
+    });
+    const position = () => {
+      const rect = button.getBoundingClientRect();
+      const menuHeight = 42 * QUICK_LINKS.length + 8 * (QUICK_LINKS.length - 1);
+      menu.style.top = `${Math.round(clamp(rect.top + rect.height / 2 - menuHeight / 2, BUTTON_MARGIN, window.innerHeight - menuHeight - BUTTON_MARGIN))}px`;
+    };
+    const open = () => { position(); menu.style.opacity = "1"; menu.style.pointerEvents = "auto"; menu.style.transform = "translateX(0)"; };
+    const close = () => { menu.style.opacity = "0"; menu.style.pointerEvents = "none"; menu.style.transform = "translateX(8px)"; };
+    let closeTimer = null;
+    const delayedClose = () => { window.clearTimeout(closeTimer); closeTimer = window.setTimeout(close, 280); };
+    button.addEventListener("mouseenter", () => { window.clearTimeout(closeTimer); open(); });
+    button.addEventListener("mouseleave", delayedClose);
+    menu.addEventListener("mouseenter", () => { window.clearTimeout(closeTimer); open(); });
+    menu.addEventListener("mouseleave", delayedClose);
+    button.addEventListener("contextmenu", (event) => { event.preventDefault(); open(); });
+    document.documentElement.appendChild(menu);
+    return menu;
   }
 
   async function updateButton() {
@@ -172,6 +242,7 @@
       transition: "transform .16s ease, box-shadow .16s ease",
     });
     document.documentElement.appendChild(button);
+    const quickActions = createQuickActions(button);
     applyLauncherPosition(button);
 
     const clickSuppressed = makeLauncherDraggable(button);
@@ -207,9 +278,21 @@
     });
   }
 
+  function pageActionError(action = "capturar") {
+    const context = pageContext?.snapshot?.() || { route: "unsupported", platform: "Desconhecida" };
+    if (context.route === "auth-required") return `Entre novamente na ${context.platform} antes de ${action} o produto.`;
+    if (context.route === "product-unavailable") return "Este produto está indisponível ou o anúncio foi encerrado.";
+    if (context.route === "error") return "A plataforma apresentou um erro. Recarregue a página e tente novamente.";
+    if (context.route === "search") return "Abra a página exata do produto antes de iniciar a captura.";
+    if (context.loading) return "A página ainda está carregando. Aguarde os dados principais do produto.";
+    return "Abra a página exata de um produto da Shopee ou do Mercado Livre.";
+  }
+
   async function extractCurrentProduct() {
+    const context = pageContext?.snapshot?.();
+    if (context && context.route !== "product") throw new Error(pageActionError("capturar"));
     const adapter = await currentAdapter();
-    if (!adapter?.isProduct?.()) throw new Error("Abra a pagina exata de um produto compativel.");
+    if (!adapter?.isProduct?.()) throw new Error(pageActionError("capturar"));
     const currentUrl = location.href;
     if (!extractionPromise || extractionUrl !== currentUrl) {
       extractionUrl = currentUrl;
@@ -229,8 +312,10 @@
   }
 
   async function enrichCurrentProduct(baseProduct = {}) {
+    const context = pageContext?.snapshot?.();
+    if (context && context.route !== "product") throw new Error(pageActionError("completar"));
     const adapter = await currentAdapter();
-    if (!adapter?.isProduct?.()) throw new Error("Abra a pagina exata de um produto compativel.");
+    if (!adapter?.isProduct?.()) throw new Error(pageActionError("completar"));
     if (!adapter.enrich) return baseProduct;
     const currentUrl = location.href;
     if (!enrichmentPromise || enrichmentUrl !== currentUrl) {
@@ -321,10 +406,7 @@
       updateButton().catch(() => {});
     }
   });
-  let lastUrl = location.href;
   const handleNavigation = () => {
-    if (lastUrl === location.href) return;
-    lastUrl = location.href;
     window.clearTimeout(navigationTimer);
     navigationTimer = window.setTimeout(() => {
       try {
@@ -336,27 +418,33 @@
       } catch (error) {
         runtime.reportError("store-button", error);
       }
-    }, 80);
+    }, 60);
   };
 
-  window.addEventListener("popstate", handleNavigation);
-  window.addEventListener("hashchange", handleNavigation);
-  window.addEventListener("pageshow", handleNavigation);
+  const stopNavigationObserver = pageContext?.observeNavigation?.(handleNavigation);
   window.addEventListener("resize", () => applyLauncherPosition(document.getElementById(BUTTON_ID)));
-  // Marketplaces usam navegacao SPA. O verificador e adaptativo: responde
-  // rapidamente com a aba visivel e reduz atividade quando ela fica em segundo plano.
+  // Fallback leve para páginas que alteram a URL fora da History API.
+  let fallbackUrl = location.href;
   let navigationWatch = 0;
   const scheduleNavigationWatch = () => {
     window.clearTimeout(navigationWatch);
     navigationWatch = window.setTimeout(() => {
-      handleNavigation();
+      if (fallbackUrl !== location.href) {
+        fallbackUrl = location.href;
+        handleNavigation();
+      }
       scheduleNavigationWatch();
-    }, document.hidden ? 2500 : 750);
+    }, document.hidden ? 12000 : 4000);
   };
   document.addEventListener("visibilitychange", () => {
-    handleNavigation();
-    scheduleNavigationWatch();
+    if (!document.hidden && fallbackUrl !== location.href) {
+      fallbackUrl = location.href;
+      handleNavigation();
+    }
   });
   scheduleNavigationWatch();
-  window.addEventListener("pagehide", () => window.clearTimeout(navigationWatch), { once: true });
+  window.addEventListener("pagehide", () => {
+    window.clearTimeout(navigationWatch);
+    stopNavigationObserver?.();
+  }, { once: true });
 })();

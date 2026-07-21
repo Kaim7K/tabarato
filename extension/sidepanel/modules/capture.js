@@ -2,14 +2,66 @@
   const panel = globalThis.TaBaratoPanel;
   if (!panel || panel.capture) return;
 
-  const { LIMITS, STORAGE, activeTab, elements, setBusy, showToast, state } = panel;
+  const { LIMITS, STORAGE, activeTab, beginOperation, endOperation, elements, setBusy, showToast, state, updateOperation } = panel;
   const runtime = globalThis.TaBaratoRuntime;
-  const { comparableUrl, parsePrice } = globalThis.TaBaratoProductUtils;
+  const { comparableUrl, parsePrice, formatPrice } = globalThis.TaBaratoProductUtils;
+
+  function comparisonSnapshot(product = state.activeProduct) {
+    const price = parsePrice(product?.currentPrice);
+    if (!product || !Number.isFinite(price)) return null;
+    return {
+      productName: product.productName || "",
+      platform: product.platform || "",
+      sourceUrl: product.sourceUrl || "",
+      originalPrice: price,
+      foundPrice: null,
+      startedAt: Date.now(),
+    };
+  }
+
+  function renderComparison() {
+    const comparison = state.priceComparison;
+    elements.priceComparison.classList.toggle("hidden", !comparison);
+    if (!comparison) return;
+    elements.comparisonOriginalPrice.textContent = formatPrice(comparison.originalPrice);
+    elements.comparisonFoundPrice.textContent = Number.isFinite(comparison.foundPrice) ? formatPrice(comparison.foundPrice) : "—";
+    const difference = Number.isFinite(comparison.foundPrice) ? comparison.originalPrice - comparison.foundPrice : null;
+    const percent = Number.isFinite(difference) && comparison.originalPrice > 0 ? (difference / comparison.originalPrice) * 100 : null;
+    elements.comparisonDifference.textContent = Number.isFinite(difference) ? `${difference >= 0 ? "-" : "+"} ${formatPrice(Math.abs(difference))}` : "—";
+    elements.comparisonPercent.textContent = Number.isFinite(percent) ? `${percent >= 0 ? "" : "+"}${Math.abs(percent).toFixed(1).replace(".", ",")}%` : "—";
+    elements.comparisonDifference.dataset.tone = Number.isFinite(difference) ? (difference >= 0 ? "positive" : "negative") : "";
+    elements.comparisonPercent.dataset.tone = Number.isFinite(percent) ? (percent >= 0 ? "positive" : "negative") : "";
+    elements.comparisonStatus.textContent = Number.isFinite(comparison.foundPrice)
+      ? "Produto encontrado capturado. Compare antes de substituir ou publicar."
+      : "O preço original ficará visível durante a pesquisa.";
+  }
+
+  async function startComparison(product) {
+    state.priceComparison = comparisonSnapshot(product);
+    if (!state.priceComparison) return;
+    await chrome.storage.local.set({ [STORAGE.priceComparison]: state.priceComparison }).catch(() => {});
+    renderComparison();
+  }
+
+  async function updateComparison(product) {
+    if (!state.priceComparison) return;
+    const price = parsePrice(product?.currentPrice);
+    if (!Number.isFinite(price)) return;
+    state.priceComparison = { ...state.priceComparison, foundPrice: price, foundProductName: product.productName || "", updatedAt: Date.now() };
+    await chrome.storage.local.set({ [STORAGE.priceComparison]: state.priceComparison }).catch(() => {});
+    renderComparison();
+  }
+
+  async function clearComparison() {
+    state.priceComparison = null;
+    await chrome.storage.local.remove(STORAGE.priceComparison).catch(() => {});
+    renderComparison();
+  }
 
   function scriptsForUrl(value) {
     try {
       const hostname = new URL(value).hostname;
-      const shared = ["content/shared.js"];
+      const shared = ["shared/page-context.js", "content/shared.js"];
       if (/mercadolivre|mercadolibre/i.test(hostname)) {
         return [...shared, "content/stores/mercado-livre.js", "content/stores/generic.js", "content/index.js"];
       }
@@ -39,7 +91,8 @@
     }
   }
 
-  async function ensureScripts(tab) {
+  async function ensureScripts(tab, signal) {
+    runtime.throwIfAborted(signal);
     const availability = await chrome.runtime.sendMessage({ type: "TABARATO_IS_ALLOWED_PAGE", url: tab.url });
     if (!availability?.allowed) throw new Error("Abra uma pagina permitida pelo Ta Barato.");
     const files = scriptsForUrl(tab.url);
@@ -48,36 +101,39 @@
       target: { tabId: tab.id, frameIds: [0] },
       files: ["shared/runtime.js", "shared/coupon-code.js", ...files],
     });
+    runtime.throwIfAborted(signal);
   }
 
-  async function extractFromTab(tab) {
+  async function extractFromTab(tab, signal) {
     const send = () => runtime.withTimeout(
       chrome.tabs.sendMessage(tab.id, { type: "TABARATO_EXTRACT_PRODUCT" }, { frameId: 0 }),
       LIMITS.captureTimeout,
       "A loja demorou para responder. Recarregue a pagina e tente novamente.",
+      { signal },
     );
     try {
       return await send();
     } catch (error) {
       const missingReceiver = /receiving end does not exist|could not establish connection|message port closed|extension context invalidated/i.test(error?.message || "");
       if (!missingReceiver) throw error;
-      await ensureScripts(tab);
+      await ensureScripts(tab, signal);
       return send();
     }
   }
 
-  async function enrichFromTab(tab, product) {
+  async function enrichFromTab(tab, product, signal) {
     const send = () => runtime.withTimeout(
       chrome.tabs.sendMessage(tab.id, { type: "TABARATO_ENRICH_PRODUCT", product }, { frameId: 0 }),
       36000,
       "O Mercado Livre demorou para completar link, cupom e pagamento.",
+      { signal },
     );
     try {
       return await send();
     } catch (error) {
       const missingReceiver = /receiving end does not exist|could not establish connection|message port closed|extension context invalidated/i.test(error?.message || "");
       if (!missingReceiver) throw error;
-      await ensureScripts(tab);
+      await ensureScripts(tab, signal);
       return send();
     }
   }
@@ -102,11 +158,12 @@
     return next;
   }
 
-  async function requestAffiliateLink(tabId) {
+  async function requestAffiliateLink(tabId, signal) {
     const send = () => runtime.withTimeout(
       chrome.tabs.sendMessage(tabId, { type: "TABARATO_CAPTURE_AFFILIATE_LINK" }, { frameId: 0 }),
       30000,
       "O Mercado Livre demorou para gerar o link afiliado.",
+      { signal },
     );
     try {
       return await send();
@@ -114,7 +171,7 @@
       const missingReceiver = /receiving end does not exist|could not establish connection|message port closed|extension context invalidated/i.test(error?.message || "");
       if (!missingReceiver) throw error;
       const tab = await chrome.tabs.get(tabId);
-      await ensureScripts(tab);
+      await ensureScripts(tab, signal);
       return send();
     }
   }
@@ -123,12 +180,12 @@
     if (product?.platform !== "Mercado Livre" || isMeliAffiliateLink(product?.affiliateLink)) return product;
     if (signal?.aborted) throw new Error("Envio interrompido.");
 
-    const direct = await requestAffiliateLink(tabId).catch(() => null);
+    const direct = await requestAffiliateLink(tabId, signal).catch(() => null);
     if (isMeliAffiliateLink(direct?.affiliateLink)) return withRecoveredAffiliateLink(product, direct.affiliateLink);
     return product;
   }
 
-  async function enrich(product) {
+  async function enrich(product, signal) {
     const complete = product.productName && product.currentPrice && product.imageUrl && product.shortDescription;
     const previewLink = product.affiliateLink || product.sourceUrl;
     if (complete || !previewLink) return product;
@@ -137,6 +194,7 @@
         method: "POST",
         body: { link: previewLink },
         timeout: 5000,
+        signal,
       });
       return {
         ...preview.product,
@@ -155,6 +213,7 @@
     state.capturedTabId = tab.id;
     state.capturedPageUrl = comparableUrl(tab.url);
     await panel.product.persistDraft();
+    await updateComparison(product);
     elements.refreshButton.classList.remove("needs-refresh");
   }
 
@@ -169,66 +228,85 @@
 
   async function current() {
     const runId = ++state.captureSequence;
+    const controller = beginOperation("Capturando produto", "Reconhecendo a página e a loja...");
+    const { signal } = controller;
     setBusy(elements.refreshButton, true, "...");
     elements.loading.classList.remove("hidden");
     elements.empty.classList.add("hidden");
     if (!state.activeProduct) elements.offerForm.classList.add("hidden");
     try {
       const tab = await activeTab();
+      runtime.throwIfAborted(signal);
       if (!tab?.id) throw new Error("Nenhuma aba ativa encontrada.");
       if (isCouponManagementUrl(tab.url)) {
-        throw new Error("Volte para a pagina do produto e clique em Capturar.");
+        throw new Error("Volte para a página do produto e clique em Capturar.");
       }
+      updateOperation("Lendo nome, preço, imagem e identificação do anúncio...");
       const catalogRequest = panel.catalog.synchronize().catch((error) => {
         runtime.reportError("capture-catalog-sync", error);
         return null;
       });
-      const result = await extractFromTab(tab);
-      if (!result?.ok) throw new Error(result?.error || "Produto nao encontrado.");
+      const result = await extractFromTab(tab, signal);
+      if (!result?.ok) throw new Error(result?.error || "Produto não encontrado nesta página.");
       if (runId !== state.captureSequence) return;
+      runtime.throwIfAborted(signal);
       await apply(result.product, tab);
       elements.loading.classList.add("hidden");
       setBusy(elements.refreshButton, true, "Completando...");
-      panel.renderActionLocks();
+      updateOperation("Dados principais prontos. Completando benefícios e link disponíveis...");
 
       const storeEnrichment = result.product.platform === "Mercado Livre"
-        ? enrichFromTab(tab, result.product).catch((error) => {
+        ? enrichFromTab(tab, result.product, signal).catch((error) => {
+          if (signal.aborted) throw error;
           runtime.reportError("mercado-livre-enrichment", error);
           return null;
         })
         : Promise.resolve(null);
 
-      let product = await enrich(result.product);
+      let product = await enrich(result.product, signal);
       if (runId !== state.captureSequence) return;
+      runtime.throwIfAborted(signal);
       if (product !== result.product) {
         product = panel.product.mergeEnrichment(product);
         await panel.product.persistDraft();
       }
-      // Link, cupom e pagamento devem aparecer assim que a loja responder.
-      // A sincronizacao do catalogo nao pode bloquear esses dados visiveis.
       const enrichedResult = await storeEnrichment;
       if (runId !== state.captureSequence) return;
+      runtime.throwIfAborted(signal);
       if (enrichedResult?.ok && enrichedResult.product) {
         product = panel.product.mergeEnrichment(enrichedResult.product);
         await panel.product.persistDraft();
       }
 
+      updateOperation("Relacionando o produto às categorias já existentes...");
       await catalogRequest;
       if (runId !== state.captureSequence) return;
+      runtime.throwIfAborted(signal);
       const suggestedCategory = await panel.catalog.ensureCategory(product);
       if (suggestedCategory && elements.fields.category.value !== suggestedCategory) {
         elements.fields.category.value = suggestedCategory;
         panel.product.updatePreview();
         await panel.product.persistDraft();
+      } else if (!suggestedCategory) {
+        elements.fields.category.value = "";
+        panel.product.updatePreview();
+        elements.captureQuality.textContent = "Categoria não identificada com segurança. Confirme uma categoria existente antes de publicar.";
+        elements.captureQuality.classList.remove("hidden");
       }
       panel.publishing?.inspectExisting(product);
+      showToast("Produto capturado e pronto para revisão.", "success");
     } catch (error) {
-      if (runId === state.captureSequence) showFailure(error);
+      if (runId !== state.captureSequence) return;
+      if (signal.aborted || error?.name === "AbortError" || /cancelad|substituída/i.test(error?.message || "")) {
+        showToast("Captura cancelada. O produto anterior foi preservado.", "neutral");
+      } else {
+        showFailure(error);
+      }
     } finally {
       if (runId === state.captureSequence) {
         elements.loading.classList.add("hidden");
         setBusy(elements.refreshButton, false);
-        panel.renderActionLocks();
+        endOperation(controller);
       }
     }
   }
@@ -290,14 +368,14 @@
     await runtime.delay(80, signal);
 
     let tab = await chrome.tabs.get(tabId);
-    let result = await extractFromTab(tab);
+    let result = await extractFromTab(tab, signal);
     if (result?.ok && coreProductIsComplete(result.product)) return result.product;
     if (!reloadOnIncomplete) throw new Error(result?.error || "A pagina ainda nao terminou de carregar os dados do produto.");
 
     await reloadWorker(tabId, url, signal);
     assertBatchActive(signal);
     tab = await chrome.tabs.get(tabId);
-    result = await extractFromTab(tab);
+    result = await extractFromTab(tab, signal);
     if (!result?.ok) throw new Error(result?.error || "Produto nao encontrado.");
     if (!coreProductIsComplete(result.product)) throw new Error("O Mercado Livre nao terminou de carregar nome, preco ou imagem do produto.");
     return result.product;
@@ -436,179 +514,238 @@
   }
 
 
-  async function waitForTabComplete(tabId, timeout = 30000) {
-    const started = Date.now();
-    while (Date.now() - started < timeout) {
+
+
+  async function waitForMarketplaceProductTab(tabId, platform, timeout = 30000, signal) {
+    const storePattern = platform === "Shopee" ? /(?:^|\.)shopee\.com\.br$/i : /mercadolivre|mercadolibre/i;
+    return runtime.poll(async () => {
       const tab = await chrome.tabs.get(tabId).catch(() => null);
-      if (tab?.status === "complete") return tab;
-      await new Promise((resolve) => setTimeout(resolve, 300));
+      if (!tab) throw new Error("A aba usada no processo foi fechada.");
+      let hostname = "";
+      try { hostname = new URL(tab.url || "").hostname; } catch { /* URL intermediária. */ }
+      return tab.status === "complete" && storePattern.test(hostname) && isMarketplaceProductUrl(tab.url) ? tab : null;
+    }, {
+      timeout,
+      interval: 120,
+      maxInterval: 650,
+      signal,
+      throwOnTimeout: false,
+    });
+  }
+
+  async function waitForStoredResult(key, predicate, timeout, signal) {
+    return runtime.runWithTimeout(() => new Promise((resolve, reject) => {
+      let settled = false;
+      const finish = (callback, value) => {
+        if (settled) return;
+        settled = true;
+        chrome.storage.onChanged.removeListener(onChanged);
+        signal?.removeEventListener("abort", onAbort);
+        callback(value);
+      };
+      const onAbort = () => finish(reject, runtime.abortError(signal?.reason));
+      const onChanged = (changes, area) => {
+        if (area !== "local" || !changes[key]) return;
+        const value = changes[key].newValue;
+        if (predicate(value)) finish(resolve, value);
+      };
+      chrome.storage.onChanged.addListener(onChanged);
+      signal?.addEventListener("abort", onAbort, { once: true });
+      chrome.storage.local.get(key)
+        .then((stored) => {
+          const value = stored[key];
+          if (predicate(value)) finish(resolve, value);
+        })
+        .catch((error) => finish(reject, error));
+    }), {
+      milliseconds: timeout,
+      message: "A Shopee não retornou o link afiliado dentro do tempo esperado.",
+      signal,
+    });
+  }
+
+
+
+  async function openShopeeAffiliatePanel(signal) {
+    runtime.throwIfAborted(signal);
+    const existing = await chrome.tabs.query({ url: "https://affiliate.shopee.com.br/*" });
+    let affiliateTab = existing[0];
+    if (affiliateTab?.id) {
+      await chrome.tabs.update(affiliateTab.id, { active: true });
+      await chrome.windows.update(affiliateTab.windowId, { focused: true }).catch(() => {});
+    } else {
+      affiliateTab = await chrome.tabs.create({ url: "https://affiliate.shopee.com.br/", active: true });
     }
-    throw new Error("A pagina do produto escolhido demorou para carregar.");
+    runtime.throwIfAborted(signal);
+    return affiliateTab;
   }
 
   async function requestShopeeAffiliateLink() {
-    let product = state.activeProduct;
-    if (!product || product.platform !== "Shopee") throw new Error("Capture primeiro um produto da Shopee.");
-    if (!product.sourceUrl || !product.externalProductId) throw new Error("O produto da Shopee não possui identificação suficiente.");
-    const requestId = `shopee:${product.externalProductId}:${Date.now()}`;
+    const originalProduct = state.activeProduct;
+    if (!originalProduct || originalProduct.platform !== "Shopee") throw new Error("Capture primeiro um produto da Shopee.");
+    if (!originalProduct.sourceUrl || !originalProduct.externalProductId) throw new Error("O produto da Shopee não possui identificação suficiente.");
+
+    const controller = beginOperation("Gerando link da Shopee", "Abrindo o painel de afiliados...");
+    const { signal } = controller;
+    const sourceTabId = state.capturedTabId || (await activeTab().catch(() => null))?.id;
+    if (!sourceTabId) {
+      endOperation(controller);
+      throw new Error("A aba original do produto não foi encontrada.");
+    }
+    const sourceTab = await chrome.tabs.get(sourceTabId).catch(() => null);
+    const sourceWindowId = sourceTab?.windowId || null;
+    const focusSourceProduct = async (url = "") => {
+      runtime.throwIfAborted(signal);
+      const current = await chrome.tabs.get(sourceTabId).catch(() => null);
+      if (!current) throw new Error("A aba original do produto foi fechada.");
+      if (url && comparableUrl(current.url) !== comparableUrl(url)) await chrome.tabs.update(sourceTabId, { url, active: true });
+      else await chrome.tabs.update(sourceTabId, { active: true });
+      if (sourceWindowId) await chrome.windows.update(sourceWindowId, { focused: true }).catch(() => {});
+    };
+
+    setBusy(elements.shopeeLinkButton, true, "Gerando...");
+    let requestId = "";
+    try {
+      await openShopeeAffiliatePanel(signal);
+      requestId = `shopee:${originalProduct.externalProductId}:${Date.now()}`;
+      await chrome.storage.local.remove(STORAGE.shopeeAffiliateResult);
+      await chrome.storage.local.set({
+        [STORAGE.shopeeAffiliateRequest]: {
+          requestId,
+          mode: "generate-link",
+          sourceUrl: originalProduct.sourceUrl,
+          productName: originalProduct.productName,
+          externalProductId: originalProduct.externalProductId,
+          createdAt: Date.now(),
+          sourceTabId,
+          sourceWindowId,
+          expiresAt: Date.now() + 3 * 60 * 1000,
+        },
+      });
+      updateOperation("Buscando primeiro o anúncio exato. Uma alternativa só será usada se ele não existir.");
+
+      const result = await waitForStoredResult(
+        STORAGE.shopeeAffiliateResult,
+        (candidate) => candidate?.requestId === requestId && Boolean(candidate.affiliateLink || candidate.error),
+        55000,
+        signal,
+      );
+      if (result?.error) throw new Error(result.error);
+      if (!result?.affiliateLink) throw new Error("A Shopee não retornou um link afiliado válido.");
+
+      updateOperation("Abrindo o anúncio realmente vinculado ao link...");
+      const selectedUrl = String(result.selectedProductUrl || result.affiliateLink || "").trim();
+      if (!selectedUrl) throw new Error("A Shopee não informou o anúncio vinculado ao link afiliado.");
+      await focusSourceProduct(selectedUrl);
+      const selectedTab = await waitForMarketplaceProductTab(sourceTabId, "Shopee", 35000, signal);
+      if (!selectedTab) throw new Error("O anúncio afiliado escolhido não abriu na página do produto.");
+
+      updateOperation("Atualizando nome, preço, imagem e categoria com os dados do anúncio afiliado...");
+      await ensureScripts(selectedTab, signal);
+      const selectedCapture = await extractFromTab(selectedTab, signal);
+      const candidateProduct = selectedCapture?.product;
+      if (!selectedCapture?.ok || !candidateProduct?.externalProductId) {
+        throw new Error(selectedCapture?.error || "O produto afiliado escolhido não pôde ser capturado.");
+      }
+
+      const merged = {
+        ...candidateProduct,
+        affiliateLink: result.affiliateLink,
+        affiliateLinkType: "shopee-generated",
+        captureStage: "complete",
+      };
+      await apply(merged, selectedTab);
+      const category = await panel.catalog.ensureCategory(merged);
+      if (category) elements.fields.category.value = category;
+      await panel.product.persistDraft();
+      await focusSourceProduct();
+      showToast(result.matchType === "exact"
+        ? "Link gerado para o anúncio exato. Os dados foram atualizados."
+        : "O anúncio exato não estava disponível. A alternativa escolhida foi aberta e atualizada.", "success");
+      return merged;
+    } catch (error) {
+      if (signal.aborted || error?.name === "AbortError" || /cancelad|substituída/i.test(error?.message || "")) {
+        await focusSourceProduct(originalProduct.sourceUrl).catch(() => {});
+        showToast("Geração de link cancelada. O produto anterior foi preservado.", "neutral");
+        return null;
+      }
+      throw error;
+    } finally {
+      if (requestId) {
+        const stored = await chrome.storage.local.get([STORAGE.shopeeAffiliateRequest, STORAGE.shopeeAffiliateResult]).catch(() => ({}));
+        const remove = [];
+        if (stored[STORAGE.shopeeAffiliateRequest]?.requestId === requestId) remove.push(STORAGE.shopeeAffiliateRequest);
+        if (stored[STORAGE.shopeeAffiliateResult]?.requestId === requestId) remove.push(STORAGE.shopeeAffiliateResult);
+        if (remove.length) await chrome.storage.local.remove(remove).catch(() => {});
+      }
+      setBusy(elements.shopeeLinkButton, false);
+      endOperation(controller);
+    }
+  }
+
+  async function prepareShopeeBestOptionSearch(product, signal) {
+    await openShopeeAffiliatePanel(signal);
+    const requestId = `shopee-browse:${product.externalProductId || Date.now()}:${Date.now()}`;
+    await chrome.storage.local.remove(STORAGE.shopeeAffiliateResult);
     await chrome.storage.local.set({
       [STORAGE.shopeeAffiliateRequest]: {
         requestId,
+        mode: "browse-only",
         sourceUrl: product.sourceUrl,
         productName: product.productName,
         externalProductId: product.externalProductId,
         createdAt: Date.now(),
-        sourceTabId: state.capturedTabId,
-        sourceWindowId: (await activeTab().catch(() => null))?.windowId || null,
-        expiresAt: Date.now() + 5 * 60 * 1000,
+        expiresAt: Date.now() + 3 * 60 * 1000,
       },
     });
-    setBusy(elements.shopeeLinkButton, true, "Abrindo...");
-    try {
-      const existing = await chrome.tabs.query({ url: "https://affiliate.shopee.com.br/*" });
-      let tab = existing[0];
-      if (tab?.id) {
-        await chrome.tabs.update(tab.id, { active: true });
-        await chrome.windows.update(tab.windowId, { focused: true }).catch(() => {});
-      } else {
-        tab = await chrome.tabs.create({ url: "https://affiliate.shopee.com.br/", active: true });
-      }
-      showToast("O painel da Shopee foi aberto. A extensão tentará preencher e coletar o link automaticamente.", "neutral");
-      const started = Date.now();
-      while (Date.now() - started < 60000) {
-        await new Promise((resolve) => setTimeout(resolve, 700));
-        const stored = await chrome.storage.local.get(STORAGE.shopeeAffiliateResult);
-        const result = stored[STORAGE.shopeeAffiliateResult];
-        if (result?.requestId !== requestId || !result.affiliateLink) continue;
-        await chrome.storage.local.remove(STORAGE.shopeeAffiliateResult);
-        const selectedUrl = String(result.selectedProductUrl || "").trim();
-        const selectedIsDifferent = selectedUrl && comparableUrl(selectedUrl) !== comparableUrl(product.sourceUrl || "");
-        if (selectedIsDifferent && result.sourceTabId) {
-          await chrome.tabs.update(result.sourceTabId, { url: selectedUrl, active: true });
-          if (result.sourceWindowId) await chrome.windows.update(result.sourceWindowId, { focused: true }).catch(() => {});
-          const selectedTab = await waitForTabComplete(result.sourceTabId);
-          await ensureScripts(selectedTab);
-          const selectedCapture = await extractFromTab(selectedTab);
-          if (!selectedCapture?.ok || !selectedCapture.product?.externalProductId) {
-            throw new Error("A melhor oferta foi encontrada, mas os dados dela nao puderam ser capturados.");
-          }
-          product = selectedCapture.product;
-          await apply(product, selectedTab);
-        }
-        const merged = panel.product.mergeEnrichment({
-          ...product,
-          affiliateLink: result.affiliateLink,
-          affiliateLinkType: "shopee-generated",
-          captureStage: "complete",
-        });
-        elements.fields.affiliateLink.value = result.affiliateLink;
-        await panel.product.persistDraft();
-        if (result.sourceTabId) {
-          await chrome.tabs.update(result.sourceTabId, { active: true }).catch(() => {});
-          if (result.sourceWindowId) await chrome.windows.update(result.sourceWindowId, { focused: true }).catch(() => {});
-        }
-        showToast(selectedIsDifferent
-          ? "Melhor oferta escolhida, dados atualizados e link afiliado coletado."
-          : "Link de afiliado da Shopee coletado e preenchido.", "success");
-        return merged;
-      }
-      throw new Error("O link não apareceu automaticamente. Envie prints do painel de geração para eu ajustar os seletores exatos.");
-    } finally {
-      setBusy(elements.shopeeLinkButton, false);
-    }
+    updateOperation("Preenchendo o nome exato e aplicando o filtro de menor preço...");
+    const result = await waitForStoredResult(
+      STORAGE.shopeeAffiliateResult,
+      (candidate) => candidate?.requestId === requestId && Boolean(candidate.browseReady || candidate.error),
+      24000,
+      signal,
+    );
+    if (result?.error) throw new Error(result.error);
+    await chrome.storage.local.remove([STORAGE.shopeeAffiliateRequest, STORAGE.shopeeAffiliateResult]).catch(() => {});
+    showToast("Busca pronta na Shopee: nome exato e menor preço. A escolha do anúncio é manual.", "success");
+    return { opened: true, platform: "Shopee" };
   }
 
-
-  async function searchBestMercadoLivreOption(product) {
+  async function searchBestMercadoLivreOption(product, signal) {
+    runtime.throwIfAborted(signal);
     const query = String(product.productName || "").replace(/\s+/g, " ").trim();
-    if (!query) throw new Error("O produto nao possui nome para pesquisa.");
-    const slug = encodeURIComponent(query).replace(/%20/g, "-");
-    const searchTab = await chrome.tabs.create({ url: `https://lista.mercadolivre.com.br/${slug}`, active: true });
-    try {
-      await waitForTabComplete(searchTab.id, 30000);
-      const [{ result } = {}] = await chrome.scripting.executeScript({
-        target: { tabId: searchTab.id, frameIds: [0] },
-        func: (productName) => {
-          const clean = (value = "") => String(value).replace(/\s+/g, " ").trim();
-          const norm = (value = "") => clean(value).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-          const words = (value) => new Set(norm(value).split(/[^a-z0-9]+/).filter((word) => word.length > 2));
-          const similarity = (left, right) => {
-            const a = words(left); const b = words(right);
-            if (!a.size || !b.size) return 0;
-            let matches = 0; a.forEach((word) => { if (b.has(word)) matches += 1; });
-            return matches / Math.min(a.size, b.size);
-          };
-          const money = (text) => {
-            const match = clean(text).match(/R\$\s*([\d.]+(?:,\d{1,2})?)/i);
-            return match ? Number(match[1].replace(/\./g, "").replace(",", ".")) : 0;
-          };
-          const sales = (text) => {
-            const match = norm(text).match(/(?:\+?\s*)?(\d+(?:[.,]\d+)?)\s*(mil|k)?\+?\s*vendid[oa]s?/i);
-            if (!match) return 0;
-            const base = Number(match[1].replace(",", "."));
-            return Number.isFinite(base) ? base * (match[2] ? 1000 : 1) : 0;
-          };
-          const cards = [...document.querySelectorAll(".ui-search-layout__item, .poly-card, li.ui-search-layout__item")];
-          const candidates = cards.map((card) => {
-            const titleElement = card.querySelector("h2, h3, .poly-component__title, .ui-search-item__title");
-            const link = titleElement?.closest("a[href]") || card.querySelector("a[href*='MLB']");
-            const title = clean(titleElement?.textContent || link?.textContent || "");
-            const text = clean(card.textContent || "");
-            const price = money(text);
-            const relevance = similarity(productName, title);
-            return { url: link?.href || "", title, price, sales: sales(text), relevance };
-          }).filter((item) => item.url && item.price > 0 && item.relevance >= 0.35);
-          if (!candidates.length) return null;
-          const maxSales = Math.max(...candidates.map((item) => item.sales), 1);
-          const minPrice = Math.min(...candidates.map((item) => item.price));
-          const maxPrice = Math.max(...candidates.map((item) => item.price));
-          candidates.forEach((item) => {
-            const salesScore = Math.log10(item.sales + 1) / Math.log10(maxSales + 1);
-            const priceScore = maxPrice === minPrice ? 1 : (maxPrice - item.price) / (maxPrice - minPrice);
-            item.score = Math.min(1, item.relevance) * 0.4 + salesScore * 0.35 + priceScore * 0.25;
-          });
-          candidates.sort((a, b) => b.score - a.score || b.sales - a.sales || a.price - b.price);
-          return candidates[0];
-        },
-        args: [query],
-      });
-      if (!result?.url) throw new Error("Nenhuma oferta suficientemente parecida foi encontrada no Mercado Livre.");
-      const targetTabId = state.capturedTabId || (await activeTab())?.id;
-      if (!targetTabId) throw new Error("A aba original do produto nao foi encontrada.");
-      await chrome.tabs.update(targetTabId, { url: result.url, active: true });
-      const targetTab = await waitForTabComplete(targetTabId, 30000);
-      await ensureScripts(targetTab);
-      const captured = await extractFromTab(targetTab);
-      if (!captured?.ok) throw new Error(captured?.error || "A melhor oferta nao pôde ser capturada.");
-      await apply(captured.product, targetTab);
-      let enriched = await enrich(captured.product);
-      const storeEnriched = await enrichFromTab(targetTab, enriched).catch(() => null);
-      if (storeEnriched?.ok && storeEnriched.product) enriched = panel.product.mergeEnrichment(storeEnriched.product);
-      const category = await panel.catalog.ensureCategory(enriched);
-      if (category) elements.fields.category.value = category;
-      await panel.product.persistDraft();
-      showToast(`Melhor opção encontrada: ${result.title} por R$ ${result.price.toFixed(2).replace(".", ",")}.`, "success");
-      return enriched;
-    } finally {
-      await chrome.tabs.remove(searchTab.id).catch(() => {});
-    }
+    if (!query) throw new Error("O produto não possui nome para pesquisa.");
+    const searchUrl = `https://lista.mercadolivre.com.br/${encodeURIComponent(query).replace(/%20/g, "-")}_OrderId_PRICE`;
+    const tab = await chrome.tabs.create({ url: searchUrl, active: true });
+    runtime.throwIfAborted(signal);
+    showToast("Busca do Mercado Livre aberta pelo nome exato e ordenada pelo menor preço. A escolha é manual.", "success");
+    return { opened: true, platform: "Mercado Livre", tabId: tab.id };
   }
 
   async function searchBestOption() {
     const product = state.activeProduct;
     if (!product) throw new Error("Capture primeiro um produto.");
-    setBusy(elements.bestOptionButton, true, "Buscando...");
+    const controller = beginOperation("Abrindo busca de melhor preço", "Preparando a pesquisa sem selecionar anúncios automaticamente...");
+    const { signal } = controller;
+    setBusy(elements.bestOptionButton, true, "Abrindo...");
+    await startComparison(product);
     try {
-      if (product.platform === "Shopee") return await requestShopeeAffiliateLink();
-      if (product.platform === "Mercado Livre") return await searchBestMercadoLivreOption(product);
-      throw new Error("A busca inteligente esta disponível apenas para Shopee e Mercado Livre.");
+      if (product.platform === "Shopee") return await prepareShopeeBestOptionSearch(product, signal);
+      if (product.platform === "Mercado Livre") return await searchBestMercadoLivreOption(product, signal);
+      throw new Error("A busca por menor preço está disponível apenas para Shopee e Mercado Livre.");
     } catch (error) {
+      if (signal.aborted || error?.name === "AbortError" || /cancelad|substituída/i.test(error?.message || "")) {
+        showToast("Abertura da busca cancelada.", "neutral");
+        return null;
+      }
       showToast(runtime.errorMessage(error), "error");
       throw error;
     } finally {
       setBusy(elements.bestOptionButton, false);
+      endOperation(controller);
     }
   }
+
 
   panel.capture = {
     requestShopeeAffiliateLink,
@@ -629,5 +766,9 @@
     waitForProductDom,
     urlInWorker,
     visibleProductUrls,
+    clearComparison,
+    renderComparison,
+    startComparison,
+    updateComparison,
   };
 })();

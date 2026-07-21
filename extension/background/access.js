@@ -13,6 +13,7 @@
   const DYNAMIC_CONTENT_SCRIPT_ID = "tabarato-connected-stores";
   const STORE_CONTENT_FILES = [
     "shared/runtime.js",
+    "shared/page-context.js",
     "shared/coupon-code.js",
     "content/shared.js",
     "content/stores/generic.js",

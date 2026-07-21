@@ -80,8 +80,8 @@ export default async function handler(req, res) {
     }
 
     if (req.method === "DELETE" && req.query.resource === "category") {
-      await removeCategory(req.query.slug || "");
-      return sendJson(res, 200, { ok: true });
+      const result = await removeCategory(req.query.slug || "", { targetCategory: req.query.targetCategory || "" });
+      return sendJson(res, 200, { ok: true, ...result });
     }
 
     return methodNotAllowed(res, ["GET", "POST", "DELETE"]);

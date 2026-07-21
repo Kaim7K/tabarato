@@ -357,13 +357,15 @@
   };
 
   const waitFor = async (read, timeout = 7000) => {
-    const startedAt = Date.now();
-    let value = read();
-    while (!value && Date.now() - startedAt < timeout) {
-      await new Promise((resolve) => window.setTimeout(resolve, 150));
-      value = read();
+    if (globalThis.TaBaratoPageContext?.waitFor) {
+      return globalThis.TaBaratoPageContext.waitFor(read, { timeout });
     }
-    return value || "";
+    return globalThis.TaBaratoRuntime.poll(read, {
+      timeout,
+      interval: 150,
+      maxInterval: 500,
+      throwOnTimeout: false,
+    });
   };
 
   const canonicalUrl = () => attribute("href", 'link[rel="canonical"]') || location.href;

@@ -2,7 +2,7 @@ import { query } from "./db.js";
 import { findDuplicateOffer, getOffer, mapOffer, validateOffer } from "./offers.js";
 import { sendTelegramOffer } from "./telegram.js";
 
-export async function publishOfferById(id, { shareImageDataUrl = "", forceRepublish = false, messageHeadline = "" } = {}) {
+export async function publishOfferById(id, { shareImageDataUrl = "", forceRepublish = false, messageHeadline = "", destinations = { site: true, telegram: true } } = {}) {
   const candidate = await getOffer(id);
   if (!candidate) return { ok: false, status: 404, error: "Oferta não encontrada." };
   const duplicate = await findDuplicateOffer(candidate, id, ["PUBLICADO", "PUBLICANDO"]);
@@ -45,6 +45,25 @@ export async function publishOfferById(id, { shareImageDataUrl = "", forceRepubl
     return { ok: false, status: 400, error: errors.join(" ") };
   }
 
+  const siteRequested = destinations?.site !== false;
+  const telegramRequested = destinations?.telegram !== false;
+  if (!telegramRequested) {
+    const updated = await query(
+      `UPDATE telegram_offers
+       SET status='PUBLICADO', published_at=COALESCE(published_at,NOW()), error_message=NULL
+       WHERE id=$1 RETURNING *`,
+      [id]
+    );
+    if (siteRequested) {
+      await query(
+        `INSERT INTO offer_publication_history (offer_id, channel, status)
+         VALUES ($1, 'SITE', 'SUCESSO')`,
+        [id]
+      ).catch(() => {});
+    }
+    return { ok: true, channels: { site: { ok: siteRequested }, telegram: { ok: true, skipped: true } }, offer: mapOffer(updated.rows[0]) };
+  }
+
   try {
     const result = await sendTelegramOffer({ ...offer, shareImageDataUrl, messageHeadline });
     const updated = await query(
@@ -62,16 +81,28 @@ export async function publishOfferById(id, { shareImageDataUrl = "", forceRepubl
     return { ok: true, offer: mapOffer(updated.rows[0]) };
   } catch (error) {
     const message = error?.name === "AbortError" ? "Timeout ao enviar para o Telegram." : error.message || "Erro ao publicar no Telegram.";
+    const code = error?.code || "TELEGRAM_FAILED";
     const updated = await query(
-      "UPDATE telegram_offers SET status='ERRO', error_message=$2 WHERE id=$1 RETURNING *",
-      [id, message]
+      `UPDATE telegram_offers
+       SET status=$3, published_at=CASE WHEN $3='PUBLICADO' THEN COALESCE(published_at,NOW()) ELSE published_at END,
+           error_message=$2
+       WHERE id=$1 RETURNING *`,
+      [id, `[${code}] ${message}`, siteRequested ? "PUBLICADO" : "ERRO"]
     );
     await query(
       `INSERT INTO offer_publication_history (offer_id, channel, status, error_message)
        VALUES ($1, 'TELEGRAM', 'ERRO', $2)`,
       [id, message]
     ).catch(() => {});
-    return { ok: false, status: 502, error: message, offer: mapOffer(updated.rows[0]) };
+    return {
+      ok: false,
+      partial: siteRequested,
+      status: 502,
+      error: message,
+      errorCode: code,
+      channels: { site: { ok: siteRequested }, telegram: { ok: false, error: message, errorCode: code } },
+      offer: mapOffer(updated.rows[0]),
+    };
   }
 }
 

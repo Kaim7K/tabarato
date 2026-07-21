@@ -19,8 +19,24 @@
     return normalized > 0 && normalized < 10000000 ? normalized.toFixed(2).replace(/\.00$/, "") : "";
   };
 
+  const productIdentity = () => {
+    const match = location.pathname.match(/-i\.(\d+)\.(\d+)/i)
+      || location.pathname.match(/\/product\/(\d+)\/(\d+)/i);
+    return match ? { shopId: match[1], itemId: match[2] } : null;
+  };
+
+  const productRoot = () => {
+    const title = document.querySelector("[data-testid='pdp-product-title'], main h1, h1");
+    return title?.closest(".product-briefing, [data-testid*='pdp' i], main, [role='main']")
+      || document.querySelector(".product-briefing, [data-testid*='pdp' i], main, [role='main']")
+      || document.body;
+  };
+
+  const inProductRoot = (element) => Boolean(element && productRoot()?.contains(element));
+
   const scriptPriceValues = () => {
     const result = { current: [], previous: [] };
+    const identity = productIdentity();
     const patterns = [
       [/(?:"|')?(?:price_before_discount|price_min_before_discount|price_max_before_discount)(?:"|')?\s*:\s*(\d+(?:\.\d+)?)/gi, "previous"],
       [/(?:"|')?(?:price_min|price_max|price)(?:"|')?\s*:\s*(\d+(?:\.\d+)?)/gi, "current"],
@@ -28,6 +44,7 @@
     [...document.scripts].forEach((script) => {
       const text = script.textContent || "";
       if (!/price_before_discount|price_min|price_max/i.test(text)) return;
+      if (identity && !text.includes(identity.itemId) && !text.includes(identity.shopId)) return;
       patterns.forEach(([pattern, bucket]) => {
         let match;
         let count = 0;
@@ -42,7 +59,8 @@
     return result;
   };
 
-  const visiblePriceCandidates = () => [...document.querySelectorAll("main span, main div")]
+  const visiblePriceCandidates = () => [...productRoot().querySelectorAll("span, div")]
+    .filter(inProductRoot)
     .filter((element) => tools.visible(element))
     .map((element) => {
       const text = tools.clean(element.textContent);
@@ -62,7 +80,8 @@
     .filter((item) => item?.value);
 
   const visibleDiscountPercent = () => {
-    const values = [...document.querySelectorAll("main span, main div")]
+    const values = [...productRoot().querySelectorAll("span, div")]
+      .filter(inProductRoot)
       .filter((element) => tools.visible(element))
       .map((element) => tools.clean(element.textContent).match(/-\s*(\d{1,2})%/))
       .filter(Boolean)
@@ -71,7 +90,8 @@
     return values.length ? Math.max(...values) : 0;
   };
 
-  const explicitOldPriceValues = () => [...document.querySelectorAll("main del, main s, main [style*='line-through'], main [class*='price-before' i], main [class*='price-original' i], main [class*='original-price' i]")]
+  const explicitOldPriceValues = () => [...productRoot().querySelectorAll("del, s, [style*='line-through'], [class*='price-before' i], [class*='price-original' i], [class*='original-price' i], [class*='price--original' i]")]
+    .filter(inProductRoot)
     .filter((element) => tools.visible(element))
     .map((element) => tools.clean(element.textContent).match(/R\$\s*([\d.]+(?:,\d{1,2})?)/))
     .filter(Boolean)
@@ -88,6 +108,13 @@
     const scripts = scriptPriceValues().previous.map(Number).filter((value) => value > current && value < current * 10);
     const values = [...explicit, ...dom, ...scripts].filter((value) => Number.isFinite(value));
     if (values.length) return String(Math.min(...values));
+    // Shopee frequently renders the old price beside the current value without a stable class.
+    // Read all visible BRL amounts in the main product area and only accept a plausible larger price.
+    const nearby = visiblePriceCandidates()
+      .map((item) => Number(item.value))
+      .filter((value) => Number.isFinite(value) && value > current && value < current * 4)
+      .sort((a, b) => a - b);
+    if (nearby.length) return String(nearby[0]);
     const discount = visibleDiscountPercent();
     if (discount) {
       const inferred = current / (1 - discount / 100);
@@ -105,6 +132,30 @@
       if (parts.length) return [...new Set(parts)].join(" > ");
     }
     return "";
+  };
+
+
+  const ratingValue = () => {
+    const selectors = [
+      "[data-testid*='rating' i]",
+      "[class*='rating' i]",
+      "[aria-label*='avalia' i]",
+      "[aria-label*='rating' i]",
+      "main a[href*='ratingFilter']",
+    ];
+    for (const selector of selectors) {
+      for (const element of document.querySelectorAll(selector)) {
+        if (!tools.visible(element)) continue;
+        const text = tools.clean(`${element.getAttribute?.("aria-label") || ""} ${element.textContent || ""}`);
+        const match = text.match(/(?:nota|avaliacao|avaliação|rating)?\s*([0-5](?:[.,]\d{1,2})?)(?:\s*de\s*5)?/i);
+        const value = match ? Number(match[1].replace(",", ".")) : 0;
+        if (value >= 1 && value <= 5) return value;
+      }
+    }
+    const topText = tools.clean(document.querySelector("main")?.innerText || document.body?.innerText || "").slice(0, 5000);
+    const fallback = topText.match(/\b([4-5](?:[.,]\d{1,2})?)\s*(?:avaliacoes|avaliações|estrelas|\()/i);
+    const value = fallback ? Number(fallback[1].replace(",", ".")) : 0;
+    return value >= 1 && value <= 5 ? value : 0;
   };
 
   const validAffiliateLink = (value = "") => {
@@ -164,13 +215,43 @@
       .sort((left, right) => right.score - left.score);
   };
 
+
+  const bestInstallment = (root = document) => {
+    const text = tools.clean(root?.innerText || root?.textContent || "");
+    const matches = [...text.matchAll(/\b(\d{1,2})x\s*(?:de\s*)?R\$\s*([\d.]+(?:,\d{1,2})?)\s*sem\s+juros\b/gi)]
+      .map((match) => ({ count: Number(match[1]), text: `${match[1]}x de R$ ${match[2]} sem juros.` }))
+      .sort((a, b) => b.count - a.count);
+    return matches[0]?.text || "";
+  };
+
+  const installmentBenefits = async () => {
+    let installment = bestInstallment(productRoot());
+    if (!installment) {
+      const controls = [...document.querySelectorAll("button, a, [role='button']")]
+        .filter((element) => tools.visible(element))
+        .filter((element) => /op[cç][oõ]es de parcelamento|parcelamento|formas de pagamento/i.test(tools.clean(element.textContent)));
+      const control = controls[0];
+      if (control) {
+        control.click();
+        const dialog = await tools.waitFor(() => [...document.querySelectorAll("[role='dialog'], [class*='modal' i]")]
+          .find((element) => tools.visible(element) && /parcelamento|sem juros/i.test(tools.clean(element.textContent))) || "", 3000);
+        if (dialog) installment = bestInstallment(dialog);
+        const close = dialog && [...dialog.querySelectorAll("button, [role='button']")]
+          .find((element) => /fechar|close|×/i.test(`${element.getAttribute("aria-label") || ""} ${element.textContent || ""}`));
+        close?.click?.();
+      }
+    }
+    const base = tools.commerceBenefits(productRoot().innerText || "");
+    return [...new Set([installment, base].filter(Boolean))].join(" ");
+  };
+
   globalThis.TaBaratoStores.push({
     id: "shopee",
     platform: "Shopee",
-    matches: () => /shopee\.com\.br$/i.test(location.hostname),
-    isProduct: () => /-i\.\d+\.\d+/i.test(location.pathname)
-      || /\/product\/\d+\/\d+/i.test(location.pathname)
-      || Boolean(document.querySelector("[data-testid='pdp-product-title'], main h1")),
+    matches: () => /shopee\.com\.br$/i.test(location.hostname) && location.hostname !== "affiliate.shopee.com.br",
+    isProduct: () => globalThis.TaBaratoPageContext?.routeFor?.() === "product"
+      || /-i\.\d+\.\d+/i.test(location.pathname)
+      || /\/product\/\d+\/\d+/i.test(location.pathname),
     listProducts,
     extract: async () => {
       const structured = tools.jsonProduct();
@@ -184,6 +265,7 @@
       const structuredPrice = tools.productPrice(structured);
       const scriptPrices = scriptPriceValues().current.map(Number).filter((value) => value > 0);
       const basePrice = priceInfo.value || structuredPrice || (scriptPrices.length ? String(Math.min(...scriptPrices)) : "");
+      const oldPrice = previousPrice(basePrice);
       // Cupons da Shopee variam por conta, loja, variante e resgate. Para evitar
       // códigos falsos ou textos cortados, a captura automática não os anuncia.
       const coupon = "";
@@ -195,11 +277,11 @@
         shortDescription: tools.description("[data-testid='pdp-product-description']", "[class*='product-detail']") || tools.firstUsefulParagraph(structured.description) || tools.firstUsefulParagraph(tools.meta("og:description")),
         sourceCategory: breadcrumb(),
         currentPrice: basePrice,
-        previousPrice: previousPrice(basePrice),
-        regularPrice: basePrice,
+        previousPrice: oldPrice,
+        regularPrice: oldPrice || basePrice,
         coupon,
         couponStatus: coupon ? "code" : "none",
-        extraText: tools.commerceBenefits(document.body.innerText),
+        extraText: await installmentBenefits(),
         imageUrl: candidates[0]?.url || "",
         imageCandidates: candidates,
         affiliateLink,
@@ -209,6 +291,7 @@
         platform: "Shopee",
         pricePaymentMethod: priceInfo.method,
         captureStage: affiliateLink ? "complete" : "awaiting-affiliate-link",
+        rating: ratingValue(),
         confidence: 0,
       };
       const required = [product.productName, product.currentPrice, product.imageUrl, product.externalProductId];

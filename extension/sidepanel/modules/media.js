@@ -18,11 +18,13 @@
     } catch { return false; }
   }
 
-  async function evaluateImageCandidate(source) {
+  async function evaluateImageCandidate(source, signal) {
     if (!safeImageSource(source)) return null;
-    const response = await runtime.fetchWithTimeout(source, {}, 8000, "A imagem demorou para carregar.");
+    runtime.throwIfAborted(signal);
+    const response = await runtime.fetchWithTimeout(source, { signal }, 8000, "A imagem demorou para carregar.");
     if (!response.ok) return null;
     const blob = await response.blob();
+    runtime.throwIfAborted(signal);
     if (blob.size <= 0 || blob.size > 12 * 1024 * 1024) return null;
     if (blob.type && !/^image\//i.test(blob.type) && !/^(?:application\/octet-stream|binary\/octet-stream)$/i.test(blob.type)) return null;
     async function decodeWithImage(candidateBlob) {
@@ -75,7 +77,7 @@
     }
   }
 
-  async function productImageBlob(payload) {
+  async function productImageBlob(payload, signal) {
     const imageCandidates = state.activeProduct?.imageCandidates || [];
     const candidates = [
       payload.imageUrl,
@@ -84,17 +86,19 @@
     const sources = [...new Set(candidates)].slice(0, 6);
     for (const source of sources) {
       try {
-        const blob = await evaluateImageCandidate(source);
+        runtime.throwIfAborted(signal);
+        const blob = await evaluateImageCandidate(source, signal);
         if (blob) return blob;
-      } catch {
+      } catch (error) {
+        if (signal?.aborted || error?.name === "AbortError") throw error;
         /* The next gallery image is tried when the current one cannot be used. */
       }
     }
     throw new Error("Nao foi possivel preparar a imagem do produto.");
   }
 
-  async function extensionAssetBlob(path) {
-    const response = await runtime.fetchWithTimeout(chrome.runtime.getURL(path), {}, 8000, "Nao foi possivel carregar as logos.");
+  async function extensionAssetBlob(path, signal) {
+    const response = await runtime.fetchWithTimeout(chrome.runtime.getURL(path), { signal }, 8000, "Nao foi possivel carregar as logos.");
     if (!response.ok) throw new Error("Nao foi possivel carregar as logos.");
     return response.blob();
   }
@@ -102,20 +106,20 @@
   function storeLogoPath(platform) {
     const value = normalizeText(platform);
     if (value.includes("mercado livre")) return "assets/mercado-livre.png";
-    if (value.includes("shopee")) return "assets/shopee.svg";
+    if (value.includes("shopee")) return "assets/shopee.png";
     return "";
   }
 
-  function fileToDataUrl(file) {
+  function fileToDataUrl(file, signal) {
     return runtime.withTimeout(new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(reader.result);
       reader.onerror = () => reject(new Error("Nao foi possivel preparar a imagem."));
       reader.readAsDataURL(file);
-    }), 15000, "A imagem demorou para ser preparada.");
+    }), 15000, "A imagem demorou para ser preparada.", { signal });
   }
 
-  async function shareImage(payload) {
+  async function shareImage(payload, signal) {
     const candidateKey = (state.activeProduct?.imageCandidates || []).map((item) => item.url).join("|");
     const key = JSON.stringify([
       payload.imageUrl,
@@ -127,12 +131,14 @@
     ]);
     if (key === state.shareImageKey && state.shareImagePromise) return state.shareImagePromise;
     state.shareImageKey = key;
-    state.shareImagePromise = productImageBlob(payload).then(async (productBlob) => {
+    state.shareImagePromise = productImageBlob(payload, signal).then(async (productBlob) => {
+      runtime.throwIfAborted(signal);
       const storePath = storeLogoPath(payload.platform);
       const [siteLogoBlob, storeLogoBlob] = await Promise.all([
-        extensionAssetBlob("assets/tabarato-logo.png"),
-        storePath ? extensionAssetBlob(storePath) : Promise.resolve(null),
+        extensionAssetBlob("assets/tabarato-logo.png", signal),
+        storePath ? extensionAssetBlob(storePath, signal) : Promise.resolve(null),
       ]);
+      runtime.throwIfAborted(signal);
       const imageBlob = await artwork.createOfferArtwork({
         productBlob,
         siteLogoBlob,
@@ -168,12 +174,14 @@
     return lines.join("\n");
   }
 
-  async function sendOfferToWhatsApp(payload, onProgress = () => {}) {
+  async function sendOfferToWhatsApp(payload, onProgress = () => {}, signal) {
+    runtime.throwIfAborted(signal);
     const groups = groupNames();
     if (!groups.length) throw new Error("Registre pelo menos um grupo do WhatsApp.");
     onProgress("Gerando arte...");
-    const file = await shareImage(payload);
-    const imageDataUrl = await fileToDataUrl(file);
+    const file = await shareImage(payload, signal);
+    runtime.throwIfAborted(signal);
+    const imageDataUrl = await fileToDataUrl(file, signal);
     onProgress("Abrindo WhatsApp...");
     const result = await runtime.runWithTimeout(
       () => chrome.runtime.sendMessage({
@@ -186,6 +194,7 @@
       {
         milliseconds: 55000 + groups.length * 95000,
         message: "O WhatsApp excedeu o tempo limite geral.",
+        signal,
       },
     );
     if (!result?.ok && !result?.partial) {

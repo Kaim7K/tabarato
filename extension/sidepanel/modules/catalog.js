@@ -54,38 +54,47 @@
   }
 
   function similarOfferCategory(product) {
-    const target = `${product.productName || ""} ${product.shortDescription || ""}`;
+    const target = `${product.productName || ""} ${product.shortDescription || ""} ${product.sourceCategory || ""} ${product.brand || ""} ${product.productType || ""}`;
     const ranked = state.synchronizedOffers
       .filter((offer) => offer.category && offer.productName)
       .map((offer) => ({ category: offer.category, score: overlap(target, `${offer.productName} ${offer.shortDescription || ""}`) }))
       .sort((left, right) => right.score - left.score);
-    return ranked[0]?.score >= 0.45 ? ranked[0].category : "";
+    return ranked[0]?.score >= 0.58 ? ranked[0].category : "";
+  }
+
+  function resolveExistingCategory(product) {
+    // Nunca cria categorias e nunca escolhe a primeira opção como fallback.
+    const available = state.availableCategories.filter(Boolean);
+    if (!available.length) return "";
+
+    const explicit = String(product?.category || "").trim();
+    const source = trustedSourceCategory(product || {});
+    const similar = similarOfferCategory(product || {});
+    const suggested = suggestCategory(product || {});
+    const candidates = [explicit, source, similar, suggested].filter(Boolean);
+
+    for (const proposed of candidates) {
+      const exact = available.find((category) => categoryKey(category) === categoryKey(proposed));
+      if (exact) return exact;
+
+      const alias = CATEGORY_ALIASES.get(categoryKey(proposed));
+      if (alias) {
+        const aliasMatch = available.find((category) => categoryKey(category) === categoryKey(alias));
+        if (aliasMatch) return aliasMatch;
+      }
+
+      const synonym = available
+        .map((category) => ({ category, score: overlap(category, proposed) }))
+        .sort((left, right) => right.score - left.score)[0];
+      if (synonym?.score >= 0.78) return synonym.category;
+    }
+
+    const current = String(elements.fields.category.value || "").trim();
+    return available.includes(current) ? current : "";
   }
 
   async function ensureCategory(product) {
-    const source = trustedSourceCategory(product);
-    const similar = similarOfferCategory(product);
-    const proposed = source || similar || suggestCategory(product);
-    if (!proposed) return "";
-    const exact = state.availableCategories.find((category) => categoryKey(category) === categoryKey(proposed));
-    if (exact) return exact;
-    const synonym = state.availableCategories
-      .map((category) => ({ category, score: overlap(category, proposed) }))
-      .sort((left, right) => right.score - left.score)[0];
-    if (synonym?.score >= 0.72) return synonym.category;
-    if (!source) return proposed;
-    try {
-      const response = await panel.api.request("/api/admin/ofertas", {
-        method: "POST",
-        body: { resource: "category", name: proposed },
-        timeout: 12000,
-      });
-      const created = response?.category?.name || proposed;
-      updateCategoryOptions([...state.availableCategories, created]);
-      return created;
-    } catch {
-      return similar || suggestCategory(product);
-    }
+    return resolveExistingCategory(product);
   }
 
   function connectedHostsFromOffers(offers) {
@@ -106,13 +115,16 @@
     if (!names.length) return;
     state.availableCategories = names;
     const current = elements.fields.category.value;
-    elements.fields.category.replaceChildren(...names.map((name) => {
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = "Selecione uma categoria";
+    elements.fields.category.replaceChildren(placeholder, ...names.map((name) => {
       const option = document.createElement("option");
       option.value = name;
       option.textContent = name;
       return option;
     }));
-    elements.fields.category.value = names.includes(current) ? current : names[0];
+    elements.fields.category.value = names.includes(current) ? current : "";
   }
 
   async function synchronize() {
@@ -147,7 +159,7 @@
       });
       return { category, index, score };
     }).sort((left, right) => right.score - left.score || left.index - right.index);
-    return ranked[0]?.score > 0 ? ranked[0].category : state.availableCategories[0] || "";
+    return ranked[0]?.score >= 3 ? ranked[0].category : "";
   }
 
 
@@ -242,6 +254,7 @@
     findExisting,
     previouslyPostedUrls,
     suggestCategory,
+    resolveExistingCategory,
     ensureCategory,
     synchronize,
     updateCategoryOptions,

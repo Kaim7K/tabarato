@@ -2,7 +2,6 @@ importScripts(
   "../shared/runtime.js",
   "../shared/config.js",
   "access.js",
-  "navigation.js",
   "whatsapp.js",
   "operations.js",
   "coupons.js",
@@ -10,7 +9,6 @@ importScripts(
 
 const runtime = globalThis.TaBaratoRuntime;
 const access = globalThis.TaBaratoBackgroundAccess;
-const navigation = globalThis.TaBaratoBackgroundNavigation;
 const whatsapp = globalThis.TaBaratoBackgroundWhatsApp;
 const operations = globalThis.TaBaratoBackgroundOperations;
 const coupons = globalThis.TaBaratoBackgroundCoupons;
@@ -53,17 +51,13 @@ chrome.action.onClicked.addListener(async (tab) => {
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (!changeInfo.url && changeInfo.status !== "complete") return;
   const updated = { ...tab, id: tabId, url: changeInfo.url || tab.url };
-  navigation.handleUpdated(tabId, updated.url).then((blocked) => {
-    if (blocked) return;
-    access.updateTab(tabId, updated.url).catch((error) => runtime.reportError("tab-availability", error));
-    if (updated.active) access.closePanelIfDisallowed(updated).catch(() => {});
-    coupons.handleTabUpdated(tabId, changeInfo, updated).catch((error) => runtime.reportError("coupon-tab-update", error));
-  }).catch((error) => runtime.reportError("affiliate-navigation-guard", error));
+  access.updateTab(tabId, updated.url).catch((error) => runtime.reportError("tab-availability", error));
+  if (updated.active) access.closePanelIfDisallowed(updated).catch(() => {});
+  coupons.handleTabUpdated(tabId, changeInfo, updated).catch((error) => runtime.reportError("coupon-tab-update", error));
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   couponFrameStates.delete(tabId);
-  navigation.handleRemoved(tabId).catch(() => {});
   operations.untrack([tabId]).catch(() => {});
 });
 
@@ -81,7 +75,6 @@ chrome.storage.onChanged.addListener((changes, area) => {
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
-  if (navigation.handleAlarm(alarm.name)) return;
   if (alarm.name === CLEANUP_ALARM) operations.cleanupStale().catch((error) => runtime.reportError("cleanup-stale-operations", error));
 });
 
@@ -151,8 +144,17 @@ const handlers = {
     }).catch(() => {});
     return { ok: true };
   },
-  TABARATO_START_AFFILIATE_GUARD: (message, sender) => navigation.start(sender.tab?.id, message.productUrl, message.ttl),
-  TABARATO_STOP_AFFILIATE_GUARD: (_message, sender) => navigation.finish(sender.tab?.id),
+  TABARATO_OPEN_EXTERNAL: async (message) => {
+    const url = String(message?.url || "");
+    const allowed = [
+      /^https:\/\/affiliate\.shopee\.com\.br\/offer\/product_offer/i,
+      /^https:\/\/www\.mercadolivre\.com\.br\/afiliados\/hub/i,
+      /^https:\/\/www\.pelando\.com\.br\/cupons-de-descontos\/mercado-livre/i,
+    ].some((pattern) => pattern.test(url));
+    if (!allowed) return { ok: false, error: "Atalho nao permitido." };
+    const tab = await chrome.tabs.create({ url, active: true });
+    return { ok: true, tabId: tab.id };
+  },
   TABARATO_SHARE_WHATSAPP: (message) => whatsapp.send(message),
   TABARATO_STOP_WHATSAPP: () => whatsapp.stop(),
   TABARATO_BATCH_TRACK_WORKERS: (message) => operations.track(message.tabIds),

@@ -29,8 +29,13 @@ export default async function handler(req, res) {
       shareImageDataUrl,
       forceRepublish: req.body?.forceRepublish === true,
       messageHeadline,
+      destinations: {
+        site: req.body?.destinations?.site !== false,
+        telegram: req.body?.destinations?.telegram !== false,
+      },
     });
-    if (!result.ok) return sendJson(res, result.status || 500, result);
+    if (!result.ok && !result.partial) return sendJson(res, result.status || 500, result);
+    if (result.partial) return sendJson(res, 207, result);
     return sendJson(res, 200, result);
   } catch (error) {
     return publicError(res, error);

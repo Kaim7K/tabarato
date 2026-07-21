@@ -2,7 +2,7 @@
   const panel = globalThis.TaBaratoPanel;
   if (!panel || panel.publishing) return;
 
-  const { elements, groupNames, lockActions, selectedDestinations, showToast, state, unlockActions } = panel;
+  const { beginOperation, elements, endOperation, groupNames, lockActions, selectedDestinations, showToast, state, unlockActions, updateOperation } = panel;
   const runtime = globalThis.TaBaratoRuntime;
   const { formatPrice, parsePrice } = globalThis.TaBaratoProductUtils;
 
@@ -68,16 +68,17 @@
       whatsappRequested ? channelPatch(operationId, "whatsapp", { status: "running", attempts: 1 }) : Promise.resolve(),
     ]);
 
-    const artwork = panel.media.shareImage(payload)
-      .then(async (file) => ({ file, dataUrl: await panel.media.fileToDataUrl(file) }));
-
-    const telegramTask = remoteRequested
-      ? artwork
+    const artwork = telegramRequested
+      ? panel.media.shareImage(payload)
+        .then(async (file) => ({ file, dataUrl: await panel.media.fileToDataUrl(file) }))
         .catch((error) => {
           runtime.reportError("prepare-telegram-artwork", error);
           return { dataUrl: "" };
         })
-        .then(({ dataUrl }) => panel.api.request(`/api/admin/ofertas/${id}/publicar`, {
+      : Promise.resolve({ dataUrl: "" });
+
+    const remoteTask = remoteRequested
+      ? artwork.then(({ dataUrl }) => panel.api.request(`/api/admin/ofertas/${id}/publicar`, {
           method: "POST",
           body: {
             shareImageDataUrl: dataUrl,
@@ -93,12 +94,21 @@
       ? panel.media.sendOfferToWhatsApp(payload)
       : Promise.resolve({ ok: true, skipped: true, results: [] });
 
-    const [telegramSettled, whatsappSettled] = await Promise.allSettled([telegramTask, whatsappTask]);
+    const [remoteSettled, whatsappSettled] = await Promise.allSettled([remoteTask, whatsappTask]);
+    const remoteResult = remoteSettled.status === "fulfilled" ? remoteSettled.value : remoteSettled.reason?.payload || null;
+    const remoteOk = !remoteRequested || (remoteSettled.status === "fulfilled" && Boolean(remoteResult?.ok || remoteResult?.partial));
+    const siteRemoteOk = !siteRequested || Boolean(remoteResult?.channels?.site?.ok ?? remoteOk);
+    const telegramRemoteOk = !telegramRequested || Boolean(remoteResult?.channels?.telegram?.ok ?? (remoteResult?.ok && !remoteResult?.partial));
     const channels = {
+      site: {
+        requested: siteRequested,
+        ok: siteRemoteOk,
+        result: remoteResult,
+      },
       telegram: {
         requested: telegramRequested,
-        ok: !telegramRequested || (telegramSettled.status === "fulfilled" && Boolean(telegramSettled.value?.ok)),
-        result: telegramSettled.status === "fulfilled" ? telegramSettled.value : telegramSettled.reason?.payload || null,
+        ok: telegramRemoteOk,
+        result: remoteResult,
       },
       whatsapp: {
         requested: whatsappRequested,
@@ -108,11 +118,11 @@
       },
     };
 
-    const telegramError = channels.telegram.ok
+    const remoteError = siteRemoteOk && telegramRemoteOk
       ? ""
       : runtime.errorMessage(
-        telegramSettled.status === "rejected" ? telegramSettled.reason : telegramSettled.value?.error,
-        "Não foi possível publicar no site e Telegram.",
+        remoteSettled.status === "rejected" ? remoteSettled.reason : remoteSettled.value?.error,
+        "Não foi possível concluir a publicação remota.",
       );
     const whatsappError = !whatsappRequested || channels.whatsapp.ok
       ? ""
@@ -125,14 +135,14 @@
 
     await Promise.all([
       siteRequested ? channelPatch(operationId, "site", {
-        status: channels.telegram.ok ? "completed" : "failed",
-        errorCode: channels.telegram.ok ? "" : "SITE_TELEGRAM_FAILED",
-        errorMessage: telegramError,
+        status: channels.site.ok ? "completed" : "failed",
+        errorCode: channels.site.ok ? "" : "SITE_FAILED",
+        errorMessage: remoteError,
       }) : Promise.resolve(),
       telegramRequested ? channelPatch(operationId, "telegram", {
         status: channels.telegram.ok ? "completed" : "failed",
         errorCode: channels.telegram.ok ? "" : "TELEGRAM_FAILED",
-        errorMessage: telegramError,
+        errorMessage: remoteError,
       }) : Promise.resolve(),
       whatsappRequested ? channelPatch(operationId, "whatsapp", {
         status: channels.whatsapp.ok ? "completed" : "failed",
@@ -141,44 +151,47 @@
       }) : Promise.resolve(),
     ]);
 
-    const successfulChannels = [channels.telegram.ok, whatsappRequested && (channels.whatsapp.ok || channels.whatsapp.partial)].filter(Boolean).length;
-    const failedChannels = [!channels.telegram.ok, whatsappRequested && !channels.whatsapp.ok].filter(Boolean).length;
+    const requestedResults = [channels.site, channels.telegram, channels.whatsapp].filter((channel) => channel.requested);
+    const successfulChannels = requestedResults.filter((channel) => channel.ok || channel.partial).length;
+    const failedChannels = requestedResults.filter((channel) => !channel.ok).length;
     return {
       ok: failedChannels === 0,
       partial: successfulChannels > 0 && failedChannels > 0,
       channels,
-      telegramError,
+      remoteError,
       whatsappError,
       offer: channels.telegram.result?.offer || null,
     };
   }
 
-  function publicationToast(publication, hasWhatsApp) {
-    const telegramOk = publication.channels.telegram.ok;
-    const whatsapp = publication.channels.whatsapp;
-    if (telegramOk && (!hasWhatsApp || whatsapp.ok)) {
-      return {
-        message: hasWhatsApp ? "Oferta publicada no site, Telegram e WhatsApp." : "Oferta publicada no site e Telegram.",
-        tone: "success",
-      };
+  function publicationToast(publication) {
+    const labels = { site: "Site", telegram: "Telegram", whatsapp: "WhatsApp" };
+    const requested = Object.entries(publication.channels)
+      .filter(([, channel]) => channel.requested);
+    const completed = requested
+      .filter(([, channel]) => channel.ok)
+      .map(([name]) => labels[name]);
+    const partial = requested
+      .filter(([, channel]) => !channel.ok && channel.partial)
+      .map(([name]) => labels[name]);
+    const failed = requested
+      .filter(([, channel]) => !channel.ok && !channel.partial)
+      .map(([name]) => labels[name]);
+
+    if (!failed.length && !partial.length) {
+      return { message: `Oferta enviada: ${completed.join(", ")}.`, tone: "success" };
     }
-    if (telegramOk && hasWhatsApp) {
+    const details = [publication.remoteError, publication.whatsappError].filter(Boolean).join(" | ");
+    if (completed.length || partial.length) {
+      const successLabel = [...completed, ...partial.map((name) => `${name} parcial`)].join(", ");
       return {
-        message: `Site e Telegram publicados. WhatsApp incompleto: ${publication.whatsappError}`,
+        message: `Envio parcial. Concluído: ${successLabel || "nenhum"}. Falhou: ${failed.join(", ") || "nenhum"}.${details ? ` ${details}` : ""}`,
         tone: "neutral",
       };
     }
-    if (!telegramOk && hasWhatsApp && (whatsapp.ok || whatsapp.partial)) {
-      return {
-        message: `WhatsApp enviado, mas o site/Telegram falhou: ${publication.telegramError}`,
-        tone: "neutral",
-      };
-    }
-    return {
-      message: [publication.telegramError, publication.whatsappError].filter(Boolean).join(" | ") || "A publicação não foi concluída.",
-      tone: "error",
-    };
+    return { message: details || `Falha ao enviar para: ${failed.join(", ")}.`, tone: "error" };
   }
+
 
   function inspectExisting(product) {
     elements.duplicateWarning.classList.add("hidden");
@@ -213,7 +226,7 @@
       Object.assign(existing, payload, publication.offer || {});
       if (refreshCatalog) await panel.catalog.synchronize();
       if (notifyUser) {
-        const feedback = publicationToast(publication, notifyWhatsApp && groupNames().length > 0);
+        const feedback = publicationToast(publication);
         showToast(feedback.message, feedback.tone);
       }
       return { action: "updated", existing, publication };
@@ -266,7 +279,7 @@
       const destinations = selectedDestinations();
       const publication = await publishOfferId(offer.id, payload, { notifyWhatsApp: true, forceRepublish, destinations });
       if (publication.offer) Object.assign(offer, publication.offer);
-      const feedback = publicationToast(publication, selectedDestinations().whatsapp && groupNames().length > 0);
+      const feedback = publicationToast(publication);
       showToast(feedback.message, feedback.tone);
     } catch (error) {
       runtime.reportError("publish-offer", error);
@@ -280,17 +293,34 @@
   async function whatsapp() {
     if (!elements.offerForm.reportValidity()) return;
     const owner = "whatsapp";
+    const controller = beginOperation("Enviando ao WhatsApp", "Preparando a arte do produto...");
+    const { signal } = controller;
+    const stopOnCancel = () => chrome.runtime.sendMessage({ type: "TABARATO_STOP_WHATSAPP" }).catch(() => {});
+    signal.addEventListener("abort", stopOnCancel, { once: true });
     lockActions(owner, elements.whatsappButton, "Preparando...");
     try {
-      const result = await panel.media.sendOfferToWhatsApp(panel.product.payload(), (label) => panel.setBusy(elements.whatsappButton, true, label));
+      const result = await panel.media.sendOfferToWhatsApp(
+        panel.product.payload(),
+        (label) => {
+          panel.setBusy(elements.whatsappButton, true, label);
+          updateOperation(label);
+        },
+        signal,
+      );
       if (result.ok) showToast("Oferta enviada a todos os grupos do WhatsApp.", "success");
       else if (result.partial) showToast(`Envio parcial: ${failedWhatsAppSummary(result)}`, "neutral");
       else showToast(failedWhatsAppSummary(result) || "O WhatsApp não confirmou o envio.", "error");
     } catch (error) {
-      runtime.reportError("share-whatsapp", error);
-      showToast(runtime.errorMessage(error), "error");
+      if (signal.aborted || error?.name === "AbortError" || /cancelad/i.test(error?.message || "")) {
+        showToast("Envio ao WhatsApp cancelado com segurança.", "neutral");
+      } else {
+        runtime.reportError("share-whatsapp", error);
+        showToast(runtime.errorMessage(error), "error");
+      }
     } finally {
+      signal.removeEventListener("abort", stopOnCancel);
       unlockActions(owner, elements.whatsappButton);
+      endOperation(controller);
     }
   }
 

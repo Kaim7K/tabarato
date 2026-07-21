@@ -372,12 +372,20 @@ export default function AdminOffers() {
   const removeCategory = async (name) => {
     const item = customCategories.find((current) => current.name === name);
     if (!item) return;
+    const count = offers.filter((offer) => offer.category === name).length;
+    const confirmed = window.confirm(count
+      ? `Excluir "${name}"? ${count} produto(s) serão movidos automaticamente para as categorias existentes mais coerentes.`
+      : `Excluir a categoria "${name}"?`);
+    if (!confirmed) return;
     try {
-      await telegramOffersApi.removeCategory(item.slug);
+      const result = await telegramOffersApi.removeCategory(item.slug);
       setCustomCategories((current) => current.filter((categoryItem) => categoryItem.name !== name));
-      if (form.category === name) setForm((current) => ({ ...current, category: "Tecnologia" }));
+      if (form.category === name) setForm((current) => ({ ...current, category: "" }));
       if (category === name) setCategory("");
-      showMessage("Categoria removida.");
+      await load();
+      showMessage(result.movedCount
+        ? `Categoria removida. ${result.movedCount} produto(s) foram reorganizados.`
+        : "Categoria removida.");
     } catch (error) {
       showMessage(error.message);
     }

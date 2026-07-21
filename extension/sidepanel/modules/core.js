@@ -18,6 +18,7 @@
     shopeeAffiliateRequest: "tabarato_shopee_affiliate_request_v1",
     shopeeAffiliateResult: "tabarato_shopee_affiliate_result_v1",
     sendDestinations: "tabarato_send_destinations_v1",
+    priceComparison: "tabarato_price_comparison_v1",
   });
 
   const LIMITS = Object.freeze({
@@ -57,6 +58,10 @@
     loading: byId("loading-state"),
     empty: byId("empty-state"),
     captureSource: byId("capture-source"),
+    operationStatus: byId("operation-status"),
+    operationTitle: byId("operation-title"),
+    operationDetail: byId("operation-detail"),
+    cancelOperationButton: byId("cancel-operation-button"),
     refreshButton: byId("refresh-button"),
     collectCurrentButton: byId("collect-current-button"),
     emptyCaptureButton: byId("empty-capture-button"),
@@ -74,6 +79,13 @@
     previewPrice: byId("preview-price"),
     previewPreviousPrice: byId("preview-previous-price"),
     previewCategory: byId("preview-category"),
+    priceComparison: byId("price-comparison"),
+    comparisonStatus: byId("comparison-status"),
+    comparisonOriginalPrice: byId("comparison-original-price"),
+    comparisonFoundPrice: byId("comparison-found-price"),
+    comparisonDifference: byId("comparison-difference"),
+    comparisonPercent: byId("comparison-percent"),
+    comparisonClear: byId("comparison-clear"),
     platformBadge: byId("platform-badge"),
     batchLimit: byId("batch-limit"),
     batchOpenTabsOnly: byId("batch-open-tabs-only"),
@@ -89,6 +101,9 @@
     batchNextTime: byId("batch-next-time"),
     batchLog: byId("batch-log"),
     batchSummary: byId("batch-summary"),
+    batchPreviewButton: byId("batch-preview-button"),
+    batchPreviewList: byId("batch-preview-list"),
+    batchSelectionCount: byId("batch-selection-count"),
     customToggle: byId("custom-toggle"),
     customBody: byId("custom-body"),
     customMessage: byId("custom-message"),
@@ -144,6 +159,9 @@
     navigationCaptureTimer: null,
     draftPersistTimer: null,
     autoFieldValues: {},
+    foregroundOperation: null,
+    priceComparison: null,
+    batchPreviewEntries: [],
   };
 
   const actionLocks = new Set();
@@ -203,6 +221,44 @@
     button.disabled = false;
   }
 
+  function updateOperation(detail = "", title = "") {
+    const operation = state.foregroundOperation;
+    if (!operation) return;
+    if (title) elements.operationTitle.textContent = title;
+    if (detail) elements.operationDetail.textContent = detail;
+  }
+
+  function beginOperation(name, detail = "Preparando...") {
+    if (state.foregroundOperation?.controller && !state.foregroundOperation.controller.signal.aborted) {
+      state.foregroundOperation.controller.abort(new Error("Operação substituída por uma nova ação."));
+    }
+    const controller = new AbortController();
+    state.foregroundOperation = { name, controller, startedAt: Date.now() };
+    elements.operationTitle.textContent = name;
+    elements.operationDetail.textContent = detail;
+    elements.operationStatus.classList.remove("hidden");
+    actionLocks.add("foreground-operation");
+    renderActionLocks();
+    return controller;
+  }
+
+  function endOperation(controller, detail = "") {
+    if (!state.foregroundOperation || state.foregroundOperation.controller !== controller) return;
+    if (detail) elements.operationDetail.textContent = detail;
+    state.foregroundOperation = null;
+    actionLocks.delete("foreground-operation");
+    elements.operationStatus.classList.add("hidden");
+    renderActionLocks();
+  }
+
+  function cancelOperation(reason = "Operação cancelada pelo usuário.") {
+    const operation = state.foregroundOperation;
+    if (!operation) return false;
+    if (!operation.controller.signal.aborted) operation.controller.abort(new Error(reason));
+    elements.operationDetail.textContent = "Cancelando com segurança...";
+    return true;
+  }
+
   function renderActionLocks() {
     const disabled = actionLocks.size > 0;
     [
@@ -216,6 +272,10 @@
       elements.refreshButton,
       elements.modeSingle,
       elements.modeBatch,
+      elements.collectCurrentButton,
+      elements.emptyCaptureButton,
+      elements.shopeeLinkButton,
+      elements.bestOptionButton,
     ].forEach((button) => { button.disabled = disabled; });
   }
 
@@ -254,7 +314,10 @@
     LIMITS,
     STORAGE,
     activeTab,
+    beginOperation,
+    cancelOperation,
     elements,
+    endOperation,
     groupNames,
     lockActions,
     renderActionLocks,
@@ -266,5 +329,6 @@
     showToast,
     state,
     unlockActions,
+    updateOperation,
   };
 })();

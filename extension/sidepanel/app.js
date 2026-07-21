@@ -61,16 +61,22 @@
         [STORAGE.sendDestinations]: panel.selectedDestinations(),
       }).catch(() => {}));
     });
+    elements.cancelOperationButton.addEventListener("click", () => panel.cancelOperation());
     elements.batchStopButton.addEventListener("click", panel.batch.stop);
     elements.batchPauseButton.addEventListener("click", panel.batch.pause);
     elements.refreshButton.addEventListener("click", () => panel.capture.current());
     elements.collectCurrentButton.addEventListener("click", () => panel.capture.current());
     elements.emptyCaptureButton.addEventListener("click", () => panel.capture.current());
-    elements.shopeeLinkButton.addEventListener("click", () => panel.capture.requestShopeeAffiliateLink());
-    elements.bestOptionButton.addEventListener("click", () => panel.capture.searchBestOption());
+    elements.shopeeLinkButton.addEventListener("click", () => panel.capture.requestShopeeAffiliateLink()
+      .catch((error) => showToast(runtime.errorMessage(error), "error")));
+    elements.bestOptionButton.addEventListener("click", () => panel.capture.searchBestOption()
+      .catch((error) => showToast(runtime.errorMessage(error), "error")));
+    elements.comparisonClear.addEventListener("click", () => panel.capture.clearComparison());
     elements.modeSingle.addEventListener("click", () => setMode("single"));
     elements.modeBatch.addEventListener("click", () => setMode("batch"));
     elements.batchStartButton.addEventListener("click", panel.batch.start);
+    elements.batchPreviewButton.addEventListener("click", () => panel.batch.previewQueue()
+      .catch((error) => showToast(runtime.errorMessage(error), "error")));
     elements.customToggle.addEventListener("click", () => {
       const opening = elements.customBody.classList.contains("hidden");
       elements.customBody.classList.toggle("hidden", !opening);
@@ -139,6 +145,8 @@
     const stored = await chrome.storage.local.get(Object.values(STORAGE));
     await panel.api.restoreSession(stored);
     await panel.sync.initialize(stored);
+    state.priceComparison = stored[STORAGE.priceComparison] || null;
+    panel.capture.renderComparison();
     await panel.automation.initialize();
     panel.api.renderAuth();
     await captureCurrentPageAfterAuth(stored);

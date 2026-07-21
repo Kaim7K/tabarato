@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Ta Barato - Central de Ofertas",
   "description": "Capture ofertas, gere artes e publique no site, Telegram e WhatsApp somente nas lojas conectadas.",
-  "version": "4.5.0",
+  "version": "5.1.0",
   "minimum_chrome_version": "116",
   "icons": {
     "16": "assets/icon-16.png",
@@ -13,7 +13,6 @@
   "permissions": [
     "activeTab",
     "alarms",
-    "declarativeNetRequest",
     "scripting",
     "storage",
     "sidePanel",
@@ -23,6 +22,7 @@
     "https://*.mercadolivre.com.br/*",
     "https://*.mercadolibre.com/*",
     "https://*.shopee.com.br/*",
+    "https://s.shopee.com.br/*",
     "https://*.shopeeusercontent.com/*",
     "https://*.susercontent.com/*",
     "https://affiliate.shopee.com.br/*",
@@ -50,17 +50,6 @@
   "content_scripts": [
     {
       "matches": [
-        "https://*.mercadolivre.com.br/*",
-        "https://*.mercadolibre.com/*"
-      ],
-      "js": [
-        "content/mercado-livre-guard.js"
-      ],
-      "run_at": "document_start",
-      "all_frames": false
-    },
-    {
-      "matches": [
         "https://*.mercadolivre.com.br/cupons/pdp*",
         "https://*.mercadolibre.com/cupons/pdp*"
       ],
@@ -77,6 +66,7 @@
       ],
       "js": [
         "shared/runtime.js",
+        "shared/page-context.js",
         "shared/coupon-code.js",
         "content/shared.js",
         "content/stores/mercado-livre.js",
@@ -93,6 +83,7 @@
       ],
       "js": [
         "shared/runtime.js",
+        "shared/page-context.js",
         "shared/coupon-code.js",
         "content/shared.js",
         "content/stores/shopee.js",
@@ -111,6 +102,7 @@
       ],
       "js": [
         "shared/runtime.js",
+        "shared/page-context.js",
         "shared/coupon-code.js",
         "content/shared.js",
         "content/stores/generic.js",
@@ -136,6 +128,7 @@
       ],
       "js": [
         "shared/runtime.js",
+        "shared/page-context.js",
         "content/shopee-affiliate.js"
       ],
       "run_at": "document_idle",
@@ -154,6 +147,7 @@
         "https://*.mercadolivre.com.br/*",
         "https://*.mercadolibre.com/*",
         "https://*.shopee.com.br/*",
+        "https://s.shopee.com.br/*",
         "https://www.tabaratoofertas.shop/*",
         "https://tabaratoofertas.shop/*",
         "http://localhost/*",

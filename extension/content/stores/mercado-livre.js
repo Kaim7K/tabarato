@@ -5,7 +5,6 @@
 
   const MELI_LINK_PATTERN = /^https:\/\/(?:www\.)?meli\.la\/[A-Za-z0-9_-]+(?:[/?#][^\s"'<>]*)?$/i;
   const MELI_LINK_SEARCH = /https:\/\/(?:www\.)?meli\.la\/[A-Za-z0-9_-]+(?:[/?#][^\s"'<>]*)?/i;
-  const AFFILIATE_GUARD_KEY = "tabarato_affiliate_return_url";
   let capturedAffiliateLink = "";
   let capturedAffiliatePage = "";
   let affiliateCapturePromise = null;
@@ -247,26 +246,6 @@
     return Boolean(strictShareControl());
   };
 
-  function affiliateGuardPayload(expectedUrl) {
-    return { url: expectedUrl, expiresAt: Date.now() + 30000 };
-  }
-
-  async function startAffiliateGuard(expectedUrl) {
-    const payload = affiliateGuardPayload(expectedUrl);
-    try { sessionStorage.setItem(AFFILIATE_GUARD_KEY, JSON.stringify(payload)); } catch { /* Storage may be unavailable in isolated pages. */ }
-    const response = await chrome.runtime.sendMessage({
-      type: "TABARATO_START_AFFILIATE_GUARD",
-      productUrl: expectedUrl,
-      ttl: 30000,
-    }).catch(() => null);
-    return Boolean(response?.ok);
-  }
-
-  async function stopAffiliateGuard() {
-    try { sessionStorage.removeItem(AFFILIATE_GUARD_KEY); } catch { /* Storage may be unavailable in isolated pages. */ }
-    await chrome.runtime.sendMessage({ type: "TABARATO_STOP_AFFILIATE_GUARD" }).catch(() => {});
-  }
-
   function copyControlForField(field, dialog) {
     if (!field || !dialog) return null;
     const fieldRect = field.getBoundingClientRect();
@@ -367,7 +346,6 @@
     affiliateCapturePromise = (async () => {
       capturedAffiliatePage = expectedUrl;
       capturedAffiliateLink = "";
-      await startAffiliateGuard(expectedUrl);
       try {
         const dialog = await openAffiliateDialog(0, expectedUrl);
         if (!dialog || location.href !== expectedUrl) return "";
@@ -381,7 +359,6 @@
         return link;
       } finally {
         await closeAffiliateDialog().catch(() => {});
-        await stopAffiliateGuard();
         if (location.href === expectedUrl) restorePageScroll(initialScrollPosition);
       }
     })().finally(() => {
@@ -685,6 +662,29 @@
     return "";
   };
 
+  const ratingValue = () => {
+    const selectors = [
+      ".ui-pdp-review__rating",
+      ".ui-pdp-review__ratings__average",
+      "[class*='rating' i]",
+      "[aria-label*='avalia' i]",
+      "[aria-label*='rating' i]",
+    ];
+    for (const selector of selectors) {
+      for (const element of document.querySelectorAll(selector)) {
+        if (!tools.visible(element)) continue;
+        const text = tools.clean(`${element.getAttribute?.("aria-label") || ""} ${element.textContent || ""}`);
+        const match = text.match(/(?:nota|avaliacao|avaliação|rating)?\s*([0-5](?:[.,]\d{1,2})?)(?:\s*de\s*5)?/i);
+        const value = match ? Number(match[1].replace(",", ".")) : 0;
+        if (value >= 1 && value <= 5) return value;
+      }
+    }
+    const topText = tools.clean(document.querySelector("main")?.innerText || document.body?.innerText || "").slice(0, 5500);
+    const fallback = topText.match(/\b([4-5](?:[.,]\d{1,2})?)\s*(?:\(|avaliacoes|avaliações|opinioes|opiniões|estrelas)/i);
+    const value = fallback ? Number(fallback[1].replace(",", ".")) : 0;
+    return value >= 1 && value <= 5 ? value : 0;
+  };
+
   const fastProductSnapshot = () => {
     const structured = tools.jsonProduct();
     const productId = location.href.match(/\b(MLB-?\d{6,})\b/i)?.[1]?.replace("-", "").toUpperCase() || "";
@@ -726,6 +726,7 @@
       platform: "Mercado Livre",
       pricePaymentMethod: priceInfo.method === "Pix" ? "Pix" : couponPrice.value ? "Cupom" : "",
       extraText: visiblePaymentBenefits(),
+      rating: ratingValue(),
       captureStage: "instant",
       confidence: 0,
     };
@@ -837,8 +838,8 @@
     id: "mercado-livre",
     platform: "Mercado Livre",
     matches: () => /mercadolivre|mercadolibre/i.test(location.hostname),
-    isProduct: () => /(?:^|[/?-])MLB-?\d{6,}(?:$|[/?#-])/i.test(location.href)
-      || Boolean(document.querySelector(".ui-pdp-title, .ui-pdp-price__second-line")),
+    isProduct: () => globalThis.TaBaratoPageContext?.routeFor?.() === "product"
+      || /(?:^|[/?-])MLB-?\d{6,}(?:$|[/?#-])/i.test(location.href),
     prepareAffiliateLink,
     captureAffiliateLink,
     listProducts,

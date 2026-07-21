@@ -23,7 +23,7 @@
       currentPrice,
       previousPrice: previousPriceFor(currentPrice, product.previousPrice, product.regularPrice || currentPrice),
       platform: product.platform || "Loja conectada",
-      category: panel.catalog.suggestCategory(product),
+      category: panel.catalog.resolveExistingCategory(product),
       coupon: normalizeCouponCode(product.coupon) || couponNoticeForStatus(product.couponStatus),
       shortDescription: firstUsefulParagraph(product.shortDescription || ""),
       imageUrl: product.imageUrl || product.imageCandidates?.[0]?.url || "",
@@ -114,6 +114,9 @@
   }
 
   function fill(product) {
+    const previousProductKey = state.activeProduct?.externalProductId || state.activeProduct?.sourceUrl || "";
+    const nextProductKey = product?.externalProductId || product?.sourceUrl || "";
+    if (previousProductKey && nextProductKey && previousProductKey !== nextProductKey) elements.fields.category.value = "";
     state.activeProduct = product;
     const values = valuesFor(product);
     Object.entries(values).forEach(([key, value]) => { elements.fields[key].value = value; });

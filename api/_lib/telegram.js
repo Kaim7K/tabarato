@@ -66,28 +66,58 @@ export function formatTelegramMessage(offer) {
   return compactLines(lines);
 }
 
-async function telegramRequest(method, body) {
+function telegramErrorCode(error, status = 0, payload = null) {
+  const text = `${error?.message || ""} ${payload?.description || ""}`.toLowerCase();
+  if (status === 429 || /too many requests|retry after|limite/i.test(text)) return "RATE_LIMIT";
+  if (status === 401 || /unauthorized|token/i.test(text)) return "INVALID_TOKEN";
+  if (status === 403 || /forbidden|not enough rights|permission/i.test(text)) return "INSUFFICIENT_PERMISSION";
+  if (/chat not found|group.*not found|grupo.*indispon/i.test(text)) return "GROUP_UNAVAILABLE";
+  if (/wrong file|caption is too long|bad request|rejected/i.test(text)) return "CONTENT_REJECTED";
+  if (error?.name === "AbortError" || /timeout|network|fetch failed|connection/i.test(text)) return "TEMPORARY_CONNECTION";
+  return "INTERNAL_ERROR";
+}
+
+async function telegramRequest(method, body, options = {}) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
-  if (!token) throw new Error("Telegram não configurado.");
+  if (!token) throw Object.assign(new Error("Telegram não configurado."), { code: "INVALID_TOKEN", retryable: false });
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 12000);
-
-  try {
-    const response = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
-      method: "POST",
-      headers: body instanceof FormData ? undefined : { "Content-Type": "application/json" },
-      body: body instanceof FormData ? body : JSON.stringify(body),
-      signal: controller.signal,
-    });
-    const payload = await response.json().catch(() => null);
-    if (!response.ok || !payload?.ok) {
-      throw new Error(payload?.description || `Telegram respondeu com status ${response.status}.`);
+  const attempts = Math.max(1, Math.min(5, Number(options.attempts || 4)));
+  let lastError = null;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), Math.min(30000, 12000 + attempt * 3000));
+    try {
+      const response = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
+        method: "POST",
+        headers: body instanceof FormData ? undefined : { "Content-Type": "application/json" },
+        body: body instanceof FormData ? body : JSON.stringify(body),
+        signal: controller.signal,
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.ok) {
+        const error = new Error(payload?.description || `Telegram respondeu com status ${response.status}.`);
+        error.status = response.status;
+        error.payload = payload;
+        throw error;
+      }
+      return payload;
+    } catch (error) {
+      const code = telegramErrorCode(error, error?.status || 0, error?.payload);
+      const retryable = ["RATE_LIMIT", "TEMPORARY_CONNECTION", "INTERNAL_ERROR"].includes(code);
+      lastError = Object.assign(error instanceof Error ? error : new Error(String(error)), {
+        code,
+        retryable,
+        attempt,
+      });
+      if (!retryable || attempt >= attempts) throw lastError;
+      const retryAfter = Number(error?.payload?.parameters?.retry_after || 0) * 1000;
+      const delay = retryAfter || Math.min(15000, 900 * (2 ** (attempt - 1))) + Math.round(Math.random() * 450);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    } finally {
+      clearTimeout(timeout);
     }
-    return payload;
-  } finally {
-    clearTimeout(timeout);
   }
+  throw lastError || new Error("Falha desconhecida no Telegram.");
 }
 
 export async function sendTelegramOffer(offer) {

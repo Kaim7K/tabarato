@@ -368,6 +368,42 @@
     };
   }
 
+
+  async function previewQueue() {
+    const sourceTab = await activeTab();
+    if (!sourceTab?.id) throw new Error("Abra uma listagem da Shopee ou Mercado Livre.");
+    const limit = Math.max(1, Math.min(50, Number(elements.batchLimit.value) || 5));
+    const openTabsOnly = Boolean(elements.batchOpenTabsOnly?.checked);
+    const [visibleUrls, rightTabs] = await Promise.all([
+      openTabsOnly ? Promise.resolve([]) : panel.capture.visibleProductUrls(limit, sourceTab).catch(() => []),
+      panel.capture.productTabsToRight(sourceTab, limit).catch(() => []),
+    ]);
+    const seen = new Set();
+    const entries = [];
+    for (const item of [...rightTabs, ...visibleUrls.map((url) => ({ url }))]) {
+      const identity = batchUtils.productIdentityFromUrl(item.url)?.key || item.url;
+      if (!identity || seen.has(identity)) continue;
+      seen.add(identity);
+      entries.push({ url: item.url, identity });
+    }
+    const posted = await panel.catalog.previouslyPostedUrls(entries.map((item) => item.url)).catch(() => []);
+    const postedSet = new Set(posted.map((item) => item.url));
+    state.batchPreviewEntries = entries.map((item) => ({ ...item, duplicate: postedSet.has(item.url) }));
+    elements.batchSelectionCount.textContent = `${entries.length} produto(s), ${postedSet.size} duplicado(s).`;
+    elements.batchPreviewList.replaceChildren(...state.batchPreviewEntries.map((entry, index) => {
+      const row = document.createElement("div");
+      row.className = "batch-preview-item";
+      const label = document.createElement("div");
+      label.textContent = `${index + 1}. ${entry.url}`;
+      const status = document.createElement("small");
+      status.textContent = entry.duplicate ? "Duplicado — será ignorado" : "Pronto para validar";
+      row.append(label, status);
+      return row;
+    }));
+    elements.batchPreviewList.classList.remove("hidden");
+    return state.batchPreviewEntries;
+  }
+
   async function start() {
     if (state.batchController) {
       showToast("Ja existe um lote em andamento.", "neutral");
@@ -556,5 +592,5 @@
     chrome.runtime.sendMessage({ type: "TABARATO_STOP_WHATSAPP" }).catch(() => {});
   });
 
-  panel.batch = { log, pause, renderSummary, start, stop };
+  panel.batch = { log, pause, previewQueue, renderSummary, start, stop };
 })();

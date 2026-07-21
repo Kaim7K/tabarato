@@ -101,7 +101,7 @@ test("extension entry points delegate work to focused modules", () => {
   ["api", "batch", "capture", "catalog", "core", "media", "product", "publishing"].forEach((module) => {
     assert.ok(existsSync(join(extensionRoot, "sidepanel", "modules", `${module}.js`)));
   });
-  ["access", "navigation", "operations", "coupons", "whatsapp"].forEach((module) => {
+  ["access", "operations", "coupons", "whatsapp"].forEach((module) => {
     assert.ok(existsSync(join(extensionRoot, "background", `${module}.js`)));
   });
 });
@@ -262,7 +262,7 @@ test("capture extracts requested product fields and closes store popups", () => 
   assert.doesNotMatch(shopee, /tools\.couponCandidates\(\)/);
   assert.match(shopee, /Cupons da Shopee variam por conta/);
   assert.match(shopee, /confidence/);
-  assert.match(shopee, /regularPrice: basePrice/);
+  assert.match(shopee, /regularPrice: oldPrice \|\| basePrice/);
 });
 
 test("coupon parser reads explicit Com CODE labels and never invents a coupon", () => {
@@ -443,7 +443,7 @@ test("offer artwork matches the requested premium share card", () => {
   assert.doesNotMatch(media, /imageSceneScore|usageScore|review|cliente|depoimento/);
   assert.match(panelSource, /assets\/tabarato-logo\.png/);
   assert.match(panelSource, /assets\/mercado-livre\.png/);
-  assert.match(panelSource, /assets\/shopee\.svg/);
+  assert.match(panelSource, /assets\/shopee\.png/);
   assert.match(artwork, /createOfferArtwork/);
   assert.match(artwork, /discountPercent/);
   assert.match(artwork, /subjectBounds/);
@@ -839,9 +839,114 @@ test("catalog resolves already published product IDs locally and from the databa
 });
 
 
-test("Shopee affiliate action imports its panel dependencies", () => {
+test("Shopee affiliate action imports its panel dependencies and supports cancellable finite flows", () => {
   const source = readFileSync(join(extensionRoot, "sidepanel", "modules", "capture.js"), "utf8");
+  const affiliate = readFileSync(join(extensionRoot, "content", "shopee-affiliate.js"), "utf8");
   assert.match(source, /const \{[^}]*STORAGE[^}]*showToast[^}]*\} = panel;/s);
   assert.match(source, /\[STORAGE\.shopeeAffiliateRequest\]/);
-  assert.match(source, /showToast\("O painel da Shopee foi aberto/);
+  assert.match(source, /beginOperation\("Gerando link da Shopee"/);
+  assert.match(source, /mode: "browse-only"/);
+  assert.match(source, /A escolha do anúncio é manual/);
+  assert.match(affiliate, /phase: "waiting-link"/);
+  assert.match(affiliate, /browseReady: true/);
+  assert.match(affiliate, /scheduleProcess\(140\)/);
+  assert.doesNotMatch(affiliate, /setInterval\(/);
+});
+
+
+test("page context centralizes routes, delayed states and SPA navigation", () => {
+  const source = readFileSync(join(extensionRoot, "shared", "page-context.js"), "utf8");
+  assert.match(source, /function routeFor/);
+  assert.match(source, /function waitFor/);
+  assert.match(source, /function observeNavigation/);
+  assert.match(source, /MutationObserver/);
+  assert.match(source, /requestAnimationFrame/);
+  assert.match(source, /affiliate-link-modal/);
+  assert.match(source, /product-unavailable/);
+
+  const visibleElement = {
+    isConnected: true,
+    getBoundingClientRect: () => ({ width: 100, height: 40 }),
+  };
+  const document = {
+    readyState: "complete",
+    body: { innerText: "", textContent: "" },
+    documentElement: {},
+    querySelectorAll: () => [],
+  };
+  const context = {
+    URL,
+    DOMException,
+    MutationObserver: class { observe() {} disconnect() {} },
+    document,
+    location: { href: "https://shopee.com.br/", hostname: "shopee.com.br" },
+    history: { pushState() {}, replaceState() {} },
+    addEventListener() {},
+    removeEventListener() {},
+    getComputedStyle: () => ({ display: "block", visibility: "visible", opacity: "1" }),
+    setTimeout,
+    clearTimeout,
+  };
+  context.globalThis = context;
+  vm.runInNewContext(source, context, { filename: "page-context.js" });
+  const routes = context.TaBaratoPageContext;
+
+  document.body.innerText = "Produto indisponível";
+  assert.equal(routes.routeFor({ url: "https://shopee.com.br/produto-i.1.2", documentRef: document }), "product-unavailable");
+  document.body.innerText = "Anúncio finalizado";
+  assert.equal(routes.routeFor({ url: "https://produto.mercadolivre.com.br/MLB-123456789-item", documentRef: document }), "product-unavailable");
+  document.body.innerText = "Detalhes da Oferta do Produto Link de Oferta de Produto Copiar Link";
+  document.querySelectorAll = (selector) => selector.includes("dialog") || selector.includes("modal") ? [visibleElement] : [];
+  assert.equal(routes.routeFor({ url: "https://affiliate.shopee.com.br/offer/123", documentRef: document }), "affiliate-link-modal");
+});
+
+test("extension removes aggressive automatic redirection and narrows permissions", () => {
+  const manifest = JSON.parse(readFileSync(join(extensionRoot, "manifest.json"), "utf8"));
+  const worker = readFileSync(join(extensionRoot, "background", "service-worker.js"), "utf8");
+  const meli = readFileSync(join(extensionRoot, "content", "stores", "mercado-livre.js"), "utf8");
+  assert.ok(!manifest.permissions.includes("declarativeNetRequest"));
+  assert.ok(!existsSync(join(extensionRoot, "background", "navigation.js")));
+  assert.ok(!existsSync(join(extensionRoot, "content", "mercado-livre-guard.js")));
+  assert.ok(manifest.content_scripts.every((entry) => !entry.js.includes("content/mercado-livre-guard.js")));
+  assert.doesNotMatch(worker, /TABARATO_START_ML_AFFILIATE_GUARD|TABARATO_STOP_ML_AFFILIATE_GUARD/);
+  assert.doesNotMatch(meli, /START_ML_AFFILIATE_GUARD|STOP_ML_AFFILIATE_GUARD/);
+});
+
+test("foreground operations expose progress and safe cancellation", () => {
+  const html = readFileSync(join(extensionRoot, "sidepanel", "index.html"), "utf8");
+  const core = readFileSync(join(extensionRoot, "sidepanel", "modules", "core.js"), "utf8");
+  const app = readFileSync(join(extensionRoot, "sidepanel", "app.js"), "utf8");
+  assert.match(html, /id="operation-status"/);
+  assert.match(html, /id="cancel-operation-button"/);
+  assert.match(core, /function beginOperation/);
+  assert.match(core, /new AbortController\(\)/);
+  assert.match(core, /function cancelOperation/);
+  assert.match(app, /cancelOperationButton\.addEventListener\("click"/);
+});
+
+test("category resolution never creates or guesses a first category", () => {
+  const source = readFileSync(join(extensionRoot, "sidepanel", "modules", "catalog.js"), "utf8");
+  const html = readFileSync(join(extensionRoot, "sidepanel", "index.html"), "utf8");
+  assert.match(source, /Nunca cria categorias e nunca escolhe a primeira opção como fallback/);
+  assert.match(source, /return available\.includes\(current\) \? current : ""/);
+  assert.match(source, /elements\.fields\.category\.value = names\.includes\(current\) \? current : ""/);
+  assert.doesNotMatch(source, /categories?[^\n]{0,100}(?:POST|create|criar)/i);
+  assert.match(html, /<option value="">Selecione uma categoria<\/option>/);
+});
+
+test("best-price search is user-triggered and does not open candidates automatically", () => {
+  const capture = readFileSync(join(extensionRoot, "sidepanel", "modules", "capture.js"), "utf8");
+  const affiliate = readFileSync(join(extensionRoot, "content", "shopee-affiliate.js"), "utf8");
+  assert.match(capture, /mode: "browse-only"/);
+  assert.match(capture, /_OrderId_PRICE/);
+  assert.match(capture, /A escolha é manual/);
+  const browseBranch = affiliate.match(/if \(request\.mode === "browse-only"\) \{[\s\S]*?return "browse-ready";[\s\S]*?\}/)?.[0] || "";
+  assert.match(browseBranch, /persistBrowseReady/);
+  assert.doesNotMatch(browseBranch, /clickObterLink|chooseExactCard|chooseBestAlternativeCard/);
+});
+
+test("content navigation detection avoids the former tight polling loop", () => {
+  const content = readFileSync(join(extensionRoot, "content", "index.js"), "utf8");
+  assert.match(content, /observeNavigation/);
+  assert.doesNotMatch(content, /750/);
 });
