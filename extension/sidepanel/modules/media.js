@@ -94,7 +94,7 @@
     return state.shareImagePromise;
   }
 
-  function whatsappMessage(payload, product = null) {
+  function whatsappMessage(payload) {
     const benefits = messageBenefits(payload.extraText);
     const headline = String(payload.messageHeadline || "").trim().replace(/^\s*\u{1F525}\s*/u, "") || "TA BARATO!";
     const previousPrice = previousPriceFor(payload.currentPrice, payload.previousPrice, payload.currentPrice);

@@ -1,5 +1,5 @@
 (() => {
-  if (window.top !== window) return;
+  if (globalThis.top && globalThis.top !== globalThis) return;
   const tools = globalThis.TaBaratoCapture;
   if (!tools || globalThis.TaBaratoStores?.some((store) => store.id === "mercado-livre")) return;
 
@@ -130,8 +130,6 @@
     .find((element) => tools.visible(element) && pattern.test(controlLabel(element)));
 
   const productControl = (pattern) => matchingControl(productRoot(), pattern);
-  const pageControl = (pattern) => productControl(pattern) || matchingControl(document, pattern);
-
   const visibleDialogs = (pattern) => [...document.querySelectorAll("[role='dialog'], [aria-modal='true'], .andes-modal, [class*='modal']")]
     .filter((element) => tools.visible(element) && pattern.test(tools.clean(element.textContent)));
 
@@ -224,7 +222,7 @@
   const strictShareControl = () => [...document.querySelectorAll("button, [role='button']")]
     .filter((element) => element.id !== "tabarato-launcher" && tools.visible(element))
     .filter((element) => exactControlLabel(element, "compartilhar"))
-    .filter((element) => !element.closest("a[href*='/afiliados-home']"))
+    .filter((element) => !element.closest?.("a[href*='/afiliados-home']"))
     .map((element) => {
       const rectangle = element.getBoundingClientRect();
       if (rectangle.top < -8 || rectangle.top > 170 || rectangle.width < 50 || rectangle.height < 24) return null;

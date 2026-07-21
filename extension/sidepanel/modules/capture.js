@@ -169,7 +169,6 @@
 
   async function current() {
     const runId = ++state.captureSequence;
-    let productVisible = false;
     setBusy(elements.refreshButton, true, "...");
     elements.loading.classList.remove("hidden");
     elements.empty.classList.add("hidden");
@@ -188,7 +187,6 @@
       if (!result?.ok) throw new Error(result?.error || "Produto nao encontrado.");
       if (runId !== state.captureSequence) return;
       await apply(result.product, tab);
-      productVisible = true;
       elements.loading.classList.add("hidden");
       setBusy(elements.refreshButton, true, "Completando...");
       panel.renderActionLocks();

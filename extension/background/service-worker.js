@@ -159,6 +159,10 @@ const handlers = {
   TABARATO_BATCH_UNTRACK_WORKERS: (message) => operations.untrack(message.tabIds),
   TABARATO_BATCH_HEARTBEAT: (message) => operations.heartbeat(message.tabIds),
   TABARATO_STOP_BATCH_WORKERS: () => operations.stop(),
+  TABARATO_OPERATION_CREATE: (message) => operations.create(message.operation),
+  TABARATO_OPERATION_PATCH: (message) => operations.patch(message.id, message.patch),
+  TABARATO_OPERATION_CHANNEL: (message) => operations.updateChannel(message.id, message.channel, message.patch),
+  TABARATO_OPERATION_LIST: (message) => operations.list(message.options),
   TABARATO_ACTIVATE_ML_COUPONS: (message) => coupons.activate(message.limit),
   TABARATO_STOP_ML_COUPONS: () => coupons.stop(),
   TABARATO_COUPON_FILTER_RELOAD_PENDING: (message, sender) => coupons.markFilterReloadPending(message, sender),
@@ -209,6 +213,7 @@ Promise.all([
   whatsapp.initialize(),
   operations.migrateLegacyLease(),
   operations.cleanupStale(),
+  operations.recoverInterrupted(),
   coupons.resumePersisted(),
   scheduleCleanupAlarm(),
 ]).catch((error) => runtime.reportError("extension-load", error));

@@ -20,7 +20,12 @@
     "tabs"
   ],
   "host_permissions": [
-    "https://*/*",
+    "https://*.mercadolivre.com.br/*",
+    "https://*.mercadolibre.com/*",
+    "https://*.shopee.com.br/*",
+    "https://web.whatsapp.com/*",
+    "https://www.tabaratoofertas.shop/*",
+    "https://tabaratoofertas.shop/*",
     "http://localhost/*",
     "http://127.0.0.1/*"
   ],
@@ -132,7 +137,11 @@
         "assets/icon-128.png"
       ],
       "matches": [
-        "https://*/*",
+        "https://*.mercadolivre.com.br/*",
+        "https://*.mercadolibre.com/*",
+        "https://*.shopee.com.br/*",
+        "https://www.tabaratoofertas.shop/*",
+        "https://tabaratoofertas.shop/*",
         "http://localhost/*",
         "http://127.0.0.1/*"
       ]

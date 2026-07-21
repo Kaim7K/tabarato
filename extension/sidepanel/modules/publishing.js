@@ -6,6 +6,21 @@
   const runtime = globalThis.TaBaratoRuntime;
   const { formatPrice, parsePrice } = globalThis.TaBaratoProductUtils;
 
+  function publicationOperationId(id, payload) {
+    const price = String(payload.currentPrice || "").replace(/[^0-9]/g, "") || "none";
+    const coupon = String(payload.coupon || "none").replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 40) || "none";
+    return `publish:${id}:${price}:${coupon}`;
+  }
+
+  async function operationMessage(type, value) {
+    const response = await chrome.runtime.sendMessage({ type, ...value }).catch(() => null);
+    return response?.ok === false ? null : response;
+  }
+
+  function channelPatch(operationId, channel, patch) {
+    return operationMessage("TABARATO_OPERATION_CHANNEL", { id: operationId, channel, patch });
+  }
+
   function failedWhatsAppSummary(result) {
     const failed = (result?.results || []).filter((item) => !item.ok);
     if (!failed.length) return "";
@@ -29,6 +44,26 @@
     const { forceRepublish = false, notifyWhatsApp = true } = options;
     const groups = groupNames();
     const whatsappRequested = notifyWhatsApp && groups.length > 0;
+    const operationId = publicationOperationId(id, payload);
+    await operationMessage("TABARATO_OPERATION_CREATE", {
+      operation: {
+        id: operationId,
+        kind: "publish",
+        offerId: id,
+        marketplace: payload.platform || "",
+        productId: payload.sourceProductId || "",
+        price: payload.currentPrice || "",
+        coupon: payload.coupon || "",
+        payload: { productName: payload.productName || "" },
+        requestedChannels: { site: true, telegram: true, whatsapp: whatsappRequested },
+      },
+    });
+    await Promise.all([
+      channelPatch(operationId, "site", { status: "running", attempts: 1 }),
+      channelPatch(operationId, "telegram", { status: "running", attempts: 1 }),
+      whatsappRequested ? channelPatch(operationId, "whatsapp", { status: "running", attempts: 1 }) : Promise.resolve(),
+    ]);
+
     const artwork = panel.media.shareImage(payload)
       .then(async (file) => ({ file, dataUrl: await panel.media.fileToDataUrl(file) }));
 
@@ -80,6 +115,24 @@
       );
 
     if (whatsappRequested) await recordWhatsApp(id, channels.whatsapp.result, whatsappError);
+
+    await Promise.all([
+      channelPatch(operationId, "site", {
+        status: channels.telegram.ok ? "completed" : "failed",
+        errorCode: channels.telegram.ok ? "" : "SITE_TELEGRAM_FAILED",
+        errorMessage: telegramError,
+      }),
+      channelPatch(operationId, "telegram", {
+        status: channels.telegram.ok ? "completed" : "failed",
+        errorCode: channels.telegram.ok ? "" : "TELEGRAM_FAILED",
+        errorMessage: telegramError,
+      }),
+      whatsappRequested ? channelPatch(operationId, "whatsapp", {
+        status: channels.whatsapp.ok ? "completed" : "failed",
+        errorCode: channels.whatsapp.ok ? "" : "WHATSAPP_FAILED",
+        errorMessage: whatsappError,
+      }) : Promise.resolve(),
+    ]);
 
     const successfulChannels = [channels.telegram.ok, whatsappRequested && (channels.whatsapp.ok || channels.whatsapp.partial)].filter(Boolean).length;
     const failedChannels = [!channels.telegram.ok, whatsappRequested && !channels.whatsapp.ok].filter(Boolean).length;
