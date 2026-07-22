@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { assertSafeProductUrl, isPrivateAddress } from "../api/_lib/productPreview.js";
 import { createAdminExtensionToken, createAdminSessionToken, getCookie, handleExtensionCors, isValidUuid, readJson, requireAdmin, requireCron, verifyAdminExtensionToken } from "../api/_lib/http.js";
 import { mapWithConcurrency } from "../src/lib/async.js";
+import { evaluateRepublish, queuePriority } from "../api/_lib/offerIntelligence.js";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -228,8 +229,13 @@ test("system stores publication history and refreshes published offer prices", (
   const maintenance = readFileSync(join(root, "api", "_lib", "offerMaintenance.js"), "utf8");
   const cron = readFileSync(join(root, "api", "cron", "publicar-agendadas.js"), "utf8");
   assert.match(migration, /offer_publication_history/);
+  assert.match(migration, /price_snapshot/);
+  assert.match(migration, /coupon_snapshot/);
+  assert.match(migration, /free_shipping_snapshot/);
   assert.match(migration, /last_checked_at/);
-  assert.match(publisher, /channel, status, external_message_id/);
+  assert.match(publisher, /external_message_id/);
+  assert.match(publisher, /publicationSnapshot/);
+  assert.match(publisher, /price_snapshot, coupon_snapshot, free_shipping_snapshot/);
   assert.match(maintenance, /fetchProductPreview/);
   assert.match(maintenance, /current_price=\$2/);
   assert.match(maintenance, /status='EXPIRADO'/);
@@ -254,7 +260,43 @@ test("recent publication filtering keeps changed-price products eligible for a n
   const route = readFileSync(join(root, "api", "admin", "ofertas", "index.js"), "utf8");
   assert.match(offers, /recentOnly = false, cooldownHours = 24/);
   assert.match(offers, /price_history\.recorded_at > offer\.published_at/);
+  assert.match(offers, /price_snapshot/);
+  assert.match(offers, /coupon_snapshot/);
   assert.match(route, /cooldownHours/);
+});
+
+test("smart offer radar explains republication and queue priority", () => {
+  const lastPublishedAt = new Date(Date.now() - 2 * 3600000).toISOString();
+  const republish = evaluateRepublish({
+    currentPrice: "80",
+    previousPrice: "120",
+    lastPublishedPrice: "100",
+    lastPublishedAt,
+    coupon: "NOVO10",
+    lastPublishedCoupon: "",
+    extraText: "Frete grátis.",
+  });
+  assert.equal(republish.eligible, true);
+  assert.match(republish.reasons.join(" "), /preço caiu|cupom novo|frete grátis/);
+
+  const unchanged = evaluateRepublish({
+    currentPrice: "100",
+    lastPublishedPrice: "100",
+    lastPublishedAt,
+  });
+  assert.equal(unchanged.hiddenByCooldown, true);
+
+  const priority = queuePriority({
+    currentPrice: "80",
+    previousPrice: "120",
+    affiliateLink: "https://example.com/oferta",
+    imageUrl: "https://example.com/image.jpg",
+    category: "Tecnologia",
+    evidence: { flashSale: true },
+  });
+  assert.equal(priority.kind, "RELAMPAGO");
+  assert.ok(priority.score > 300);
+  assert.match(priority.reason, /oferta relâmpago/);
 });
 
 test("public search expands synonyms and public offers expose final coupon price", () => {

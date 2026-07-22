@@ -663,7 +663,7 @@ test("extension runtime releases timed out operations", async () => {
   assert.equal(await context.TaBaratoRuntime.withTimeout(Promise.resolve("ok"), 20), "ok");
 });
 
-test("batch runtime keeps at most five preloaded tabs and reads them sequentially", async () => {
+test("batch runtime keeps at most five preloaded tabs and validates products before publishing", async () => {
   const source = readFileSync(join(extensionRoot, "sidepanel", "modules", "batch.js"), "utf8");
   const utilitySource = readFileSync(join(extensionRoot, "sidepanel", "batch-utils.js"), "utf8");
   const urls = Array.from({ length: 12 }, (_, index) => `https://produto.mercadolivre.com.br/MLB-${100000000 + index}-produto_JM`);
@@ -780,7 +780,7 @@ test("batch runtime keeps at most five preloaded tabs and reads them sequentiall
 
   assert.equal(maximumLiveTabs, 5);
   assert.equal(events.filter((event) => event.startsWith("create:")).length, 12);
-  assert.equal(events.filter((event) => event.startsWith("read:")).length, 12);
+  assert.equal(events.filter((event) => event.startsWith("read:")).length, 24);
   const firstRead = events.findIndex((event) => event.startsWith("read:"));
   assert.equal(events.slice(0, firstRead).filter((event) => event.startsWith("create:")).length, 5);
   const sixthCreate = events.findIndex((event, index) => event.startsWith("create:")
@@ -802,6 +802,18 @@ test("batch checks publication history before creating product tabs", () => {
   assert.match(batch, /Já publicado, não foi aberto/);
   assert.match(catalog, /resource: "posted-products"/);
   assert.match(catalog, /publicationCount/);
+});
+
+test("batch pauses an item when critical product data changes while queued", () => {
+  const batch = readFileSync(join(extensionRoot, "sidepanel", "modules", "batch.js"), "utf8");
+  assert.match(batch, /function criticalProductChanges/);
+  assert.match(batch, /function validateProductBeforePublication/);
+  assert.match(batch, /Conferindo dados finais/);
+  assert.match(batch, /pausedByQueueValidation/);
+  assert.match(batch, /Pausado para revisão/);
+  assert.match(batch, /preço/);
+  assert.match(batch, /cupom/);
+  assert.match(batch, /estoque/);
 });
 
 test("catalog resolves already published product IDs locally and from the database", async () => {

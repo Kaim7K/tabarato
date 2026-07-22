@@ -19,6 +19,14 @@ export function buildAdminAnalytics(offers, categories, siteMetrics) {
   const totalShares = offers.reduce((sum, offer) => sum + number(offer.shares), 0);
   const totalFavorites = offers.reduce((sum, offer) => sum + number(offer.favorites), 0);
   const publicationCount = offers.reduce((sum, offer) => sum + number(offer.publicationCount), 0);
+  const republishCandidates = offers
+    .filter((offer) => offer.republishEligible)
+    .sort((left, right) => number(right.queueScore) - number(left.queueScore))
+    .slice(0, 5);
+  const reviewQueue = offers
+    .filter((offer) => ["PUBLICAR", "REVISAR"].includes(offer.recommendedAction))
+    .sort((left, right) => number(right.queueScore) - number(left.queueScore))
+    .slice(0, 5);
   const totalValue = published.reduce((sum, offer) => sum + number(offer.currentPrice), 0);
   const discounts = offers.map((offer) => {
     const previous = number(offer.previousPrice);
@@ -38,6 +46,10 @@ export function buildAdminAnalytics(offers, categories, siteMetrics) {
     totalShares,
     totalFavorites,
     publicationCount,
+    republishCandidates,
+    reviewQueue,
+    republishCount: offers.filter((offer) => offer.republishEligible).length,
+    cooldownHiddenCount: offers.filter((offer) => offer.republishHiddenByCooldown).length,
     uniqueVisitors: siteMetrics.uniqueVisitors,
     visits: siteMetrics.visits,
     socialUniqueVisitors: siteMetrics.socialUniqueVisitors,

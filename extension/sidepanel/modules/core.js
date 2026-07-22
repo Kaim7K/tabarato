@@ -73,7 +73,6 @@
     saveButton: byId("save-button"),
     publishButton: byId("publish-button"),
     whatsappButton: byId("whatsapp-button"),
-    actionMenu: document.querySelector(".action-menu"),
     duplicateWarning: byId("duplicate-warning"),
     captureQuality: byId("capture-quality"),
     toast: byId("toast"),
@@ -287,8 +286,6 @@
       elements.shopeeLinkButton,
       elements.bestOptionButton,
     ].forEach((button) => { button.disabled = disabled; });
-    elements.actionMenu.dataset.disabled = String(disabled);
-    if (disabled) elements.actionMenu.removeAttribute("open");
   }
 
   function lockActions(owner, button, label) {

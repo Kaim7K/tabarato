@@ -1,5 +1,5 @@
 import { query } from "./db.js";
-import { evaluateOffer } from "./offerIntelligence.js";
+import { evaluateOffer, evaluateRepublish, queuePriority } from "./offerIntelligence.js";
 
 export const STATUSES = ["RASCUNHO", "APROVADO", "AGENDADO", "PUBLICANDO", "PUBLICADO", "ERRO", "EXPIRADO"];
 
@@ -23,6 +23,9 @@ function parsePrice(value) {
 export function mapOffer(row) {
   if (!row) return null;
   const evidence = row.intelligence_evidence || {};
+  const lastPublishedPrice = row.last_published_price ?? row.current_price;
+  const lastPublishedCoupon = row.last_published_coupon || "";
+  const lastPublishedFreeShipping = Boolean(row.last_published_free_shipping);
   const quality = evaluateOffer({
     currentPrice: row.current_price,
     previousPrice: row.previous_price,
@@ -31,6 +34,33 @@ export function mapOffer(row) {
     affiliateLink: row.affiliate_link,
     category: row.category,
     extraText: row.extra_text,
+    evidence,
+  });
+  const republish = evaluateRepublish({
+    currentPrice: row.current_price,
+    previousPrice: row.previous_price,
+    coupon: row.coupon,
+    lastPublishedAt: row.last_published_at || row.published_at || row.site_published_at,
+    lastPublishedPrice,
+    lastPublishedCoupon,
+    lastPublishedFreeShipping,
+    extraText: row.extra_text,
+    availabilityStatus: row.availability_status,
+    evidence,
+  });
+  const priority = queuePriority({
+    currentPrice: row.current_price,
+    previousPrice: row.previous_price,
+    coupon: row.coupon,
+    imageUrl: row.image_url,
+    affiliateLink: row.affiliate_link,
+    category: row.category,
+    extraText: row.extra_text,
+    priority: row.priority,
+    lastPublishedAt: row.last_published_at || row.published_at || row.site_published_at,
+    lastPublishedPrice,
+    lastPublishedCoupon,
+    lastPublishedFreeShipping,
     evidence,
   });
   return {
@@ -50,6 +80,13 @@ export function mapOffer(row) {
     lastCheckError: row.last_check_error || "",
     publicationCount: Number(row.publication_count || 0),
     lastPublishedAt: row.last_published_at || null,
+    lastPublishedPrice: lastPublishedPrice == null ? "" : String(lastPublishedPrice),
+    republishEligible: republish.eligible,
+    republishHiddenByCooldown: republish.hiddenByCooldown,
+    republishReasons: republish.reasons,
+    queueKind: priority.kind,
+    queueScore: priority.score,
+    queueReason: priority.reason,
     platform: row.platform,
     campaignName: row.campaign_name || "",
     priority: Number(row.priority || 0),
@@ -284,7 +321,33 @@ export async function listOffers({ search = "", status = "", category = "" } = {
   const result = await query(`SELECT telegram_offers.*,
     (SELECT COUNT(*) FROM site_analytics_events events WHERE events.offer_id=telegram_offers.id AND events.event_type='click') AS real_clicks,
     (SELECT COUNT(*) FROM offer_publication_history history WHERE history.offer_id=telegram_offers.id AND history.status='SUCESSO') AS publication_count,
-    (SELECT MAX(published_at) FROM offer_publication_history history WHERE history.offer_id=telegram_offers.id AND history.status='SUCESSO') AS last_published_at
+    (SELECT MAX(published_at) FROM offer_publication_history history WHERE history.offer_id=telegram_offers.id AND history.status='SUCESSO') AS last_published_at,
+    COALESCE(
+      (SELECT price_snapshot FROM offer_publication_history history
+       WHERE history.offer_id=telegram_offers.id
+         AND history.status='SUCESSO'
+         AND history.price_snapshot IS NOT NULL
+       ORDER BY history.published_at DESC LIMIT 1),
+      (SELECT price FROM offer_price_history price_history
+       WHERE price_history.offer_id=telegram_offers.id
+         AND price_history.recorded_at <= COALESCE(telegram_offers.published_at, telegram_offers.site_published_at, telegram_offers.created_at)
+       ORDER BY price_history.recorded_at DESC LIMIT 1),
+      telegram_offers.current_price
+    ) AS last_published_price,
+    COALESCE(
+      (SELECT coupon_snapshot FROM offer_publication_history history
+       WHERE history.offer_id=telegram_offers.id
+         AND history.status='SUCESSO'
+       ORDER BY history.published_at DESC LIMIT 1),
+      ''
+    ) AS last_published_coupon,
+    COALESCE(
+      (SELECT free_shipping_snapshot FROM offer_publication_history history
+       WHERE history.offer_id=telegram_offers.id
+         AND history.status='SUCESSO'
+       ORDER BY history.published_at DESC LIMIT 1),
+      FALSE
+    ) AS last_published_free_shipping
     FROM telegram_offers ${where} ORDER BY created_at DESC LIMIT 500`, params);
   return result.rows.map((row) => mapOffer({ ...row, clicks: Number(row.real_clicks || 0) }));
 }

@@ -1,4 +1,4 @@
-import { BarChart3, CalendarClock, CircleDollarSign, ClipboardList, MousePointerClick, Plus, RefreshCw, Send, Tag, Users } from "lucide-react";
+import { BarChart3, CalendarClock, CircleDollarSign, ClipboardList, MousePointerClick, Plus, RefreshCw, Repeat2, Send, Sparkles, Tag, Users } from "lucide-react";
 import { formatPrice } from "@/lib/catalog";
 import { EmptyBlock, LoadingBlock, Panel } from "@/features/admin/AdminUi";
 import { number, statusClasses, statusLabels } from "@/features/admin/adminOfferConfig";
@@ -32,8 +32,18 @@ export function Dashboard({ analytics, offers, loading, onNew, onEdit, onRefresh
       <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <Metric icon={CircleDollarSign} label="Ticket médio" value={formatPrice(analytics.averageTicket)} hint={`${analytics.averageDiscount}% de desconto médio`} />
         <Metric icon={Send} label="Publicações realizadas" value={analytics.publicationCount} hint="Histórico confirmado por canal" />
+        <Metric icon={Repeat2} label="Vale republicar" value={analytics.republishCount} hint={`${analytics.cooldownHiddenCount} ocultas por 24h sem mudança`} />
         <Metric icon={MousePointerClick} label="Média de cliques" value={analytics.published ? Math.round(analytics.totalClicks / analytics.published) : 0} hint="Por oferta publicada" />
         <Metric icon={Tag} label="Plataformas ativas" value={analytics.byPlatform.length} hint="Origem das ofertas" />
+      </div>
+
+      <div className="grid xl:grid-cols-2 gap-4">
+        <Panel title="Radar de republicação" icon={Repeat2}>
+          <div className="space-y-2">{analytics.republishCandidates.length ? analytics.republishCandidates.map((offer) => <CompactOffer key={offer.id} offer={offer} onEdit={onEdit} detail={(offer.republishReasons || [offer.queueReason])[0]} />) : <EmptyBlock label="Nenhuma oferta com mudança relevante agora." />}</div>
+        </Panel>
+        <Panel title="Fila inteligente" icon={Sparkles}>
+          <div className="space-y-2">{analytics.reviewQueue.length ? analytics.reviewQueue.map((offer) => <CompactOffer key={offer.id} offer={offer} onEdit={onEdit} detail={`${offer.queueKind || "NORMAL"} · nota ${offer.queueScore || offer.qualityScore || 0}`} />) : <EmptyBlock label="Sem ofertas prontas para priorizar." />}</div>
+        </Panel>
       </div>
 
       <div className="grid xl:grid-cols-2 gap-4">
@@ -119,12 +129,12 @@ function CategoryChart({ items }) {
   );
 }
 
-function CompactOffer({ offer, onEdit }) {
+function CompactOffer({ offer, onEdit, detail = "" }) {
   return (
     <button onClick={() => onEdit(offer)} className="w-full flex items-center justify-between gap-3 bg-white/[0.04] border border-white/10 rounded-lg px-3 py-3 text-left hover:bg-white/[0.07]">
       <div className="min-w-0">
         <p className="font-medium truncate">{offer.productName}</p>
-        <p className="text-xs text-white/35 truncate">{offer.category} / {formatPrice(number(offer.currentPrice))}</p>
+        <p className="text-xs text-white/35 truncate">{detail || `${offer.category} / ${formatPrice(number(offer.currentPrice))}`}</p>
       </div>
       <span className={`shrink-0 px-2.5 py-1 rounded-full text-xs font-semibold ${statusClasses[offer.status] || statusClasses.RASCUNHO}`}>{statusLabels[offer.status] || offer.status}</span>
     </button>

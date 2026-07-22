@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { formatTelegramMessage } from "../api/_lib/telegram.js";
+import { formatTelegramMessage, publicationSignals } from "../api/_lib/telegram.js";
 
 test("Telegram message keeps current and previous prices on one line", () => {
   const message = formatTelegramMessage({
@@ -100,4 +100,29 @@ test("Telegram separates prices from free shipping with a blank line", () => {
   });
 
   assert.match(message, /<s>R\$ 99,99<\/s>\n\n🚚 Frete grátis/u);
+});
+
+test("Telegram applies automatic templates for commerce signals", () => {
+  const endsAt = new Date(Date.now() + 2 * 3600000).toISOString();
+  const offer = {
+    productName: "Produto",
+    currentPrice: 89.9,
+    coupon: "GANHE10",
+    extraText: "Preço principal no Pix. Mercado Livre Full. Frete grátis.",
+    intelligenceEvidence: { officialStore: true, endsAt },
+  };
+  const message = formatTelegramMessage(offer);
+  assert.deepEqual(publicationSignals(offer), {
+    pix: true,
+    coupon: true,
+    full: true,
+    freeShipping: true,
+    officialStore: true,
+    lastHours: true,
+  });
+  assert.match(message, /ÚLTIMAS HORAS/u);
+  assert.match(message, /Cupom: <b>GANHE10<\/b>/u);
+  assert.match(message, /Últimas horas da oferta/u);
+  assert.match(message, /Envio Full/u);
+  assert.match(message, /Loja oficial ou vendedor autorizado/u);
 });

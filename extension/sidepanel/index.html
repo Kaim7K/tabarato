@@ -62,7 +62,7 @@
 
       <section id="editor-view" class="hidden">
         <section class="command-bar" aria-label="Controles da extensão">
-          <button id="collect-current-button" class="button button-primary collect-current-button" type="button" title="Ler o anúncio aberto e completar os dados disponíveis">Capturar produto desta página</button>
+          <button id="collect-current-button" class="button button-secondary collect-current-button" type="button" title="Ler o anúncio aberto e completar os dados disponíveis">Capturar produto desta página</button>
           <div class="segmented" role="group" aria-label="Modo da extensão">
             <button id="mode-single" type="button" class="active" aria-pressed="true">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2 9 5v10l-9 5-9-5V7l9-5Zm0 2.3L6 7.63v8.74l5 2.78v-7.57L6.5 9.1l1-1.74 4.5 2.5 4.5-2.5 1 1.74-4.5 2.48v7.57l6-3.33V7.63l-7-3.33Z"/></svg>
@@ -183,23 +183,15 @@
             <div id="capture-quality" class="notice notice-warning hidden" role="status"></div>
 
             <section class="panel fields-panel">
-              <div class="form-section-heading">
-                <div><span>Revisão</span><strong>Dados essenciais</strong></div>
-                <span>Edite apenas o necessário</span>
-              </div>
               <div class="product-fields">
                 <label class="field-wide field-affiliate">
                   <span class="field-label"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.6 13.4a2 2 0 0 0 2.8 0l4-4a2 2 0 1 0-2.8-2.8l-1.2 1.2L12 6.4l1.2-1.2a4 4 0 0 1 5.6 5.6l-4 4a4 4 0 0 1-5.6 0l-1-1 1.4-1.4 1 1Zm2.8-2.8a2 2 0 0 0-2.8 0l-4 4a2 2 0 1 0 2.8 2.8l1.2-1.2 1.4 1.4-1.2 1.2a4 4 0 0 1-5.6-5.6l4-4a4 4 0 0 1 5.6 0l1 1-1.4 1.4-1-1Z"/></svg>Link de afiliado</span>
-                  <div class="inline-field-action"><input id="affiliate-link" type="url" required /><div class="link-actions"><button id="best-option-button" class="mini-button" type="button">Melhor preço</button><button id="shopee-link-button" class="mini-button hidden" type="button">Gerar link</button></div></div>
+                  <div class="inline-field-action"><input id="affiliate-link" type="url" required /><button id="best-option-button" class="mini-button" type="button">Abrir busca por menor preço</button><button id="shopee-link-button" class="mini-button hidden" type="button">Gerar link deste anúncio</button></div>
                 </label>
                 <label class="field-name">
                   <span class="field-label"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18v14H3V5Zm2 2v10h14V7H5Zm2 8 3-4 2 2 2-3 3 5H7Z"/></svg>Nome do produto</span>
                   <textarea id="product-name" rows="2" maxlength="200" required></textarea>
                 </label>
-              </div>
-              <details class="details-panel">
-                <summary>Editar preço, categoria e detalhes</summary>
-                <div class="product-fields details-fields">
                 <label class="field-message-headline">
                   <span class="field-label"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v13H8l-4 4V4Zm2 2v10.17L7.17 15H18V6H6Z"/></svg>Mensagem personalizada</span>
                   <input id="message-headline" type="text" maxlength="80" placeholder="T&Aacute; BARATO!" />
@@ -224,8 +216,7 @@
                 <label class="field-wide"><span class="field-label">Descrição curta</span><textarea id="short-description" rows="3" maxlength="1000"></textarea></label>
                 <label class="field-wide"><span class="field-label">URL da imagem</span><input id="image-url" type="url" /></label>
                 <label class="field-wide"><span class="field-label">Texto complementar</span><textarea id="extra-text" rows="2" maxlength="600"></textarea></label>
-                </div>
-              </details>
+              </div>
             </section>
 
 
@@ -234,38 +225,27 @@
               <label class="check-row"><input id="destination-site" type="checkbox" checked /> Site</label>
               <label class="check-row"><input id="destination-telegram" type="checkbox" checked /> Telegram</label>
               <label class="check-row"><input id="destination-whatsapp" type="checkbox" checked /> WhatsApp</label>
+              <p class="field-hint">A seleção é salva como padrão para as próximas ofertas.</p>
             </fieldset>
 
             <div class="sticky-actions">
-              <button id="refresh-button" class="action-icon-button" type="button" title="Capturar novamente" aria-label="Capturar novamente"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17.65 6.35A7.95 7.95 0 0 0 12 4a8 8 0 1 0 7.45 10.93h-2.16A6 6 0 1 1 12 6c1.66 0 3.14.69 4.22 1.78L13 11h8V3l-3.35 3.35Z"/></svg></button>
+              <button id="refresh-button" class="action-icon-button" type="button" title="Capturar produto" aria-label="Capturar produto"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17.65 6.35A7.95 7.95 0 0 0 12 4a8 8 0 1 0 7.45 10.93h-2.16A6 6 0 1 1 12 6c1.66 0 3.14.69 4.22 1.78L13 11h8V3l-3.35 3.35Z"/></svg><span>Capturar</span></button>
               <button id="publish-button" class="action-icon-button primary" type="button" title="Enviar aos destinos selecionados" aria-label="Enviar aos destinos selecionados"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 5 5h-4v7h-2V8H7l5-5Zm-7 14h14v4H5v-4Z"/></svg><span>Enviar</span></button>
-              <details class="action-menu">
-                <summary title="Mais ações" aria-label="Mais ações">•••</summary>
-                <div>
-                  <button id="whatsapp-button" type="button" title="Enviar somente pelo WhatsApp"><img src="../assets/whatsapp.svg" alt="" />WhatsApp</button>
-                  <button id="save-button" type="submit" title="Salvar rascunho"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h12l2 2v16H5V3Zm2 2v14h10V7.5L14.5 5H7Zm2 8h6v4H9v-4Zm0-8h5v4H9V5Z"/></svg>Salvar rascunho</button>
-                </div>
-              </details>
+              <button id="whatsapp-button" class="action-icon-button whatsapp" type="button" title="Enviar pelo WhatsApp" aria-label="Enviar pelo WhatsApp"><img src="../assets/whatsapp.svg" alt="" /><span>WhatsApp</span></button>
+              <button id="save-button" class="action-icon-button" type="submit" title="Salvar rascunho" aria-label="Salvar rascunho"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h12l2 2v16H5V3Zm2 2v14h10V7.5L14.5 5H7Zm2 8h6v4H9v-4Zm0-8h5v4H9V5Z"/></svg><span>Salvar</span></button>
             </div>
           </form>
         </section>
 
         <section id="batch-view" class="hidden">
           <div class="panel batch-panel">
-            <div class="form-section-heading">
-              <div><span>Fila de envio</span><strong>Publicação em lote</strong></div>
-              <span>Links, revisão e envio</span>
-            </div>
-            <label>
-              <span>Links do lote</span>
-              <textarea id="batch-links" rows="4" placeholder="Cole um link da Shopee ou Mercado Livre por linha"></textarea>
-            </label>
-            <details class="details-panel batch-advanced">
-              <summary>Opções do lote</summary>
-              <div class="batch-advanced-body">
             <label class="check-row batch-tabs-only-row">
               <input id="batch-open-tabs-only" type="checkbox" />
               <span>Usar somente produtos abertos em abas à direita</span>
+            </label>
+            <label>
+              <span>Links do lote</span>
+              <textarea id="batch-links" rows="4" placeholder="Cole um link da Shopee ou Mercado Livre por linha"></textarea>
             </label>
             <label class="check-row batch-tabs-only-row">
               <input id="batch-show-recent" type="checkbox" />
@@ -291,8 +271,6 @@
                 <input id="batch-per-minute" type="number" min="1" max="20" step="1" value="3" />
               </label>
             </div>
-              </div>
-            </details>
 
             <section class="batch-selection-panel">
               <div class="comparison-header">
@@ -305,7 +283,7 @@
               <div id="batch-preview-list" class="batch-preview-list hidden"></div>
             </section>
             <p id="batch-next-time" class="batch-next-time" aria-live="polite">Aguardando início.</p>
-            <div id="batch-summary" class="batch-summary hidden" aria-live="polite">
+            <div id="batch-summary" class="batch-summary" aria-live="polite">
               <span><strong>0</strong> publicados</span>
               <span><strong>0</strong> ignorados</span>
               <span><strong>0</strong> erros</span>

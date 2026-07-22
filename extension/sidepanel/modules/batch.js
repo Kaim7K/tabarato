@@ -34,7 +34,6 @@
 
   function renderSummary({ published = 0, skipped = 0, failed = 0 } = {}) {
     if (!elements.batchSummary) return;
-    elements.batchSummary.classList?.remove("hidden");
     const values = [published, skipped, failed];
     [...elements.batchSummary.querySelectorAll("strong")].forEach((element, index) => {
       element.textContent = String(values[index] || 0);
@@ -387,6 +386,35 @@
     };
   }
 
+  function criticalProductChanges(before = {}, after = {}) {
+    const changes = [];
+    const comparable = (value) => String(value || "").replace(/\s+/g, " ").trim();
+    const priceBefore = parsePrice(before.currentPrice);
+    const priceAfter = parsePrice(after.currentPrice);
+    if (Number.isFinite(priceBefore) && Number.isFinite(priceAfter) && Math.abs(priceBefore - priceAfter) >= 0.01) changes.push("preço");
+    if (comparable(before.coupon) !== comparable(after.coupon)) changes.push("cupom");
+    if (comparable(before.affiliateLink) !== comparable(after.affiliateLink)) changes.push("link");
+    const beforeEvidence = before.intelligenceEvidence || {};
+    const afterEvidence = after.intelligenceEvidence || {};
+    if (beforeEvidence.variantAvailable !== afterEvidence.variantAvailable) changes.push("variação");
+    if (beforeEvidence.stockStatus && afterEvidence.stockStatus && beforeEvidence.stockStatus !== afterEvidence.stockStatus) changes.push("estoque");
+    return changes;
+  }
+
+  async function validateProductBeforePublication(worker, sourceTab, product, signal, total) {
+    log(`Conferindo dados finais ${worker.index + 1}/${total}...`);
+    const fresh = await runtime.retry(
+      () => panel.capture.loadedWorker(worker.tabId, worker.url, signal, sourceTab.windowId),
+      { attempts: 2, baseDelay: 500, signal },
+    );
+    const changes = criticalProductChanges(product, fresh);
+    if (!changes.length) return product;
+    return {
+      ...fresh,
+      pausedByQueueValidation: true,
+      queueValidationChanges: changes,
+    };
+  }
 
   async function previewQueue() {
     const sourceTab = await activeTab();
@@ -571,7 +599,14 @@
             log(`Prioridade ${score}: ${product.productName || worker.url}`, "neutral");
             await waitForCadence(cadence, controller.signal, worker.index + 1, pendingUrls.length);
             registerPostAttempt();
-            const result = await processProduct(product, worker.url, controller);
+            const freshProduct = await validateProductBeforePublication(worker, sourceTab, product, controller.signal, pendingUrls.length);
+            if (freshProduct.pausedByQueueValidation) {
+              skipped += 1;
+              renderSummary({ published, skipped, failed });
+              log(`Pausado para revisão (${freshProduct.queueValidationChanges.join(", ")} mudou): ${freshProduct.productName || worker.url}`, "neutral");
+              continue;
+            }
+            const result = await processProduct(freshProduct, worker.url, controller);
             if (result.status === "published") published += 1;
             else if (result.status === "failed") failed += 1;
             else skipped += 1;

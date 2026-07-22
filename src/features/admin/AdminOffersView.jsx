@@ -45,16 +45,23 @@ export function OffersView({
   bulkBusy,
 }) {
   const [sortBy, setSortBy] = useState(readInitialSort);
+  const [automationFilter, setAutomationFilter] = useState("");
   const [page, setPage] = useState(1);
 
   const sortedOffers = useMemo(() => {
-    const items = [...offers];
+    const items = offers.filter((offer) => {
+      if (automationFilter === "republish") return offer.republishEligible;
+      if (automationFilter === "cooldown") return offer.republishHiddenByCooldown;
+      if (automationFilter === "review") return ["REVISAR", "BLOQUEAR"].includes(offer.recommendedAction);
+      return true;
+    });
+    if (sortBy === "smart") return items.sort((a, b) => number(b.queueScore) - number(a.queueScore) || number(b.qualityScore) - number(a.qualityScore));
     if (sortBy === "oldest") return items.sort((a, b) => new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime());
     if (sortBy === "price_high") return items.sort((a, b) => number(b.currentPrice) - number(a.currentPrice));
     if (sortBy === "price_low") return items.sort((a, b) => number(a.currentPrice) - number(b.currentPrice));
     if (sortBy === "name") return items.sort((a, b) => a.productName.localeCompare(b.productName, "pt-BR"));
     return items.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
-  }, [offers, sortBy]);
+  }, [automationFilter, offers, sortBy]);
 
   const totalPages = Math.max(1, Math.ceil(sortedOffers.length / PAGE_SIZE));
   const pageOffers = sortedOffers.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -63,7 +70,7 @@ export function OffersView({
 
   useEffect(() => {
     setPage(1);
-  }, [category, search, sortBy, status]);
+  }, [automationFilter, category, search, sortBy, status]);
 
   useEffect(() => {
     setPage((current) => Math.min(current, totalPages));
@@ -88,7 +95,7 @@ export function OffersView({
       </div>
 
       <div className="bg-white/5 border border-white/10 rounded-lg p-4">
-        <div className="grid md:grid-cols-2 xl:grid-cols-[minmax(15rem,1fr)_11rem_13rem_11rem_auto] gap-3">
+        <div className="grid md:grid-cols-2 xl:grid-cols-[minmax(15rem,1fr)_11rem_13rem_12rem_11rem_auto] gap-3">
           <div className="relative md:col-span-2 xl:col-span-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" aria-hidden="true" />
             <label className="sr-only" htmlFor="admin-offer-search">Buscar ofertas</label>
@@ -103,17 +110,24 @@ export function OffersView({
             {categories.map((item) => <option key={item} value={item}>{item}</option>)}
           </select>
           <select aria-label="Ordenar ofertas" value={sortBy} onChange={(event) => setSortBy(event.target.value)} className={inputCls}>
+            <option value="smart">Fila inteligente</option>
             <option value="recent">Mais recentes</option>
             <option value="oldest">Mais antigas</option>
             <option value="price_high">Maior preco</option>
             <option value="price_low">Menor preco</option>
             <option value="name">Nome A-Z</option>
           </select>
+          <select aria-label="Filtrar automações" value={automationFilter} onChange={(event) => setAutomationFilter(event.target.value)} className={inputCls}>
+            <option value="">Todas as automações</option>
+            <option value="republish">Vale republicar</option>
+            <option value="cooldown">Ocultas por 24h</option>
+            <option value="review">Revisar antes de publicar</option>
+          </select>
           <button onClick={onRefresh} disabled={loading} className="min-h-10 px-4 py-2.5 bg-white/10 rounded-lg font-semibold flex items-center justify-center gap-2 disabled:opacity-50">
             <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} /> Atualizar
           </button>
         </div>
-        <p className="text-xs text-white/35 mt-3">{offers.length} oferta(s) encontrada(s)</p>
+        <p className="text-xs text-white/35 mt-3">{sortedOffers.length} oferta(s) encontrada(s). {offers.filter((offer) => offer.republishEligible).length} valem republicar.</p>
       </div>
 
       {selectedCount > 0 && (
@@ -146,11 +160,12 @@ export function OffersView({
       )}
 
       <div className="bg-white/5 border border-white/10 rounded-lg overflow-hidden">
-        <div className="hidden md:grid grid-cols-[32px_minmax(0,1fr)_120px_140px_120px_120px] gap-4 px-4 py-3 text-xs uppercase text-white/40 border-b border-white/10 bg-[#171717]">
+        <div className="hidden md:grid grid-cols-[32px_minmax(0,1fr)_120px_140px_120px_120px_120px] gap-4 px-4 py-3 text-xs uppercase text-white/40 border-b border-white/10 bg-[#171717]">
           <input type="checkbox" checked={allVisibleSelected} onChange={() => toggleAllVisible(pageOffers)} className="w-4 h-4 accent-[#FF6B35]" aria-label="Selecionar ofertas desta pagina" />
           <span>Produto</span>
           <span>Status</span>
           <span>Preco</span>
+          <span>Fila</span>
           <span>Agenda</span>
           <span className="text-right">Acoes</span>
         </div>
@@ -244,7 +259,7 @@ function OfferRow({ offer, selected, onToggleSelected, onEdit, onRetry, onRemove
         </div>
       </article>
 
-      <div className={`hidden md:grid grid-cols-[32px_minmax(0,1fr)_120px_140px_120px_120px] gap-4 p-4 items-center hover:bg-white/[0.03] ${selected ? "bg-[#FF6B35]/10" : ""}`}>
+      <div className={`hidden md:grid grid-cols-[32px_minmax(0,1fr)_120px_140px_120px_120px_120px] gap-4 p-4 items-center hover:bg-white/[0.03] ${selected ? "bg-[#FF6B35]/10" : ""}`}>
         <input type="checkbox" checked={selected} onChange={() => onToggleSelected(offer.id)} className="w-4 h-4 accent-[#FF6B35]" aria-label={`Selecionar ${offer.productName}`} />
         <button onClick={() => onEdit(offer)} className="flex items-center gap-3 min-w-0 text-left">
           <div className="relative w-14 h-14 bg-white rounded-lg overflow-hidden shrink-0">
@@ -261,6 +276,10 @@ function OfferRow({ offer, selected, onToggleSelected, onEdit, onRetry, onRemove
         <div>
           <p className="font-semibold">{formatPrice(number(offer.currentPrice))}</p>
           {offer.previousPrice && <p className="text-xs text-white/35 line-through">{formatPrice(number(offer.previousPrice))}</p>}
+        </div>
+        <div className="min-w-0">
+          <p className="text-xs font-semibold text-white/70 truncate">{offer.queueKind || "NORMAL"} · {offer.queueScore || offer.qualityScore || 0}</p>
+          <p className="text-xs text-white/35 truncate" title={(offer.republishReasons || []).join(", ") || offer.queueReason}>{offer.republishEligible ? "Vale republicar" : offer.republishHiddenByCooldown ? "Oculta 24h" : offer.recommendedAction || "Observar"}</p>
         </div>
         <p className="text-xs text-white/45">{schedule}</p>
         <div className="flex justify-end gap-1">

@@ -43,9 +43,36 @@ export function formatOfferBenefits(value = "") {
   return { pix, lines: [...new Set(lines)] };
 }
 
+export function publicationSignals(offer = {}) {
+  const text = `${offer.extraText || ""} ${JSON.stringify(offer.intelligenceEvidence || {})}`;
+  const normalized = text.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const evidence = offer.intelligenceEvidence || {};
+  const endsAt = evidence.endsAt ? new Date(evidence.endsAt).getTime() : 0;
+  return {
+    pix: /\bpix\b/i.test(normalized),
+    coupon: Boolean(offer.coupon),
+    full: /\bfull\b|mercado\s*livre\s*full/i.test(normalized),
+    freeShipping: /frete\s+gratis/i.test(normalized),
+    officialStore: Boolean(evidence.officialStore || evidence.authorizedSeller) || /loja\s+oficial|vendedor\s+autorizado/i.test(normalized),
+    lastHours: Number.isFinite(endsAt) && endsAt > Date.now() && endsAt - Date.now() <= 6 * 3600000,
+  };
+}
+
+function automaticHeadline(offer) {
+  const signals = publicationSignals(offer);
+  if (signals.lastHours) return "ÚLTIMAS HORAS";
+  if (signals.coupon) return "OFERTA COM CUPOM";
+  if (signals.pix) return "PREÇO NO PIX";
+  if (signals.full) return "OFERTA FULL";
+  if (signals.freeShipping) return "FRETE GRÁTIS";
+  if (signals.officialStore) return "LOJA OFICIAL";
+  return "T\u00C1 BARATO!";
+}
+
 export function formatTelegramMessage(offer) {
   const benefits = formatOfferBenefits(offer.extraText);
-  const headline = String(offer.messageHeadline || "").trim().replace(/^\s*\u{1F525}\s*/u, "") || "T\u00C1 BARATO!";
+  const signals = publicationSignals(offer);
+  const headline = String(offer.messageHeadline || "").trim().replace(/^\s*\u{1F525}\s*/u, "") || automaticHeadline(offer);
   const currentPrice = Number(offer.currentPrice);
   const capturedPreviousPrice = Number(offer.previousPrice);
   const previousPrice = Number.isFinite(capturedPreviousPrice) && capturedPreviousPrice > currentPrice
@@ -60,6 +87,9 @@ export function formatTelegramMessage(offer) {
     `\u{1F4B0} <b>${money(currentPrice)}</b>${benefits.pix ? " (no Pix)" : ""}   |   \u{274C} <s>${money(previousPrice)}</s>`,
   ];
   if (offer.coupon) lines.push("", `\u{1F39F}\u{FE0F} Cupom: <b>${escapeHtml(offer.coupon)}</b>`);
+  if (signals.lastHours) lines.push("\u{23F3} Últimas horas da oferta.");
+  if (signals.full) lines.push("\u{26A1} Envio Full quando disponível para seu CEP.");
+  if (signals.officialStore) lines.push("\u{2705} Loja oficial ou vendedor autorizado.");
   if (benefits.lines.length) lines.push("", ...benefits.lines.map((line) => escapeHtml(line.replace(/\.$/, ""))));
   lines.push("", "\u{1F447} <b>Compre aqui:</b>", escapeHtml(offer.affiliateLink || ""));
 
