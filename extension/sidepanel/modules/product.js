@@ -121,7 +121,10 @@
     if (previousProductKey && nextProductKey && previousProductKey !== nextProductKey) elements.fields.category.value = "";
     state.activeProduct = product;
     const values = valuesFor(product);
-    Object.entries(values).forEach(([key, value]) => { elements.fields[key].value = value; });
+    Object.entries(values).forEach(([key, value]) => {
+      const field = elements.fields[key];
+      if (field) field.value = value;
+    });
     state.autoFieldValues = { ...values };
     renderCaptureState(product, values);
   }

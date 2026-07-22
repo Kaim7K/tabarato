@@ -266,6 +266,12 @@ test("capture extracts requested product fields and closes store popups", () => 
   assert.match(shopee, /regularPrice: oldPrice \|\| basePrice/);
 });
 
+test("product panel ignores captured metadata without a matching form field", () => {
+  const source = readFileSync(join(extensionRoot, "sidepanel", "modules", "product.js"), "utf8");
+  assert.match(source, /const field = elements\.fields\[key\];\s*if \(field\) field\.value = value;/);
+  assert.match(source, /intelligenceEvidence: product\.intelligenceEvidence \|\| \{\}/);
+});
+
 test("coupon parser reads explicit Com CODE labels and never invents a coupon", () => {
   const couponCodeSource = readFileSync(join(extensionRoot, "shared", "coupon-code.js"), "utf8");
   const source = readFileSync(join(extensionRoot, "content", "shared.js"), "utf8");
