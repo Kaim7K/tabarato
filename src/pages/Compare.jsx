@@ -14,9 +14,17 @@ export default function Compare() {
   const { compareIds, removeCompare } = useOfferTools();
   const [offers, setOffers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    listPublicOffers({ limit: 100 }).then((items) => setOffers(items.filter((item) => compareIds.includes(item.id)))).finally(() => setLoading(false));
+    let active = true;
+    setLoading(true);
+    setError("");
+    listPublicOffers({ limit: 100 })
+      .then((items) => { if (active) setOffers(items.filter((item) => compareIds.includes(item.id))); })
+      .catch((requestError) => { if (active) setError(requestError.message || "Não foi possível carregar as ofertas para comparação."); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
   }, [compareIds]);
 
   const removeOffer = (id) => {
@@ -30,7 +38,9 @@ export default function Compare() {
     <PageShell>
       <SectionHeader eyebrow="Comparador" title="Compare seus achados" description="Compare até três ofertas antes de escolher a melhor opção." />
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
-        {loading ? <LoadingState /> : !offers.length ? (
+        {loading ? <LoadingState /> : error ? (
+          <EmptyState icon={ArrowLeftRight} title="Não foi possível carregar a comparação." description={error} />
+        ) : !offers.length ? (
           <EmptyState icon={ArrowLeftRight} title="Nenhuma oferta para comparar." description="Use o botão de comparação nos cards para adicionar até três produtos." action={<Link to="/" className="inline-flex min-h-11 items-center px-5 bg-[#FF6B35] text-white font-semibold rounded-md">Explorar ofertas</Link>} />
         ) : (
           <div className="overflow-x-auto rounded-lg border border-[#111111]/10 bg-white shadow-[0_6px_24px_rgba(17,17,17,0.05)]">

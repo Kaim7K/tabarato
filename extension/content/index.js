@@ -242,7 +242,7 @@
       transition: "transform .16s ease, box-shadow .16s ease",
     });
     document.documentElement.appendChild(button);
-    const quickActions = createQuickActions(button);
+    createQuickActions(button);
     applyLauncherPosition(button);
 
     const clickSuppressed = makeLauncherDraggable(button);
@@ -281,6 +281,7 @@
   function pageActionError(action = "capturar") {
     const context = pageContext?.snapshot?.() || { route: "unsupported", platform: "Desconhecida" };
     if (context.route === "auth-required") return `Entre novamente na ${context.platform} antes de ${action} o produto.`;
+    if (context.route === "traffic-verification") return `${context.platform} pediu uma verificacao de seguranca. Conclua-a no site e tente ${action} novamente.`;
     if (context.route === "product-unavailable") return "Este produto está indisponível ou o anúncio foi encerrado.";
     if (context.route === "error") return "A plataforma apresentou um erro. Recarregue a página e tente novamente.";
     if (context.route === "search") return "Abra a página exata do produto antes de iniciar a captura.";

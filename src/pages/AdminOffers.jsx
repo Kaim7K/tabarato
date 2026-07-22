@@ -1,9 +1,21 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { ClipboardList, FolderKanban, LayoutDashboard, MessageSquareText, Plus } from "lucide-react";
 import { DEFAULT_CATEGORIES, normalizeText } from "@/lib/catalog";
-import { telegramOffersApi, telegramStatuses } from "@/lib/telegramOffersApi";
+import { mapWithConcurrency } from "@/lib/async";
+import { telegramOffersApi } from "@/lib/telegramOffersApi";
 import { AdminHeader, AdminNavButton, AdminQuickLine } from "@/features/admin/AdminUi";
-import { number, statusLabels } from "@/features/admin/adminOfferConfig";
+import { buildAdminAnalytics } from "@/features/admin/adminAnalytics";
+import {
+  CUSTOM_CATEGORIES_KEY,
+  emptyAutoMessage,
+  emptyOffer,
+  fromDatetimeLocal,
+  loadOfferFilters,
+  mergeProductIntoForm,
+  normalizeFormPrice,
+  OFFER_FILTERS_KEY,
+  toDatetimeLocal,
+} from "@/features/admin/adminOfferForm";
 import { useDocumentMetadata } from "@/hooks/useDocumentMetadata";
 
 const Dashboard = lazy(() => import("@/features/admin/AdminDashboard").then((module) => ({ default: module.Dashboard })));
@@ -11,68 +23,6 @@ const OffersView = lazy(() => import("@/features/admin/AdminOffersView").then((m
 const EditorView = lazy(() => import("@/features/admin/AdminEditorView").then((module) => ({ default: module.EditorView })));
 const MessagesView = lazy(() => import("@/features/admin/AdminContentViews").then((module) => ({ default: module.MessagesView })));
 const CategoriesView = lazy(() => import("@/features/admin/AdminContentViews").then((module) => ({ default: module.CategoriesView })));
-
-const CUSTOM_CATEGORIES_KEY = "tb_admin_custom_categories";
-const OFFER_FILTERS_KEY = "tb_admin_offer_filters";
-
-const loadOfferFilters = () => {
-  try {
-    return JSON.parse(sessionStorage.getItem(OFFER_FILTERS_KEY) || "{}");
-  } catch {
-    return {};
-  }
-};
-
-const emptyOffer = {
-  productName: "",
-  shortDescription: "",
-  currentPrice: "",
-  previousPrice: "",
-  coupon: "",
-  couponDiscountPercent: 0,
-  category: "Tecnologia",
-  imageUrl: "",
-  affiliateLink: "",
-  sourceProductId: "",
-  platform: "Mercado Livre",
-  extraText: "",
-  status: "RASCUNHO",
-  scheduledAt: "",
-};
-
-const emptyAutoMessage = {
-  title: "",
-  message: "",
-  channel: "TELEGRAM",
-  imageUrl: "",
-  whatsappGroup: "",
-  isActive: true,
-  intervalMinutes: 1440,
-  sortOrder: 0,
-  nextSendAt: "",
-};
-
-const toDatetimeLocal = (value) => {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-};
-
-const fromDatetimeLocal = (value) => (value ? new Date(value).toISOString() : "");
-
-const normalizeFormPrice = (value = "") => {
-  const raw = String(value).replace(/[^\d.,]/g, "");
-  if (!raw) return "";
-  const lastComma = raw.lastIndexOf(",");
-  const lastDot = raw.lastIndexOf(".");
-  const decimalIndex = Math.max(lastComma, lastDot);
-  if (decimalIndex === -1) return raw;
-  const decimals = raw.slice(decimalIndex + 1);
-  const integer = raw.slice(0, decimalIndex).replace(/[.,]/g, "");
-  if (decimals.length === 2) return `${integer}.${decimals}`;
-  return `${integer}${decimals}`;
-};
 
 const suggestCategory = (product = {}, available = []) => {
   const text = normalizeText(`${product.productName || ""} ${product.shortDescription || ""}`);
@@ -228,6 +178,8 @@ export default function AdminOffers() {
   const [autoFilling, setAutoFilling] = useState(false);
   const [message, setMessage] = useState(null);
   const messageTimerRef = useRef(null);
+  const isMountedRef = useRef(true);
+  const loadVersionRef = useRef(0);
 
   const baseCategories = DEFAULT_CATEGORIES.filter((item) => !item.virtual).map((item) => item.name);
   const categories = useMemo(() => [...new Set([...baseCategories, ...customCategories.map((item) => item.name)])], [customCategories]);
@@ -243,63 +195,7 @@ export default function AdminOffers() {
     });
   }, [offers, search, status, category]);
 
-  const analytics = useMemo(() => {
-    const byStatus = telegramStatuses.map((item) => ({
-      name: statusLabels[item] || item,
-      value: offers.filter((offer) => offer.status === item).length,
-      status: item,
-    })).filter((item) => item.value > 0);
-
-    const byCategory = categories.map((item) => ({
-      name: item,
-      ofertas: offers.filter((offer) => offer.category === item).length,
-    })).filter((item) => item.ofertas > 0);
-
-    const published = offers.filter((offer) => offer.status === "PUBLICADO");
-    const scheduled = offers.filter((offer) => offer.status === "AGENDADO");
-    const totalClicks = offers.reduce((sum, offer) => sum + number(offer.clicks), 0);
-    const totalShares = offers.reduce((sum, offer) => sum + number(offer.shares), 0);
-    const totalFavorites = offers.reduce((sum, offer) => sum + number(offer.favorites), 0);
-    const publicationCount = offers.reduce((sum, offer) => sum + number(offer.publicationCount), 0);
-    const totalValue = published.reduce((sum, offer) => sum + number(offer.currentPrice), 0);
-    const discounts = offers.map((offer) => {
-      const previous = number(offer.previousPrice);
-      const current = number(offer.currentPrice);
-      return previous > current && current > 0 ? Math.round(((previous - current) / previous) * 100) : 0;
-    }).filter(Boolean);
-
-    return {
-      byStatus,
-      byCategory,
-      total: offers.length,
-      published: published.length,
-      scheduled: scheduled.length,
-      errors: offers.filter((offer) => offer.status === "ERRO").length,
-      drafts: offers.filter((offer) => offer.status === "RASCUNHO").length,
-      totalClicks,
-      totalShares,
-      totalFavorites,
-      publicationCount,
-      uniqueVisitors: siteMetrics.uniqueVisitors,
-      visits: siteMetrics.visits,
-      socialUniqueVisitors: siteMetrics.socialUniqueVisitors,
-      socialVisits: siteMetrics.socialVisits,
-      socialVisitsToday: siteMetrics.socialVisitsToday,
-      socialVisits7d: siteMetrics.socialVisits7d,
-      topOffers: [...offers].sort((a, b) => number(b.clicks) - number(a.clicks)).slice(0, 5),
-      byPlatform: [...new Set(offers.map((offer) => offer.platform).filter(Boolean))].map((name) => ({
-        name,
-        offers: offers.filter((offer) => offer.platform === name).length,
-        clicks: offers.filter((offer) => offer.platform === name).reduce((sum, offer) => sum + number(offer.clicks), 0),
-      })).sort((a, b) => b.clicks - a.clicks),
-      averageDiscount: discounts.length ? Math.round(discounts.reduce((a, b) => a + b, 0) / discounts.length) : 0,
-      averageTicket: published.length ? totalValue / published.length : 0,
-      nextScheduled: scheduled
-        .filter((offer) => offer.scheduledAt)
-        .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())
-        .slice(0, 4),
-    };
-  }, [offers, categories, siteMetrics]);
+  const analytics = useMemo(() => buildAdminAnalytics(offers, categories, siteMetrics), [offers, categories, siteMetrics]);
 
   const showMessage = (value, tone) => {
     const resolvedTone = tone || (/erro|faltam|informe|selecione|escolha|nao |não |inval/i.test(value) ? "error" : "success");
@@ -309,7 +205,8 @@ export default function AdminOffers() {
   };
 
   const load = async () => {
-    setLoading(true);
+    const requestVersion = ++loadVersionRef.current;
+    if (isMountedRef.current) setLoading(true);
     try {
       const [data, messagesData] = await Promise.all([
         telegramOffersApi.list(),
@@ -320,8 +217,9 @@ export default function AdminOffers() {
       const legacyCategories = loadCustomCategories();
       const knownNames = new Set(serverCategories.map((item) => item.name.toLowerCase()));
       const missingLegacy = legacyCategories.filter((item) => !knownNames.has(item.name.toLowerCase()));
-      const migrated = await Promise.all(missingLegacy.map((item) => telegramOffersApi.createCategory(item.name)));
+      const migrated = await mapWithConcurrency(missingLegacy, (item) => telegramOffersApi.createCategory(item.name));
       const synchronizedCategories = [...serverCategories, ...migrated.map((item) => item.category)];
+      if (!isMountedRef.current || requestVersion !== loadVersionRef.current) return;
       setOffers(nextOffers);
       setSiteMetrics(data.siteMetrics || { uniqueVisitors: 0, visits: 0, realClicks: 0, socialUniqueVisitors: 0, socialVisits: 0, socialVisitsToday: 0, socialVisits7d: 0 });
       const requestedId = new URLSearchParams(window.location.search).get("edit");
@@ -330,15 +228,25 @@ export default function AdminOffers() {
       setCustomCategories(synchronizedCategories.filter((item) => !baseCategories.includes(item.name)));
       setAutoMessages(messagesData.messages || []);
       setSelectedIds((current) => current.filter((id) => nextOffers.some((offer) => offer.id === id)));
-      localStorage.removeItem(CUSTOM_CATEGORIES_KEY);
+      try {
+        localStorage.removeItem(CUSTOM_CATEGORIES_KEY);
+      } catch {}
     } catch (error) {
-      showMessage(error.message);
+      if (isMountedRef.current && requestVersion === loadVersionRef.current) showMessage(error.message);
     } finally {
-      setLoading(false);
+      if (isMountedRef.current && requestVersion === loadVersionRef.current) setLoading(false);
     }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    isMountedRef.current = true;
+    load();
+    return () => {
+      isMountedRef.current = false;
+      loadVersionRef.current += 1;
+      if (messageTimerRef.current) window.clearTimeout(messageTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => () => {
     if (messageTimerRef.current) window.clearTimeout(messageTimerRef.current);
@@ -411,6 +319,8 @@ export default function AdminOffers() {
       affiliateLink: offer.affiliateLink || "",
       sourceProductId: offer.sourceProductId || "",
       platform: offer.platform || "Mercado Livre",
+      campaignName: offer.campaignName || "",
+      priority: offer.priority || 0,
       extraText: offer.extraText || "",
       status: offer.status || "RASCUNHO",
       scheduledAt: toDatetimeLocal(offer.scheduledAt),
@@ -429,19 +339,7 @@ export default function AdminOffers() {
     try {
       const data = await telegramOffersApi.previewProduct(form.affiliateLink);
       const product = data.product || {};
-      setForm((current) => ({
-        ...current,
-        productName: product.productName || current.productName,
-        shortDescription: product.shortDescription || current.shortDescription,
-        currentPrice: product.currentPrice ? normalizeFormPrice(product.currentPrice) : current.currentPrice,
-        previousPrice: product.previousPrice ? normalizeFormPrice(product.previousPrice) : current.previousPrice,
-        couponDiscountPercent: product.couponDiscountPercent || current.couponDiscountPercent,
-        imageUrl: product.imageUrl || current.imageUrl,
-        affiliateLink: product.affiliateLink || current.affiliateLink,
-        sourceProductId: product.sourceProductId || product.externalProductId || current.sourceProductId,
-        platform: product.platform || current.platform,
-        category: suggestCategory(product, categories) || current.category,
-      }));
+      setForm((current) => mergeProductIntoForm(current, product, suggestCategory(product, categories)));
       showMessage("Produto preenchido automaticamente.");
     } catch (error) {
       showMessage(error.message);
@@ -451,18 +349,7 @@ export default function AdminOffers() {
   };
 
   const applyCapturedProduct = (product = {}) => {
-    setForm((current) => ({
-      ...current,
-      productName: product.productName || current.productName,
-      shortDescription: product.shortDescription || current.shortDescription,
-      currentPrice: product.currentPrice ? normalizeFormPrice(product.currentPrice) : current.currentPrice,
-      previousPrice: product.previousPrice ? normalizeFormPrice(product.previousPrice) : current.previousPrice,
-      couponDiscountPercent: product.couponDiscountPercent || current.couponDiscountPercent,
-      imageUrl: product.imageUrl || current.imageUrl,
-      affiliateLink: product.affiliateLink || current.affiliateLink,
-      sourceProductId: product.sourceProductId || product.externalProductId || current.sourceProductId,
-      platform: product.platform || current.platform,
-    }));
+    setForm((current) => mergeProductIntoForm(current, product));
   };
 
   const openBrowserCapture = async () => {
@@ -596,7 +483,10 @@ export default function AdminOffers() {
 
   const retry = async (offer) => {
     try {
-      await telegramOffersApi.publish(offer.id);
+      await telegramOffersApi.publish(offer.id, {
+        retryTelegram: Boolean(offer.telegramNextRetryAt || offer.errorMessage),
+        destinations: { site: false, telegram: true },
+      });
       showMessage("Reenvio concluido.");
       await load();
     } catch (error) {
@@ -631,7 +521,7 @@ export default function AdminOffers() {
     if (!window.confirm(`Excluir ${items.length} oferta(s) selecionada(s)?`)) return;
     setSaving(true);
     try {
-      await Promise.all(items.map((offer) => telegramOffersApi.remove(offer.id)));
+      await mapWithConcurrency(items, (offer) => telegramOffersApi.remove(offer.id));
       showMessage(`${items.length} oferta(s) excluida(s).`);
       clearSelection();
       await load();
@@ -657,11 +547,11 @@ export default function AdminOffers() {
     if (!window.confirm(`Atualizar ${items.length} oferta(s) selecionada(s)?`)) return;
     setSaving(true);
     try {
-      await Promise.all(items.map((offer) => telegramOffersApi.update(offer.id, {
+      await mapWithConcurrency(items, (offer) => telegramOffersApi.update(offer.id, {
         ...offer,
         status: bulkStatus || offer.status,
         category: bulkCategory || offer.category,
-      })));
+      }));
       showMessage(`${items.length} oferta(s) atualizada(s).`);
       setBulkStatus("");
       setBulkCategory("");

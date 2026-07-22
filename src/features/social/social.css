@@ -301,6 +301,18 @@
   .social-link-item--image-card .social-link-item__media { display: none; }
 }
 
+@media (max-width: 480px) {
+  .social-editor { width: 100%; }
+  .social-editor__header { min-height: 68px; padding-inline: 14px; }
+  .social-editor__tabs { overflow-x: auto; padding-inline: 10px; }
+  .social-editor__tabs > button { flex: 0 0 auto; padding-inline: 12px; }
+  .social-editor__section { padding: 14px; }
+  .social-editor__grid,
+  .social-editor__form-actions { grid-template-columns: 1fr; }
+  .social-editor__field--wide { grid-column: auto; }
+  .social-editor__form-actions > button:first-child { width: 100%; justify-content: center; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .social-link-item { animation: none !important; transition: none !important; }
 }

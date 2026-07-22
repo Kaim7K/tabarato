@@ -138,11 +138,20 @@
     elements.batchOpenTabsOnly.addEventListener("change", () => {
       chrome.storage.local.set({ [STORAGE.batchOpenTabsOnly]: elements.batchOpenTabsOnly.checked }).catch(() => {});
     });
+    elements.batchShowRecent?.addEventListener("change", () => {
+      chrome.storage.local.set({ [STORAGE.batchShowRecent]: elements.batchShowRecent.checked }).catch(() => {});
+    });
+    elements.batchLinks?.addEventListener("input", () => {
+      chrome.storage.local.set({ [STORAGE.batchLinks]: elements.batchLinks.value.slice(0, 20000) }).catch(() => {});
+    });
     chrome.runtime.onMessage.addListener(handleRuntimeMessage);
   }
 
   async function initialize() {
     renderBatchCadence();
+    const stored = await chrome.storage.local.get([STORAGE.batchLinks, STORAGE.batchShowRecent]).catch(() => ({}));
+    if (elements.batchLinks) elements.batchLinks.value = String(stored[STORAGE.batchLinks] || "");
+    if (elements.batchShowRecent) elements.batchShowRecent.checked = stored[STORAGE.batchShowRecent] === true;
     const couponStatus = await chrome.runtime.sendMessage({ type: "TABARATO_COUPON_STATUS" }).catch(() => null);
     if (couponStatus?.operation) applyCouponOperation(couponStatus.operation, false);
     else renderCouponActivationState();

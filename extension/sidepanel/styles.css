@@ -48,7 +48,8 @@
 html { min-width: 300px; scroll-padding-bottom: 88px; background: var(--canvas); }
 body { min-width: 300px; min-height: 100vh; margin: 0; color: var(--ink); background: var(--canvas); }
 button, input, select, textarea { font: inherit; letter-spacing: 0; }
-button { cursor: pointer; }
+button { cursor: pointer; transition: color .16s ease, background-color .16s ease, border-color .16s ease, box-shadow .16s ease, transform .16s ease; }
+button:active:not(:disabled) { transform: translateY(1px); }
 svg { width: 19px; height: 19px; flex: 0 0 auto; fill: currentColor; }
 img { max-width: 100%; }
 h1, h2, p { margin: 0; }
@@ -84,7 +85,7 @@ body:has(#offer-form:not(.hidden)) main { padding-bottom: 94px; }
   background: var(--surface);
   box-shadow: var(--shadow);
 }
-.panel { padding: clamp(13px, 2.5vw, 20px); }
+.panel { padding: clamp(13px, 2.5vw, 20px); box-shadow: 0 10px 26px rgba(21, 27, 35, .055); }
 
 .login-panel { max-width: 620px; margin: 9vh auto 0; }
 .section-heading { margin-bottom: 18px; }

@@ -1,4 +1,5 @@
 import { query } from "./db.js";
+import { evaluateOffer } from "./offerIntelligence.js";
 
 export const STATUSES = ["RASCUNHO", "APROVADO", "AGENDADO", "PUBLICANDO", "PUBLICADO", "ERRO", "EXPIRADO"];
 
@@ -21,6 +22,17 @@ function parsePrice(value) {
 
 export function mapOffer(row) {
   if (!row) return null;
+  const evidence = row.intelligence_evidence || {};
+  const quality = evaluateOffer({
+    currentPrice: row.current_price,
+    previousPrice: row.previous_price,
+    coupon: row.coupon,
+    imageUrl: row.image_url,
+    affiliateLink: row.affiliate_link,
+    category: row.category,
+    extraText: row.extra_text,
+    evidence,
+  });
   return {
     id: row.id,
     productName: row.product_name,
@@ -39,11 +51,21 @@ export function mapOffer(row) {
     publicationCount: Number(row.publication_count || 0),
     lastPublishedAt: row.last_published_at || null,
     platform: row.platform,
+    campaignName: row.campaign_name || "",
+    priority: Number(row.priority || 0),
+    qualityScore: quality.score,
+    qualityReasons: quality.reasons,
+    recommendedAction: quality.action,
+    intelligenceEvidence: evidence,
     extraText: row.extra_text || "",
     status: row.status,
     scheduledAt: row.scheduled_at,
     publishedAt: row.published_at,
+    sitePublishedAt: row.site_published_at || null,
     telegramMessageId: row.telegram_message_id || "",
+    telegramRetryCount: Number(row.telegram_retry_count || 0),
+    telegramNextRetryAt: row.telegram_next_retry_at || null,
+    telegramLastErrorCode: row.telegram_last_error_code || "",
     telegramResponse: row.telegram_response || null,
     errorMessage: row.error_message || "",
     clicks: row.clicks || 0,
@@ -52,6 +74,11 @@ export function mapOffer(row) {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+export function offerQuality(input = {}) {
+  const result = evaluateOffer(input);
+  return { score: result.score, reasons: result.reasons, action: result.action };
 }
 
 export function validateHttpsUrl(value, field, required = false) {
@@ -140,6 +167,10 @@ export function toDbParams(input) {
     affiliate_link: String(input.affiliateLink || "").trim(),
     source_product_id: input.sourceProductId ? String(input.sourceProductId).trim().slice(0, 120) : null,
     platform: String(input.platform || "").trim(),
+    campaign_name: input.campaignName ? String(input.campaignName).trim().slice(0, 100) : null,
+    priority: Math.max(-10, Math.min(10, Number(input.priority) || 0)),
+    intelligence_evidence: input.intelligenceEvidence && typeof input.intelligenceEvidence === "object"
+      ? input.intelligenceEvidence : {},
     extra_text: input.extraText ? String(input.extraText).trim() : null,
     status: input.status || "RASCUNHO",
     scheduled_at: input.scheduledAt || null,
@@ -196,7 +227,7 @@ function rethrowDuplicateConstraint(error, productName) {
   throw error;
 }
 
-export async function listPostedProductIds(platform = "", sourceProductIds = []) {
+export async function listPostedProductIds(platform = "", sourceProductIds = [], { recentOnly = false, cooldownHours = 24 } = {}) {
   const normalizedPlatform = String(platform || "").trim();
   const normalizedIds = [...new Set((Array.isArray(sourceProductIds) ? sourceProductIds : [])
     .map((value) => String(value || "").replace(/-/g, "").trim().toUpperCase())
@@ -218,8 +249,18 @@ export async function listPostedProductIds(platform = "", sourceProductIds = [])
            FROM offer_publication_history history
            WHERE history.offer_id=offer.id AND history.status='SUCESSO'
          )
+       )
+       AND (
+         $3::boolean=FALSE
+         OR (
+           offer.published_at >= NOW() - ($4 || ' hours')::interval
+           AND NOT EXISTS (
+             SELECT 1 FROM offer_price_history price_history
+             WHERE price_history.offer_id=offer.id AND price_history.recorded_at > offer.published_at
+           )
+         )
        )`,
-    [normalizedPlatform, normalizedIds],
+    [normalizedPlatform, normalizedIds, recentOnly === true, Math.max(1, Math.min(720, Number(cooldownHours) || 24))],
   );
   return result.rows.map((row) => String(row.source_product_id || "").trim()).filter(Boolean);
 }
@@ -261,13 +302,13 @@ export async function createOffer(input) {
     `INSERT INTO telegram_offers (
       product_name, short_description, current_price, previous_price, coupon, category, image_url,
       affiliate_link, platform, extra_text, status, scheduled_at, clicks, source_product_id, product_key,
-      coupon_discount_percent
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+      coupon_discount_percent, campaign_name, priority, intelligence_evidence
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
     RETURNING *`,
     [
       data.product_name, data.short_description, data.current_price, data.previous_price, data.coupon, data.category,
       data.image_url, data.affiliate_link, data.platform, data.extra_text, data.status, data.scheduled_at, 0,
-      data.source_product_id, productKey(data), data.coupon_discount_percent,
+      data.source_product_id, productKey(data), data.coupon_discount_percent, data.campaign_name, data.priority, JSON.stringify(data.intelligence_evidence),
     ]
   ).catch((error) => rethrowDuplicateConstraint(error, data.product_name));
   return mapOffer(result.rows[0]);
@@ -282,13 +323,13 @@ export async function updateOffer(id, input) {
       product_name=$1, short_description=$2, current_price=$3, previous_price=$4, coupon=$5,
       category=$6, image_url=$7, affiliate_link=$8, platform=$9, extra_text=$10, status=$11,
       scheduled_at=$12, source_product_id=$13, product_key=$14, coupon_discount_percent=$15,
-      error_message=NULL
-    WHERE id=$16
+      campaign_name=$16, priority=$17, intelligence_evidence=$18, error_message=NULL
+    WHERE id=$19
     RETURNING *`,
     [
       data.product_name, data.short_description, data.current_price, data.previous_price, data.coupon, data.category,
       data.image_url, data.affiliate_link, data.platform, data.extra_text, data.status, data.scheduled_at,
-      data.source_product_id, productKey(data), data.coupon_discount_percent, id,
+      data.source_product_id, productKey(data), data.coupon_discount_percent, data.campaign_name, data.priority, JSON.stringify(data.intelligence_evidence), id,
     ]
   ).catch((error) => rethrowDuplicateConstraint(error, data.product_name));
   return mapOffer(result.rows[0]);

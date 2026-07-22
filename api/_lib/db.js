@@ -91,7 +91,18 @@ export async function ensureSchema() {
       ALTER TABLE telegram_offers ADD COLUMN IF NOT EXISTS availability_status TEXT NOT NULL DEFAULT 'DESCONHECIDO';
       ALTER TABLE telegram_offers ADD COLUMN IF NOT EXISTS last_checked_at TIMESTAMPTZ;
       ALTER TABLE telegram_offers ADD COLUMN IF NOT EXISTS last_check_error TEXT;
+      ALTER TABLE telegram_offers ADD COLUMN IF NOT EXISTS site_published_at TIMESTAMPTZ;
+      ALTER TABLE telegram_offers ADD COLUMN IF NOT EXISTS telegram_retry_count INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE telegram_offers ADD COLUMN IF NOT EXISTS telegram_next_retry_at TIMESTAMPTZ;
+      ALTER TABLE telegram_offers ADD COLUMN IF NOT EXISTS telegram_last_error_code TEXT;
+      ALTER TABLE telegram_offers ADD COLUMN IF NOT EXISTS campaign_name TEXT;
+      ALTER TABLE telegram_offers ADD COLUMN IF NOT EXISTS priority SMALLINT NOT NULL DEFAULT 0;
+      ALTER TABLE telegram_offers ADD COLUMN IF NOT EXISTS intelligence_evidence JSONB NOT NULL DEFAULT '{}'::jsonb;
       ALTER TABLE telegram_offers ALTER COLUMN short_description DROP NOT NULL;
+
+      UPDATE telegram_offers
+      SET site_published_at = COALESCE(site_published_at, published_at)
+      WHERE status = 'PUBLICADO' AND site_published_at IS NULL;
 
       CREATE TABLE IF NOT EXISTS site_visitors (
         visitor_id UUID PRIMARY KEY,
@@ -260,8 +271,23 @@ export async function ensureSchema() {
 
       CREATE INDEX IF NOT EXISTS idx_telegram_offers_status ON telegram_offers (status);
       CREATE INDEX IF NOT EXISTS idx_telegram_offers_scheduled_at ON telegram_offers (scheduled_at);
+      CREATE INDEX IF NOT EXISTS idx_telegram_offers_telegram_retry
+      ON telegram_offers (telegram_next_retry_at)
+      WHERE telegram_next_retry_at IS NOT NULL;
       CREATE INDEX IF NOT EXISTS idx_telegram_offers_created_at ON telegram_offers (created_at);
       CREATE INDEX IF NOT EXISTS idx_telegram_offers_category ON telegram_offers (category);
+      CREATE INDEX IF NOT EXISTS idx_telegram_offers_public_recent
+      ON telegram_offers (COALESCE(published_at, updated_at, created_at) DESC)
+      WHERE site_published_at IS NOT NULL;
+      CREATE INDEX IF NOT EXISTS idx_telegram_offers_public_category_recent
+      ON telegram_offers (category, COALESCE(published_at, updated_at, created_at) DESC)
+      WHERE site_published_at IS NOT NULL;
+      CREATE INDEX IF NOT EXISTS idx_telegram_offers_public_platform_recent
+      ON telegram_offers (platform, COALESCE(published_at, updated_at, created_at) DESC)
+      WHERE site_published_at IS NOT NULL;
+      CREATE INDEX IF NOT EXISTS idx_telegram_offers_public_price
+      ON telegram_offers (current_price)
+      WHERE site_published_at IS NOT NULL;
       CREATE UNIQUE INDEX IF NOT EXISTS idx_telegram_offers_unique_product_price
       ON telegram_offers (product_key, current_price)
       WHERE product_key IS NOT NULL;

@@ -201,6 +201,9 @@ function OfferRow({ offer, selected, onToggleSelected, onEdit, onRetry, onRemove
   const schedule = offer.scheduledAt
     ? new Date(offer.scheduledAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
     : "Sem agenda";
+  const retryAt = offer.telegramNextRetryAt
+    ? new Date(offer.telegramNextRetryAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
+    : "";
 
   return (
     <>
@@ -233,9 +236,9 @@ function OfferRow({ offer, selected, onToggleSelected, onEdit, onRetry, onRemove
             <p className="text-xs text-white/60">{schedule}</p>
           </div>
         </div>
-        {offer.errorMessage && <p role="alert" className="text-red-300 text-xs mt-3">Erro: {offer.errorMessage}</p>}
+        {offer.errorMessage && <p role="alert" className="text-red-300 text-xs mt-3">Erro: {offer.errorMessage}{retryAt ? ` Nova tentativa no Telegram: ${retryAt}.` : ""}</p>}
         <div className="flex justify-end gap-2 mt-3 pt-3 border-t border-white/10">
-          {offer.status === "ERRO" && <button onClick={() => onRetry(offer)} className="min-h-10 px-3 inline-flex items-center gap-2 rounded-lg bg-white/10 text-sm"><RefreshCw className="w-4 h-4" /> Reenviar</button>}
+          {(offer.status === "ERRO" || (offer.errorMessage && !offer.telegramMessageId)) && <button onClick={() => onRetry(offer)} className="min-h-10 px-3 inline-flex items-center gap-2 rounded-lg bg-white/10 text-sm"><RefreshCw className="w-4 h-4" /> Reenviar</button>}
           <button onClick={() => onEdit(offer)} className="min-h-10 px-3 inline-flex items-center gap-2 rounded-lg bg-white/10 text-sm"><Pencil className="w-4 h-4" /> Editar</button>
           <button onClick={() => onRemove(offer)} className="min-h-10 min-w-10 inline-flex items-center justify-center rounded-lg text-red-300 hover:bg-red-500/10" aria-label={`Excluir ${offer.productName}`}><Trash2 className="w-4 h-4" /></button>
         </div>
@@ -251,7 +254,7 @@ function OfferRow({ offer, selected, onToggleSelected, onEdit, onRetry, onRemove
           <div className="min-w-0">
             <p className="font-medium truncate">{offer.productName}</p>
             <p className="text-white/35 text-xs truncate">{offer.platform} · {offer.category}</p>
-            {offer.errorMessage && <p className="text-red-300 text-xs truncate">Erro: {offer.errorMessage}</p>}
+            {offer.errorMessage && <p className="text-red-300 text-xs truncate" title={retryAt ? `Nova tentativa no Telegram: ${retryAt}` : offer.errorMessage}>Erro: {offer.errorMessage}{retryAt ? ` - nova tentativa ${retryAt}` : ""}</p>}
           </div>
         </button>
         <span className={`w-max px-2.5 py-1 rounded-full text-xs font-semibold ${statusClass}`}>{statusLabel}</span>
@@ -261,7 +264,7 @@ function OfferRow({ offer, selected, onToggleSelected, onEdit, onRetry, onRemove
         </div>
         <p className="text-xs text-white/45">{schedule}</p>
         <div className="flex justify-end gap-1">
-          {offer.status === "ERRO" && <button onClick={() => onRetry(offer)} title="Reenviar" aria-label={`Reenviar ${offer.productName}`} className="min-h-10 min-w-10 p-2 text-white/50 hover:text-[#FF6B35]"><RefreshCw className="w-4 h-4" /></button>}
+          {(offer.status === "ERRO" || (offer.errorMessage && !offer.telegramMessageId)) && <button onClick={() => onRetry(offer)} title="Reenviar" aria-label={`Reenviar ${offer.productName}`} className="min-h-10 min-w-10 p-2 text-white/50 hover:text-[#FF6B35]"><RefreshCw className="w-4 h-4" /></button>}
           <button onClick={() => onEdit(offer)} title="Editar" aria-label={`Editar ${offer.productName}`} className="min-h-10 min-w-10 p-2 text-white/50 hover:text-white"><Pencil className="w-4 h-4" /></button>
           <button onClick={() => onRemove(offer)} title="Excluir" aria-label={`Excluir ${offer.productName}`} className="min-h-10 min-w-10 p-2 text-white/50 hover:text-red-300"><Trash2 className="w-4 h-4" /></button>
         </div>

@@ -4,7 +4,8 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { assertSafeProductUrl, isPrivateAddress } from "../api/_lib/productPreview.js";
-import { createAdminExtensionToken, createAdminSessionToken, handleExtensionCors, isValidUuid, requireAdmin, requireCron, verifyAdminExtensionToken } from "../api/_lib/http.js";
+import { createAdminExtensionToken, createAdminSessionToken, getCookie, handleExtensionCors, isValidUuid, readJson, requireAdmin, requireCron, verifyAdminExtensionToken } from "../api/_lib/http.js";
+import { mapWithConcurrency } from "../src/lib/async.js";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -95,6 +96,38 @@ test("UUID validation rejects malformed route IDs", () => {
   assert.equal(isValidUuid("not-an-id"), false);
 });
 
+test("cookie parser ignores malformed percent encoding", () => {
+  const request = { headers: { cookie: "tb_admin_session=%E0%A4%A" } };
+  assert.equal(getCookie(request, "tb_admin_session"), "");
+});
+
+test("readJson supports Buffer bodies and stops oversized streams", async () => {
+  assert.deepEqual(await readJson({ body: Buffer.from('{"valid":true}') }), { valid: true });
+
+  const oversizedRequest = {
+    async *[Symbol.asyncIterator]() {
+      yield Buffer.alloc(1_000_001);
+    },
+  };
+
+  await assert.rejects(readJson(oversizedRequest), /Corpo da requisicao muito grande/);
+});
+
+test("bounded async mapping preserves order and limits concurrent work", async () => {
+  let active = 0;
+  let peak = 0;
+  const results = await mapWithConcurrency([1, 2, 3, 4, 5], async (value) => {
+    active += 1;
+    peak = Math.max(peak, active);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    active -= 1;
+    return value * 2;
+  }, 2);
+
+  assert.deepEqual(results, [2, 4, 6, 8, 10]);
+  assert.equal(peak, 2);
+});
+
 test("public click tracking only updates published offers", () => {
   const source = readFileSync(join(root, "api", "ofertas", "[id].js"), "utf8");
   assert.match(source, /AND status='PUBLICADO'/);
@@ -106,6 +139,16 @@ test("public offer sorting uses a fixed allowlist", () => {
   assert.match(source, /const orderBy = \{/);
   assert.match(source, /\}\[sort\] \|\|/);
   assert.doesNotMatch(source, /ORDER BY \$\{sort\}/);
+});
+
+test("public catalog keeps pagination counts separate from the limited offer query", () => {
+  const source = readFileSync(join(root, "api", "ofertas", "index.js"), "utf8");
+  const migration = readFileSync(join(root, "migrations", "007_public_catalog_performance.sql"), "utf8");
+  assert.match(source, /Promise\.all\(\[/);
+  assert.match(source, /SELECT COUNT\(\*\) AS total_count/);
+  assert.doesNotMatch(source, /COUNT\(\*\) OVER\(\)/);
+  assert.match(migration, /idx_telegram_offers_public_recent/);
+  assert.match(migration, /idx_telegram_offers_public_price/);
 });
 
 test("automatic messages are claimed before Telegram delivery", () => {
@@ -191,6 +234,27 @@ test("system stores publication history and refreshes published offer prices", (
   assert.match(maintenance, /current_price=\$2/);
   assert.match(maintenance, /status='EXPIRADO'/);
   assert.match(cron, /refreshPublishedOffers/);
+});
+
+test("publication retries preserve a successful site publication and avoid unsafe duplicate sends", () => {
+  const publisher = readFileSync(join(root, "api", "_lib", "publisher.js"), "utf8");
+  const publicOffers = readFileSync(join(root, "api", "ofertas", "index.js"), "utf8");
+  const migration = readFileSync(join(root, "migrations", "004_publication_retries.sql"), "utf8");
+  assert.match(publisher, /const MAX_TELEGRAM_RETRIES = 3/);
+  assert.match(publisher, /error\?\.code === "RATE_LIMIT"/);
+  assert.match(publisher, /site_published_at/);
+  assert.match(publisher, /telegram_next_retry_at/);
+  assert.match(publisher, /retryTelegram: true, destinations: \{ site: false, telegram: true \}/);
+  assert.match(publicOffers, /site_published_at IS NOT NULL/);
+  assert.match(migration, /telegram_retry_count/);
+});
+
+test("recent publication filtering keeps changed-price products eligible for a new batch", () => {
+  const offers = readFileSync(join(root, "api", "_lib", "offers.js"), "utf8");
+  const route = readFileSync(join(root, "api", "admin", "ofertas", "index.js"), "utf8");
+  assert.match(offers, /recentOnly = false, cooldownHours = 24/);
+  assert.match(offers, /price_history\.recorded_at > offer\.published_at/);
+  assert.match(route, /cooldownHours/);
 });
 
 test("public search expands synonyms and public offers expose final coupon price", () => {

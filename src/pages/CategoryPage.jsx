@@ -33,21 +33,24 @@ export default function CategoryPage() {
   const { createSearchAlert } = useOfferTools();
 
   useEffect(() => {
+    let active = true;
     const knownName = categoryNameBySlug(slug);
     if (knownName) {
       setCategoryName(knownName);
       setCategoryReady(true);
-      return;
+      return () => { active = false; };
     }
     setCategoryReady(false);
     listPublicCategories()
-      .then((items) => setCategoryName(items.find((item) => item.slug === slug)?.name || ""))
-      .catch(() => setCategoryName(""))
-      .finally(() => setCategoryReady(true));
+      .then((items) => { if (active) setCategoryName(items.find((item) => item.slug === slug)?.name || ""); })
+      .catch(() => { if (active) setCategoryName(""); })
+      .finally(() => { if (active) setCategoryReady(true); });
+    return () => { active = false; };
   }, [slug]);
 
   useEffect(() => {
     if (!categoryReady) return;
+    let active = true;
     setLoading(true);
     setError("");
     const params = {
@@ -59,9 +62,14 @@ export default function CategoryPage() {
       limit: 24,
     };
     listPublicOffersPage(params)
-      .then((payload) => { setOffers(payload.offers || []); setPagination(payload.pagination || { page: 1, pages: 1, total: 0 }); })
-      .catch((err) => setError(err.message || "Não foi possível carregar ofertas."))
-      .finally(() => setLoading(false));
+      .then((payload) => {
+        if (!active) return;
+        setOffers(payload.offers || []);
+        setPagination(payload.pagination || { page: 1, pages: 1, total: 0 });
+      })
+      .catch((err) => { if (active) setError(err.message || "Não foi possível carregar ofertas."); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
   }, [activeFilter, categoryName, categoryReady, page, platformFilter, slug]);
 
   let filtered = offers;

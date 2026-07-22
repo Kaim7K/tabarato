@@ -30,7 +30,10 @@ export default async function handler(req, res) {
           .map((value) => value.trim())
           .filter(Boolean)
           .slice(0, 100);
-        const postedProductIds = await listPostedProductIds(req.query.platform || "", sourceProductIds);
+        const postedProductIds = await listPostedProductIds(req.query.platform || "", sourceProductIds, {
+          recentOnly: req.query.recentOnly === "true",
+          cooldownHours: req.query.cooldownHours,
+        });
         return sendJson(res, 200, { postedProductIds });
       }
 

@@ -28,6 +28,7 @@ export default async function handler(req, res) {
     const result = await publishOfferById(req.query.id, {
       shareImageDataUrl,
       forceRepublish: req.body?.forceRepublish === true,
+      retryTelegram: req.body?.retryTelegram === true,
       messageHeadline,
       destinations: {
         site: req.body?.destinations?.site !== false,

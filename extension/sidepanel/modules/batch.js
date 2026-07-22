@@ -153,6 +153,24 @@
     state.batchPostTimestamps = timestamps;
   }
 
+  function pastedLinkEntries() {
+    const seen = new Set();
+    return String(elements.batchLinks?.value || "").split(/[\r\n\s]+/).map((value) => value.trim()).filter(Boolean).flatMap((value) => {
+      try {
+        const url = new URL(value);
+        if (!/(?:^|\.)mercadolivre\.com\.br$|(?:^|\.)shopee\.com\.br$/i.test(url.hostname)) return [];
+        url.hash = "";
+        const normalized = url.toString();
+        const identity = batchUtils.productIdentityFromUrl(normalized)?.key || normalized;
+        if (seen.has(identity)) return [];
+        seen.add(identity);
+        return [{ url: normalized, tabId: null, owned: true }];
+      } catch {
+        return [];
+      }
+    });
+  }
+
   function pause() {
     if (!state.batchController) {
       showToast("Nenhum lote está em andamento.", "neutral");
@@ -374,13 +392,14 @@
     if (!sourceTab?.id) throw new Error("Abra uma listagem da Shopee ou Mercado Livre.");
     const limit = Math.max(1, Math.min(50, Number(elements.batchLimit.value) || 5));
     const openTabsOnly = Boolean(elements.batchOpenTabsOnly?.checked);
+    const pasted = pastedLinkEntries();
     const [visibleUrls, rightTabs] = await Promise.all([
-      openTabsOnly ? Promise.resolve([]) : panel.capture.visibleProductUrls(limit, sourceTab).catch(() => []),
-      panel.capture.productTabsToRight(sourceTab, limit).catch(() => []),
+      pasted.length || openTabsOnly ? Promise.resolve([]) : panel.capture.visibleProductUrls(limit, sourceTab).catch(() => []),
+      pasted.length ? Promise.resolve([]) : panel.capture.productTabsToRight(sourceTab, limit).catch(() => []),
     ]);
     const seen = new Set();
     const entries = [];
-    for (const item of [...rightTabs, ...visibleUrls.map((url) => ({ url }))]) {
+    for (const item of [...pasted, ...rightTabs, ...visibleUrls.map((url) => ({ url }))]) {
       const identity = batchUtils.productIdentityFromUrl(item.url)?.key || item.url;
       if (!identity || seen.has(identity)) continue;
       seen.add(identity);
@@ -444,8 +463,9 @@
 
     try {
       sourceTab = await activeTab();
-      if (!sourceTab?.id) throw new Error("Abra a pagina com a lista de produtos antes de iniciar o lote.");
+      if (!sourceTab?.id) throw new Error("Abra uma aba do navegador antes de iniciar o lote.");
       const openTabsOnly = Boolean(elements.batchOpenTabsOnly?.checked);
+      const pasted = pastedLinkEntries();
       const catalogSync = runtime.withTimeout(
         panel.catalog.synchronize(),
         14000,
@@ -456,12 +476,12 @@
         return null;
       });
       const [visibleUrls, rightTabs] = await Promise.all([
-        openTabsOnly ? Promise.resolve([]) : panel.capture.visibleProductUrls(limit, sourceTab).catch((error) => {
+        pasted.length || openTabsOnly ? Promise.resolve([]) : panel.capture.visibleProductUrls(limit, sourceTab).catch((error) => {
           runtime.reportError("batch-visible-products", error);
           log("Não foi possível ler os produtos visíveis. As abas à direita ainda serão processadas.", "neutral");
           return [];
         }),
-        panel.capture.productTabsToRight(sourceTab, limit).catch((error) => {
+        pasted.length ? Promise.resolve([]) : panel.capture.productTabsToRight(sourceTab, limit).catch((error) => {
           runtime.reportError("batch-right-tabs", error);
           log("Não foi possível consultar as abas à direita. A coleta padrão ainda será usada.", "neutral");
           return [];
@@ -470,6 +490,12 @@
       ]);
       const seen = new Set();
       const queue = [];
+      for (const entry of pasted) {
+        const identity = batchUtils.productIdentityFromUrl(entry.url)?.key || entry.url;
+        if (seen.has(identity)) continue;
+        seen.add(identity);
+        queue.push(entry);
+      }
       for (const tab of rightTabs) {
         const identity = batchUtils.productIdentityFromUrl(tab.url)?.key || tab.url;
         if (seen.has(identity)) continue;
@@ -515,6 +541,7 @@
         if (controller.signal.aborted) break;
         const offset = chunkIndex * BATCH_WINDOW_SIZE;
         const workers = await preloadWorkers(chunks[chunkIndex], sourceTab, controller.signal, offset, pendingUrls.length);
+        const captured = [];
 
         for (const worker of workers) {
           if (controller.signal.aborted) break;
@@ -527,6 +554,20 @@
           }
           try {
             const product = await readWorker(worker, sourceTab, controller.signal, pendingUrls.length);
+            captured.push({ worker, product, score: batchUtils.intelligenceScore(product, parsePrice) });
+          } catch (error) {
+            if (controller.signal.aborted) break;
+            failed += 1;
+            renderSummary({ published, skipped, failed });
+            log(runtime.errorMessage(error), "error");
+            if (worker.tabId) await closeWorker(worker.tabId, worker.owned);
+          }
+        }
+        captured.sort((left, right) => right.score - left.score || left.worker.index - right.worker.index);
+        for (const { worker, product, score } of captured) {
+          if (controller.signal.aborted) break;
+          try {
+            log(`Prioridade ${score}: ${product.productName || worker.url}`, "neutral");
             await waitForCadence(cadence, controller.signal, worker.index + 1, pendingUrls.length);
             registerPostAttempt();
             const result = await processProduct(product, worker.url, controller);

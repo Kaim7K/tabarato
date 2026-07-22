@@ -185,9 +185,17 @@
       .filter((item) => item.identity?.sourceProductId && item.identity?.platform);
     if (!identities.length) return [];
 
+    const showRecent = elements.batchShowRecent?.checked === true;
+    const withinCooldownWithoutChanges = (offer) => {
+      if (showRecent || !offerWasPublished(offer)) return false;
+      const publishedAt = new Date(offer.lastPublishedAt || offer.publishedAt || 0).getTime();
+      const updatedAt = new Date(offer.updatedAt || 0).getTime();
+      if (!publishedAt) return true;
+      return publishedAt > Date.now() - (24 * 60 * 60 * 1000) && (!updatedAt || updatedAt <= publishedAt);
+    };
     const postedKeys = new Set(
       state.synchronizedOffers
-        .filter(offerWasPublished)
+        .filter(withinCooldownWithoutChanges)
         .map((offer) => {
           const platform = normalizeText(offer.platform || "");
           const sourceProductId = normalizedSourceProductId(offer.sourceProductId);
@@ -212,6 +220,10 @@
         platform,
         sourceProductIds: sourceProductIds.join(","),
       });
+      if (!showRecent) {
+        search.set("recentOnly", "true");
+        search.set("cooldownHours", "24");
+      }
       try {
         const result = await panel.api.request(`/api/admin/ofertas?${search.toString()}`, { timeout: 12000 });
         (Array.isArray(result.postedProductIds) ? result.postedProductIds : [])

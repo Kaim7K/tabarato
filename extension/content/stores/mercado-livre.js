@@ -218,7 +218,8 @@
     return false;
   };
 
-  const strictShareControl = () => [...document.querySelectorAll("button, [role='button']")]
+  const strictShareControl = () => [...document.querySelectorAll("button.generate_link_button, [class*='generate_link_button'], button, [role='button']")]
+    .filter((element, index, values) => values.indexOf(element) === index)
     .filter((element) => element.id !== "tabarato-launcher" && tools.visible(element))
     .filter((element) => exactControlLabel(element, "compartilhar"))
     .filter((element) => !element.closest?.("a[href*='/afiliados-home']"))
@@ -235,7 +236,10 @@
       if (!affiliateBar && !darkSurface) return null;
       return {
         element,
-        score: (affiliateBar ? 200 : 0) + (darkSurface ? 120 : 0) + Math.max(0, 170 - rectangle.top),
+        score: (element.matches?.("button.generate_link_button, [class*='generate_link_button']") ? 500 : 0)
+          + (affiliateBar ? 200 : 0)
+          + (darkSurface ? 120 : 0)
+          + Math.max(0, 170 - rectangle.top),
       };
     })
     .filter(Boolean)

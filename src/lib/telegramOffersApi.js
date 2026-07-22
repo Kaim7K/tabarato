@@ -1,35 +1,26 @@
 // @ts-nocheck
+import { queryPath, requestJson } from "@/lib/httpClient";
 export const telegramStatuses = ["RASCUNHO", "APROVADO", "AGENDADO", "PUBLICANDO", "PUBLICADO", "ERRO", "EXPIRADO"];
 
-async function request(path, { method = "GET", body } = {}) {
-  const response = await fetch(path, {
-    method,
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (response.status === 401) localStorage.removeItem("tb_admin_logged_in");
-  if (!response.ok) throw new Error(payload.error || "Erro na requisicao.");
-  return payload;
+async function request(path, options = {}) {
+  try {
+    return await requestJson(path, { ...options, fallbackMessage: "Erro na requisicao." });
+  } catch (error) {
+    if (error.status === 401) localStorage.removeItem("tb_admin_logged_in");
+    throw error;
+  }
 }
 
 export const telegramOffersApi = {
   list: (params = {}) => {
-    const search = new URLSearchParams();
-    Object.entries(params).forEach(([key, value]) => {
-      if (value) search.set(key, value);
-    });
-    return request(`/api/admin/ofertas${search.toString() ? `?${search}` : ""}`);
+    return request(queryPath("/api/admin/ofertas", params));
   },
   create: (offer) => request("/api/admin/ofertas", { method: "POST", body: offer }),
   createCategory: (name) => request("/api/admin/ofertas", { method: "POST", body: { resource: "category", name } }),
   removeCategory: (slug, targetCategory = "") => request(`/api/admin/ofertas?resource=category&slug=${encodeURIComponent(slug)}${targetCategory ? `&targetCategory=${encodeURIComponent(targetCategory)}` : ""}`, { method: "DELETE" }),
   update: (id, offer) => request(`/api/admin/ofertas/${id}`, { method: "PATCH", body: offer }),
   remove: (id) => request(`/api/admin/ofertas/${id}`, { method: "DELETE" }),
-  publish: (id) => request(`/api/admin/ofertas/${id}/publicar`, { method: "POST" }),
+  publish: (id, options = {}) => request(`/api/admin/ofertas/${id}/publicar`, { method: "POST", body: options }),
   schedule: (id, scheduledAt) => request(`/api/admin/ofertas/${id}/agendar`, { method: "POST", body: { scheduledAt } }),
   testTelegram: () => request("/api/admin/telegram/test", { method: "POST" }),
   previewProduct: (link) => request("/api/admin/product-preview", { method: "POST", body: { link } }),

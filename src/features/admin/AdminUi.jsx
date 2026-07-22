@@ -32,7 +32,7 @@ export function AdminHeader({ testTelegram, saving }) {
 
 export function Panel({ title, icon: Icon, iconClassName = "text-[#FF6B35]", children }) {
   return (
-    <section className="bg-white/5 border border-white/10 rounded-lg p-4 sm:p-5">
+    <section className="bg-white/[0.055] border border-white/10 rounded-lg p-4 sm:p-5 shadow-[0_10px_28px_rgba(0,0,0,0.12)]">
       <div className="flex items-center gap-2 mb-4">
         <Icon className={`w-4 h-4 ${iconClassName}`} />
         <h2 className="font-bold">{title}</h2>
@@ -44,7 +44,7 @@ export function Panel({ title, icon: Icon, iconClassName = "text-[#FF6B35]", chi
 
 export function AdminNavButton({ icon: Icon, label, active, onClick }) {
   return (
-    <button onClick={onClick} className={`shrink-0 lg:w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-semibold transition ${active ? "bg-[#FF6B35] text-white" : "text-white/60 hover:text-white hover:bg-white/10"}`}>
+    <button onClick={onClick} className={`shrink-0 lg:w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-semibold transition-all ${active ? "bg-[#FF6B35] text-white shadow-[0_8px_18px_rgba(255,107,53,0.22)]" : "text-white/60 hover:text-white hover:bg-white/10"}`}>
       <Icon className="w-4 h-4" />
       {label}
     </button>
@@ -77,4 +77,4 @@ export function EmptyBlock({ label }) {
   return <div className="min-h-28 flex items-center justify-center text-center text-white/35 text-sm">{label}</div>;
 }
 
-export const inputCls = "w-full min-h-10 px-3.5 py-2.5 bg-white/5 border border-white/10 rounded-lg text-white text-sm placeholder:text-white/30 focus:outline-none focus:border-[#FF6B35]/50 focus:ring-2 focus:ring-[#FF6B35]/15";
+export const inputCls = "w-full min-h-10 px-3.5 py-2.5 bg-white/[0.055] border border-white/10 rounded-lg text-white text-sm placeholder:text-white/30 transition-colors focus:outline-none focus:border-[#FF6B35]/60 focus:bg-white/[0.075] focus:ring-2 focus:ring-[#FF6B35]/15";

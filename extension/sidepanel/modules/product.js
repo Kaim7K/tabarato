@@ -30,6 +30,7 @@
       extraText: [product.pricePaymentMethod === "Pix" ? "Preco principal no Pix." : "", product.extraText || ""]
         .filter(Boolean)
         .join(" "),
+      intelligenceEvidence: product.intelligenceEvidence || {},
     };
   }
 
@@ -49,6 +50,7 @@
       sourceProductId: sourceProduct?.externalProductId || sourceProduct?.sourceProductId || "",
       platform: elements.fields.platform.value,
       extraText: elements.fields.extraText.value.trim(),
+      intelligenceEvidence: sourceProduct?.intelligenceEvidence || {},
       status,
       scheduledAt: null,
     };

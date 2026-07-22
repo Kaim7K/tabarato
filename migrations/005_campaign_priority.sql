@@ -1,0 +1,2 @@
+ALTER TABLE telegram_offers ADD COLUMN IF NOT EXISTS campaign_name TEXT;
+ALTER TABLE telegram_offers ADD COLUMN IF NOT EXISTS priority SMALLINT NOT NULL DEFAULT 0;

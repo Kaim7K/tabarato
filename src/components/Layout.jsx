@@ -9,6 +9,7 @@ import { DEFAULT_CATEGORIES } from "@/lib/catalog";
 import { listPublicCategories } from "@/lib/offersApi";
 import { TELEGRAM_CHANNEL_URL, WHATSAPP_GROUP_URL } from "@/lib/publicLinks";
 import { BRAND_LOGO } from "@/lib/brand";
+import { prefetchProps } from "@/lib/routePrefetch";
 
 function Header() {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -25,7 +26,7 @@ function Header() {
   }, []);
 
   return (
-    <header className="sticky top-0 z-50 bg-white border-b border-[#111111]/10 shadow-[0_1px_0_rgba(0,0,0,0.04)]">
+    <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-xl border-b border-[#111111]/10 shadow-[0_2px_12px_rgba(17,17,17,0.04)]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-[auto_1fr_auto] items-center gap-3 md:gap-6 py-3">
           <Link to="/" className="flex items-center shrink-0" aria-label="Ir para a página inicial">
@@ -37,19 +38,19 @@ function Header() {
           </div>
 
           <div className="flex items-center justify-end gap-1 sm:gap-2">
-            <Link to="/comparar" className="relative min-h-11 min-w-11 px-2 sm:px-3 inline-flex items-center justify-center gap-2 text-[#111111]/70 hover:text-[#FF6B35] transition" aria-label={`Comparar ofertas: ${compareIds.length} selecionadas`}>
+            <Link to="/comparar" {...prefetchProps("compare")} className="relative min-h-11 min-w-11 px-2 sm:px-3 inline-flex items-center justify-center gap-2 rounded-md text-[#111111]/70 hover:text-[#FF6B35] hover:bg-[#FFF3EE]" aria-label={`Comparar ofertas: ${compareIds.length} selecionadas`}>
               <ArrowLeftRight className="w-5 h-5" />
               {compareIds.length > 0 && <span className="absolute top-1 right-0 min-w-5 h-5 px-1 rounded-full bg-[#FF6B35] text-white text-[10px] font-bold flex items-center justify-center">{compareIds.length}</span>}
               <span className="hidden xl:inline text-sm font-medium">Comparar</span>
             </Link>
-            <Link to="/favoritos" className="min-h-11 min-w-11 px-2 sm:px-3 inline-flex items-center justify-center gap-2 text-[#111111]/70 hover:text-[#FF6B35] transition" aria-label="Abrir favoritos">
+            <Link to="/favoritos" {...prefetchProps("favorites")} className="min-h-11 min-w-11 px-2 sm:px-3 inline-flex items-center justify-center gap-2 rounded-md text-[#111111]/70 hover:text-[#FF6B35] hover:bg-[#FFF3EE]" aria-label="Abrir favoritos">
               <Heart className="w-5 h-5" />
               <span className="hidden xl:inline text-sm font-medium">Favoritos</span>
             </Link>
             <button
               type="button"
               onClick={() => setMobileOpen((current) => !current)}
-              className="lg:hidden min-h-11 min-w-11 inline-flex items-center justify-center text-[#111111]"
+              className="lg:hidden min-h-11 min-w-11 inline-flex items-center justify-center rounded-md text-[#111111] hover:bg-[#F4F5F6]"
               aria-label={mobileOpen ? "Fechar menu" : "Abrir menu"}
               aria-expanded={mobileOpen}
               aria-controls="mobile-navigation"
@@ -66,7 +67,7 @@ function Header() {
         <div className="hidden lg:flex min-h-10 items-center justify-between border-t border-[#111111]/8">
           <nav className="flex items-center gap-7" aria-label="Navegação principal">
             <div className="relative group">
-              <Link to="/categorias" className="min-h-10 inline-flex items-center gap-1 text-sm text-[#111111]/65 hover:text-[#111111] transition" aria-haspopup="true">
+              <Link to="/categorias" {...prefetchProps("categories")} className="min-h-10 inline-flex items-center gap-1 text-sm text-[#111111]/65 hover:text-[#111111] transition" aria-haspopup="true">
                 Categorias <ChevronDown className="w-4 h-4" />
               </Link>
               <div className="absolute top-full left-0 w-72 max-h-[70vh] overflow-y-auto bg-white border border-[#111111]/10 rounded-lg shadow-[0_12px_32px_rgba(0,0,0,0.12)] p-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible group-focus-within:opacity-100 group-focus-within:visible transition z-50">
@@ -82,7 +83,7 @@ function Header() {
               </div>
             </div>
             <Link to="/" className="min-h-10 inline-flex items-center text-sm text-[#111111]/65 hover:text-[#111111] transition">Ofertas recentes</Link>
-            <Link to="/radar" className="min-h-10 inline-flex items-center gap-1.5 text-sm text-[#111111]/65 hover:text-[#FF6B35] transition"><Flame className="w-4 h-4" /> Radar</Link>
+            <Link to="/radar" {...prefetchProps("radar")} className="min-h-10 inline-flex items-center gap-1.5 text-sm text-[#111111]/65 hover:text-[#FF6B35] transition"><Flame className="w-4 h-4" /> Radar</Link>
             <Link to="/categoria/abaixo-de-50" className="min-h-10 inline-flex items-center text-sm text-[#111111]/65 hover:text-[#111111] transition">Abaixo de R$ 50</Link>
             <Link to="/categoria/abaixo-de-100" className="min-h-10 inline-flex items-center text-sm text-[#111111]/65 hover:text-[#111111] transition">Abaixo de R$ 100</Link>
           </nav>
@@ -136,7 +137,7 @@ export default function Layout() {
   return (
     <FavoritesProvider>
       <OfferToolsProvider>
-        <div className="min-h-screen bg-[#F3F3F3] flex flex-col pb-16 lg:pb-0">
+        <div className="min-h-screen bg-[#F3F3F3] flex flex-col pb-[calc(4rem+env(safe-area-inset-bottom))] lg:pb-0">
           <Header />
           <main className="flex-1">
             <Outlet />

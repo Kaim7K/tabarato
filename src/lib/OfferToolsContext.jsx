@@ -1,28 +1,21 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { readStoredArray, readStoredRecord, writeStoredJson } from "@/lib/browserStorage";
 
 const COMPARE_KEY = "tb_compare";
 const ALERTS_KEY = "tb_price_alerts";
 const INTERESTS_KEY = "tb_category_interests";
 const createId = () => globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
-const readStored = (key, fallback) => {
-  try {
-    return JSON.parse(localStorage.getItem(key) || JSON.stringify(fallback));
-  } catch {
-    return fallback;
-  }
-};
-
 const OfferToolsContext = createContext(null);
 
 export function OfferToolsProvider({ children }) {
-  const [compareIds, setCompareIds] = useState(() => readStored(COMPARE_KEY, []));
-  const [alerts, setAlerts] = useState(() => readStored(ALERTS_KEY, []));
-  const [interests, setInterests] = useState(() => readStored(INTERESTS_KEY, {}));
+  const [compareIds, setCompareIds] = useState(() => readStoredArray(COMPARE_KEY).filter((id) => typeof id === "string").slice(0, 3));
+  const [alerts, setAlerts] = useState(() => readStoredArray(ALERTS_KEY));
+  const [interests, setInterests] = useState(() => readStoredRecord(INTERESTS_KEY));
 
-  useEffect(() => localStorage.setItem(COMPARE_KEY, JSON.stringify(compareIds)), [compareIds]);
-  useEffect(() => localStorage.setItem(ALERTS_KEY, JSON.stringify(alerts)), [alerts]);
-  useEffect(() => localStorage.setItem(INTERESTS_KEY, JSON.stringify(interests)), [interests]);
+  useEffect(() => { writeStoredJson(COMPARE_KEY, compareIds); }, [compareIds]);
+  useEffect(() => { writeStoredJson(ALERTS_KEY, alerts); }, [alerts]);
+  useEffect(() => { writeStoredJson(INTERESTS_KEY, interests); }, [interests]);
 
   const toggleCompare = useCallback((id) => {
     setCompareIds((current) => {

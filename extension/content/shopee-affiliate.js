@@ -220,14 +220,20 @@
   };
 
   const productCards = () => {
-    const buttons = allClickable().filter((element) => /obter link/i.test(normalized(element.textContent || element.value)));
+    const buttons = [
+      ...document.querySelectorAll("button.AffiliateItemCard__getlinkBtn, [class*='AffiliateItemCard__getlinkBtn']"),
+      ...allClickable().filter((element) => /obter link/i.test(normalized(element.textContent || element.value))),
+    ].filter((element, index, values) => visible(element) && values.indexOf(element) === index);
     const cards = [];
     buttons.forEach((button) => {
-      let card = button;
-      for (let index = 0; index < 7 && card?.parentElement; index += 1) {
-        card = card.parentElement;
-        const text = normalized(card.textContent);
-        if (/R\$/.test(card.textContent || "") && /vendas?/.test(text)) break;
+      let card = button.closest(".ItemCard__container, [class*='ItemCard__container']");
+      if (!card) {
+        card = button;
+        for (let index = 0; index < 7 && card?.parentElement; index += 1) {
+          card = card.parentElement;
+          const text = normalized(card.textContent);
+          if (/R\$/.test(card.textContent || "") && /vendas?/.test(text)) break;
+        }
       }
       if (card && !cards.includes(card)) cards.push(card);
     });
@@ -284,7 +290,10 @@
   };
 
   const clickObterLink = (root = document) => {
-    const button = [...root.querySelectorAll("button, a, [role='button']")]
+    const button = [...root.querySelectorAll("button.AffiliateItemCard__getlinkBtn, [class*='AffiliateItemCard__getlinkBtn']")]
+      .filter(visible)
+      .find((element) => /obter link/i.test(normalized(element.textContent)))
+      || [...root.querySelectorAll("button, a, [role='button']")]
       .filter(visible)
       .find((element) => /^obter link$/i.test(normalized(element.textContent)))
       || [...root.querySelectorAll("button, a, [role='button']")]

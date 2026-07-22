@@ -123,8 +123,18 @@
     return [...new Set(reasons)];
   };
 
+  const intelligenceScore = (product, parsePrice, now = Date.now()) => {
+    const evidence = product?.intelligenceEvidence || {};
+    const current = parsePrice(product?.currentPrice);
+    const previous = parsePrice(product?.previousPrice || product?.regularPrice);
+    const discount = previous > current && current > 0 ? ((previous - current) / previous) * 100 : 0;
+    const urgency = evidence.endsAt && new Date(evidence.endsAt).getTime() - now < 6 * 3600000 ? 20 : 0;
+    return Math.round(discount * 2 + (Number(evidence.rating || 0) >= 4.5 ? 12 : 0) + (Number(evidence.soldCount || 0) >= 1000 ? 10 : 0) + urgency);
+  };
+
   globalThis.TaBaratoBatchUtils = {
     chunkValues,
+    intelligenceScore,
     normalizeProductUrls,
     productIdentityFromUrl,
     reviewProduct,

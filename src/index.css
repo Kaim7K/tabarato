@@ -95,6 +95,38 @@
     text-rendering: optimizeLegibility;
   }
 
+  img,
+  video,
+  canvas {
+    max-width: 100%;
+    height: auto;
+  }
+
+  input,
+  select,
+  textarea,
+  button {
+    max-width: 100%;
+  }
+
+  button,
+  a,
+  input,
+  select,
+  textarea {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  button,
+  a {
+    transition: color 160ms ease, background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+  }
+
+  button:active:not(:disabled),
+  [role="button"]:active {
+    transform: translateY(1px);
+  }
+
   button:disabled {
     cursor: not-allowed;
     opacity: 0.55;
@@ -115,6 +147,15 @@
     font-family: var(--font-body);
     font-weight: 700;
     letter-spacing: 0;
+  }
+
+  .break-anywhere {
+    overflow-wrap: anywhere;
+  }
+
+  ::selection {
+    color: #111111;
+    background: color-mix(in srgb, var(--brand-primary) 28%, white);
   }
 }
 

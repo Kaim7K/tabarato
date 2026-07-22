@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback } from "react";
+import { readStoredArray, writeStoredJson } from "@/lib/browserStorage";
 
 const FavoritesContext = createContext({
   favorites: [],
@@ -14,10 +15,15 @@ export function FavoritesProvider({ children }) {
   const [favorites, setFavorites] = useState([]);
 
   useEffect(() => {
-    try { setFavorites(JSON.parse(localStorage.getItem(KEY) || "[]")); } catch {}
+    setFavorites(readStoredArray(KEY).filter((id) => typeof id === "string"));
     const sync = (event) => {
       if (event.key !== KEY) return;
-      try { setFavorites(JSON.parse(event.newValue || "[]")); } catch {}
+      try {
+        const value = JSON.parse(event.newValue || "[]");
+        setFavorites(Array.isArray(value) ? value.filter((id) => typeof id === "string") : []);
+      } catch {
+        setFavorites([]);
+      }
     };
     window.addEventListener("storage", sync);
     return () => window.removeEventListener("storage", sync);
@@ -26,7 +32,7 @@ export function FavoritesProvider({ children }) {
   const toggle = useCallback((id) => {
     setFavorites((prev) => {
       const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
-      localStorage.setItem(KEY, JSON.stringify(next));
+      writeStoredJson(KEY, next);
       return next;
     });
   }, []);
@@ -34,7 +40,7 @@ export function FavoritesProvider({ children }) {
   const isFavorite = useCallback((id) => favorites.includes(id), [favorites]);
   const replaceFavorites = useCallback((ids) => {
     const next = [...new Set(ids.filter((id) => typeof id === "string"))];
-    localStorage.setItem(KEY, JSON.stringify(next));
+    writeStoredJson(KEY, next);
     setFavorites(next);
   }, []);
 

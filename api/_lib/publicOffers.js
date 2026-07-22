@@ -1,6 +1,6 @@
 export const PUBLIC_OFFER_COLUMNS = `
   id, product_name, short_description, category, affiliate_link, platform,
-  image_url, current_price, previous_price, coupon, extra_text, published_at,
+  image_url, current_price, previous_price, coupon, extra_text, published_at, site_published_at,
   coupon_discount_percent, availability_status, last_checked_at,
   updated_at, created_at, clicks, shares, favorites
 `;
@@ -33,13 +33,13 @@ export function mapPublicOffer(row) {
     reason: row.extra_text || "",
     score: Math.min(100, 45 + discount + Math.round(Math.log10((row.clicks || 0) + 1) * 12)),
     status: "published",
-    published_date: row.published_at || row.updated_at || row.created_at,
+    published_date: row.site_published_at || row.published_at || row.updated_at || row.created_at,
     clicks: row.clicks || 0,
     shares: row.shares || 0,
     favorites: row.favorites || 0,
     is_featured: false,
-    time_label: row.published_at
-      ? new Date(row.published_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+    time_label: (row.site_published_at || row.published_at)
+      ? new Date(row.site_published_at || row.published_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
       : "",
   };
 }

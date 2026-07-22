@@ -69,15 +69,43 @@
       const className = String(element.className || "");
       const context = tools.clean(`${className} ${element.parentElement?.textContent || ""}`);
       const value = tools.priceText ? tools.priceText(element) : text;
-      const amount = tools.price(...[]) || "";
       const match = text.match(/R\$\s*([\d.]+(?:,\d{1,2})?)/);
       return {
-        value: match ? match[1].replace(/\./g, "").replace(",", ".") : amount || value,
+        element,
+        value: match ? match[1].replace(/\./g, "").replace(",", ".") : value,
         previous: /line-through/i.test(style.textDecorationLine) || /original|before|old|discount/i.test(context),
         context,
       };
     })
     .filter((item) => item?.value);
+
+  const primaryVisiblePrice = () => {
+    const title = document.querySelector("[data-testid='pdp-product-title'], main h1, h1");
+    const titleRect = title?.getBoundingClientRect();
+    const candidates = visiblePriceCandidates().map((candidate) => {
+      const { element } = candidate;
+      if (!element) return null;
+
+      const rect = element.getBoundingClientRect();
+      const localContext = tools.clean([
+        element.parentElement?.textContent,
+        element.parentElement?.parentElement?.textContent,
+        element.parentElement?.parentElement?.parentElement?.textContent,
+      ].filter(Boolean).join(" ")).slice(0, 500);
+      const distance = titleRect ? Math.abs(rect.top - titleRect.bottom) : 0;
+      let score = titleRect && rect.top >= titleRect.top - 20 && rect.top <= titleRect.top + 520 ? 180 : 0;
+      score -= Math.min(150, distance / 8);
+      if (/pix|m[eé]todos de pagamento|termina em/i.test(localContext)) score += 120;
+      if (/frete|envio|parcelamento|juros|cupom de loja|moedas|cashback/i.test(localContext)) score -= 220;
+      return {
+        ...candidate,
+        score,
+        method: /pix/i.test(localContext) ? "Pix" : "",
+      };
+    }).filter(Boolean);
+
+    return candidates.sort((left, right) => right.score - left.score)[0] || { value: "", method: "" };
+  };
 
   const visibleDiscountPercent = () => {
     const values = [...productRoot().querySelectorAll("span, div")]
@@ -156,6 +184,38 @@
     const fallback = topText.match(/\b([4-5](?:[.,]\d{1,2})?)\s*(?:avaliacoes|avaliações|estrelas|\()/i);
     const value = fallback ? Number(fallback[1].replace(",", ".")) : 0;
     return value >= 1 && value <= 5 ? value : 0;
+  };
+
+  const intelligenceEvidence = () => {
+    const text = tools.clean(productRoot().innerText || "");
+    const sold = text.match(/([\d.,]+)\s*(mil\+?)?\s*vendidos/i);
+    const warranty = text.match(/(?:dura[cç][aã]o da garantia|garantia)[^\d]{0,40}(\d{1,2})\s*mes/i);
+    let soldCount = 0;
+    if (sold) {
+      soldCount = Number(sold[1].replace(".", "").replace(",", ".")) || 0;
+      if (sold[2]) soldCount *= 1000;
+    }
+    const ending = text.match(/termina em\s*(\d+)\s*horas?(?:\s*(\d+)\s*minutos?)?/i);
+    const couponCards = [...document.querySelectorAll("main button, main [role='button'], main div")]
+      .map((element) => tools.clean(element.textContent))
+      .filter((value, index, values) => value && values.indexOf(value) === index)
+      .map((value) => {
+        const discount = value.match(/R\$\s*([\d.,]+)\s*OFF/i);
+        const minimum = value.match(/acima de\s*R\$\s*([\d.,]+)/i);
+        const expires = value.match(/v[aá]lido at[eé]:\s*(\d{2}\/\d{2}\/\d{4})/i);
+        return discount ? { discount: discount[1], minimum: minimum?.[1] || "", expiresAt: expires?.[1] || "" } : null;
+      }).filter(Boolean).slice(0, 5);
+    return {
+      rating: ratingValue(),
+      soldCount,
+      officialStore: /loja oficial|mall inline badge|p[aá]gina oficial/i.test(text),
+      authorizedSeller: /revendedor autorizado/i.test(text),
+      warrantyMonths: Number(warranty?.[1] || 0),
+      variantAvailable: true,
+      endsAt: ending ? new Date(Date.now() + ((Number(ending[1]) * 60 + Number(ending[2] || 0)) * 60000)).toISOString() : "",
+      coupons: couponCards,
+      shipping: /frete gr[aá]tis com cupom/i.test(text) ? "free-with-coupon" : /frete gr[aá]tis/i.test(text) ? "free" : "paid",
+    };
   };
 
   const validAffiliateLink = (value = "") => {
@@ -264,7 +324,10 @@
       );
       const structuredPrice = tools.productPrice(structured);
       const scriptPrices = scriptPriceValues().current.map(Number).filter((value) => value > 0);
-      const basePrice = priceInfo.value || structuredPrice || (scriptPrices.length ? String(Math.min(...scriptPrices)) : "");
+      // The current Shopee PDP uses ephemeral class names for the displayed price.
+      // Prefer the visible price nearest the title, then fall back to stable metadata.
+      const visiblePrice = primaryVisiblePrice();
+      const basePrice = priceInfo.value || visiblePrice.value || structuredPrice || (scriptPrices.length ? String(Math.min(...scriptPrices)) : "");
       const oldPrice = previousPrice(basePrice);
       // Cupons da Shopee variam por conta, loja, variante e resgate. Para evitar
       // códigos falsos ou textos cortados, a captura automática não os anuncia.
@@ -289,9 +352,10 @@
         sourceUrl: tools.canonicalUrl(),
         externalProductId: ids ? `${ids[1]}.${ids[2]}` : "",
         platform: "Shopee",
-        pricePaymentMethod: priceInfo.method,
+        pricePaymentMethod: priceInfo.method || visiblePrice.method,
         captureStage: affiliateLink ? "complete" : "awaiting-affiliate-link",
         rating: ratingValue(),
+        intelligenceEvidence: intelligenceEvidence(),
         confidence: 0,
       };
       const required = [product.productName, product.currentPrice, product.imageUrl, product.externalProductId];

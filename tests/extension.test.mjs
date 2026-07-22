@@ -242,6 +242,7 @@ test("capture extracts requested product fields and closes store popups", () => 
   assert.match(meli, /captureAffiliateLink/);
   assert.match(meli, /MELI_LINK_PATTERN/);
   assert.match(meli, /mainGalleryImageCandidates/);
+  assert.match(meli, /generate_link_button/);
   assert.match(meli, /main-gallery/);
   assert.doesNotMatch(meli, /img\[src\*='mlstatic'\]/);
   assert.doesNotMatch(meli, /productImages\(structured\)\.map/);
@@ -396,6 +397,14 @@ test("batch mode canonicalizes routes and preloads five stable product tabs", ()
     [...context.TaBaratoBatchUtils.reviewProduct(missingAffiliate, 0.8, (value) => Number(String(value).replace(",", ".")))],
     ["link afiliado meli.la"],
   );
+  assert.equal(
+    context.TaBaratoBatchUtils.intelligenceScore({
+      currentPrice: "80",
+      previousPrice: "100",
+      intelligenceEvidence: { rating: 4.8, soldCount: 1200, endsAt: new Date(Date.now() + 60_000).toISOString() },
+    }, Number),
+    82,
+  );
   assert.match(html, /src="batch-utils\.js"/);
   assert.equal(
     JSON.stringify(context.TaBaratoBatchUtils.chunkValues([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], 5)),
@@ -516,6 +525,10 @@ test("coupon activation uses confirmed filters and trusted Chrome input", () => 
   assert.match(coupons, /moreUsedFilterApplied/);
   assert.match(coupons, /activationControls/);
   assert.match(coupons, /activationConfirmed/);
+  assert.match(couponBackground, /operationControllers/);
+  assert.match(couponBackground, /runtime\.poll/);
+  assert.match(couponBackground, /runtime\.runWithTimeout/);
+  assert.match(couponBackground, /Ativacao de cupons cancelada pelo usuario/);
 });
 
 test("side panel supports persistent light and dark themes", () => {
@@ -849,8 +862,17 @@ test("Shopee affiliate action imports its panel dependencies and supports cancel
   assert.match(source, /A escolha do anúncio é manual/);
   assert.match(affiliate, /phase: "waiting-link"/);
   assert.match(affiliate, /browseReady: true/);
+  assert.match(affiliate, /AffiliateItemCard__getlinkBtn/);
+  assert.match(affiliate, /ItemCard__container/);
   assert.match(affiliate, /scheduleProcess\(140\)/);
   assert.doesNotMatch(affiliate, /setInterval\(/);
+});
+
+test("Shopee capture prioritizes the visible PDP price over volatile markup metadata", () => {
+  const source = readFileSync(join(extensionRoot, "content", "stores", "shopee.js"), "utf8");
+  assert.match(source, /const primaryVisiblePrice/);
+  assert.match(source, /const basePrice = priceInfo\.value \|\| visiblePrice\.value \|\| structuredPrice/);
+  assert.match(source, /pricePaymentMethod: priceInfo\.method \|\| visiblePrice\.method/);
 });
 
 
@@ -895,6 +917,10 @@ test("page context centralizes routes, delayed states and SPA navigation", () =>
   assert.equal(routes.routeFor({ url: "https://shopee.com.br/produto-i.1.2", documentRef: document }), "product-unavailable");
   document.body.innerText = "Anúncio finalizado";
   assert.equal(routes.routeFor({ url: "https://produto.mercadolivre.com.br/MLB-123456789-item", documentRef: document }), "product-unavailable");
+  document.body.innerText = "";
+  assert.equal(routes.routeFor({ url: "https://shopee.com.br/verify/traffic/error", documentRef: document }), "traffic-verification");
+  document.body.innerText = "Hubo un error accediendo a esta pagina";
+  assert.equal(routes.routeFor({ url: "https://www.mercadolivre.com.br/", documentRef: document }), "traffic-verification");
   document.body.innerText = "Detalhes da Oferta do Produto Link de Oferta de Produto Copiar Link";
   document.querySelectorAll = (selector) => selector.includes("dialog") || selector.includes("modal") ? [visibleElement] : [];
   assert.equal(routes.routeFor({ url: "https://affiliate.shopee.com.br/offer/123", documentRef: document }), "affiliate-link-modal");
@@ -943,6 +969,18 @@ test("best-price search is user-triggered and does not open candidates automatic
   const browseBranch = affiliate.match(/if \(request\.mode === "browse-only"\) \{[\s\S]*?return "browse-ready";[\s\S]*?\}/)?.[0] || "";
   assert.match(browseBranch, /persistBrowseReady/);
   assert.doesNotMatch(browseBranch, /clickObterLink|chooseExactCard|chooseBestAlternativeCard/);
+});
+
+test("batch supports pasted marketplace links and hides unchanged recent publications by default", () => {
+  const html = readFileSync(join(extensionRoot, "sidepanel", "index.html"), "utf8");
+  const batch = readFileSync(join(extensionRoot, "sidepanel", "modules", "batch.js"), "utf8");
+  const catalog = readFileSync(join(extensionRoot, "sidepanel", "modules", "catalog.js"), "utf8");
+  assert.match(html, /id="batch-links"/);
+  assert.match(html, /id="batch-show-recent"/);
+  assert.match(batch, /function pastedLinkEntries/);
+  assert.match(batch, /mercadolivre\\\.com\\\.br.*shopee\\\.com\\\.br/);
+  assert.match(catalog, /recentOnly/);
+  assert.match(catalog, /withinCooldownWithoutChanges/);
 });
 
 test("content navigation detection avoids the former tight polling loop", () => {

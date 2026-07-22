@@ -18,13 +18,16 @@ export default function Categories() {
   const [error, setError] = useState("");
 
   useEffect(() => {
+    let active = true;
     listPublicCategoryHighlights()
       .then(({ categories: categoryItems, offers: offerItems }) => {
+        if (!active) return;
         setCategories(categoryItems.length > 0 ? categoryItems : visibleCategories);
         setOffers(offerItems);
       })
-      .catch((requestError) => setError(requestError.message || "Não foi possível carregar as categorias."))
-      .finally(() => setLoading(false));
+      .catch((requestError) => { if (active) setError(requestError.message || "Não foi possível carregar as categorias."); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
   }, []);
 
   const sections = useMemo(() => categories.map((category) => ({

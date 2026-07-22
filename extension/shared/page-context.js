@@ -42,6 +42,13 @@
       || hasVisible('[data-testid*="error" i], [class*="error-page" i], [class*="not-found" i]', documentRef);
   }
 
+  function isTrafficVerification(documentRef = document, url = location.href) {
+    let path = "";
+    try { path = new URL(url).pathname; } catch { /* Invalid URLs are handled by routeFor. */ }
+    return /\/verify\/traffic\/error(?:\/|$)/i.test(path)
+      || hasText(/hubo un error accediendo a esta pagina|verifica(?:cao|ção) de trafego|atividade incomum|unusual traffic|verifique que voce e humano|verify you are human/i, documentRef);
+  }
+
   function routeFor({ url = location.href, documentRef = document } = {}) {
     let parsed;
     try { parsed = new URL(url); } catch { return "invalid-url"; }
@@ -49,6 +56,7 @@
     const path = parsed.pathname;
 
     if (isAuthRequired(documentRef, url)) return "auth-required";
+    if (isTrafficVerification(documentRef, url)) return "traffic-verification";
     if (isErrorPage(documentRef)) return "error";
 
     if (platform === "Shopee Afiliados") {
@@ -93,6 +101,7 @@
       url,
       authenticated: route !== "auth-required",
       error: route === "error",
+      blocked: route === "traffic-verification",
       product: route === "product",
       unavailable: route === "product-unavailable",
       loading: documentRef.readyState !== "complete",
@@ -215,6 +224,7 @@
     platformFor,
     routeFor,
     snapshot,
+    isTrafficVerification,
     visible,
     waitFor,
   };

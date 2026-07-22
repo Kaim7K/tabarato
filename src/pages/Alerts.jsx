@@ -12,12 +12,26 @@ export default function Alerts() {
   const { alerts, removeAlert } = useOfferTools();
   const [offers, setOffers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     let active = true;
-    const refresh = () => listPublicOffers({ limit: 100 })
-      .then((items) => { if (active) setOffers(items); })
-      .finally(() => { if (active) setLoading(false); });
+    let inFlight = false;
+    const refresh = () => {
+      if (inFlight) return;
+      inFlight = true;
+      listPublicOffers({ limit: 100 })
+        .then((items) => {
+          if (!active) return;
+          setOffers(items);
+          setError("");
+        })
+        .catch((requestError) => { if (active) setError(requestError.message || "Não foi possível atualizar os alertas."); })
+        .finally(() => {
+          inFlight = false;
+          if (active) setLoading(false);
+        });
+    };
     refresh();
     const interval = window.setInterval(refresh, 60_000);
     const onVisibility = () => { if (document.visibilityState === "visible") refresh(); };
@@ -47,7 +61,7 @@ export default function Alerts() {
         <button type="button" onClick={enableNotifications} className="min-h-11 inline-flex items-center justify-center gap-2 px-4 bg-[#111111] text-white rounded-md font-semibold text-sm"><BellRing className="w-4 h-4" /> Ativar notificações</button>
       </SectionHeader>
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
-        {loading ? <LoadingState /> : !rows.length ? <EmptyState icon={Bell} title="Nenhum alerta criado." description="Abra uma oferta e defina o preço que deseja acompanhar." /> : (
+        {loading ? <LoadingState /> : error ? <EmptyState icon={Bell} title="Não foi possível atualizar os alertas." description={error} /> : !rows.length ? <EmptyState icon={Bell} title="Nenhum alerta criado." description="Abra uma oferta e defina o preço que deseja acompanhar." /> : (
           <div className="bg-white border border-[#111111]/10 rounded-lg overflow-hidden">
             {rows.map((item) => {
               if (item.type === "search") return (

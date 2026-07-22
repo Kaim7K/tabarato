@@ -25,13 +25,19 @@ export default function SearchPage() {
   const { createSearchAlert } = useOfferTools();
 
   useEffect(() => {
+    let active = true;
     setLoading(true);
     setError("");
     const ranges = { under50: { maxPrice: 50 }, under100: { maxPrice: 100 }, "100to300": { minPrice: 100, maxPrice: 300 }, over300: { minPrice: 300 } };
     listPublicOffersPage({ search: query, platform: platformFilter === "all" ? "" : platformFilter, sort, page, limit: 24, ...(ranges[priceFilter] || {}) })
-      .then((payload) => { setOffers(payload.offers || []); setPagination(payload.pagination || { page: 1, pages: 1, total: 0 }); })
-      .catch((err) => setError(err.message || "Não foi possível carregar a busca."))
-      .finally(() => setLoading(false));
+      .then((payload) => {
+        if (!active) return;
+        setOffers(payload.offers || []);
+        setPagination(payload.pagination || { page: 1, pages: 1, total: 0 });
+      })
+      .catch((err) => { if (active) setError(err.message || "Não foi possível carregar a busca."); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
   }, [page, platformFilter, priceFilter, query, sort]);
 
   const platforms = ["Mercado Livre", "Shopee", "Amazon"];

@@ -1,17 +1,30 @@
 import { visitorId } from "@/lib/visitorAnalytics";
+import { queryPath, requestJson } from "@/lib/httpClient";
 
 const CACHE_TTL = 30_000;
+const MAX_CACHE_ENTRIES = 80;
 const responseCache = new Map();
+
+function pruneResponseCache() {
+  const now = Date.now();
+  responseCache.forEach((entry, key) => {
+    if (!entry.promise && entry.expiresAt <= now) responseCache.delete(key);
+  });
+  while (responseCache.size >= MAX_CACHE_ENTRIES) {
+    const oldestKey = responseCache.keys().next().value;
+    if (oldestKey === undefined) break;
+    responseCache.delete(oldestKey);
+  }
+}
 
 async function cachedJson(path, fallbackMessage) {
   const cached = responseCache.get(path);
   if (cached && cached.expiresAt > Date.now()) return cached.value;
   if (cached?.promise) return cached.promise;
 
-  const promise = fetch(path)
-    .then(async (response) => {
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.error || fallbackMessage);
+  const promise = requestJson(path, { fallbackMessage })
+    .then((payload) => {
+      pruneResponseCache();
       responseCache.set(path, { value: payload, expiresAt: Date.now() + CACHE_TTL });
       return payload;
     })
@@ -20,26 +33,19 @@ async function cachedJson(path, fallbackMessage) {
       throw error;
     });
 
+  pruneResponseCache();
   responseCache.set(path, { promise, expiresAt: 0 });
   return promise;
 }
 
 export async function listPublicOffers(params = {}) {
-  const search = new URLSearchParams();
-  Object.entries(params).forEach(([key, value]) => {
-    if (value) search.set(key, value);
-  });
-  const path = `/api/ofertas${search.toString() ? `?${search}` : ""}`;
+  const path = queryPath("/api/ofertas", params);
   const payload = await cachedJson(path, "Nao foi possivel carregar ofertas.");
   return payload.offers || [];
 }
 
 export async function listPublicOffersPage(params = {}) {
-  const search = new URLSearchParams();
-  Object.entries(params).forEach(([key, value]) => {
-    if (value !== "" && value != null) search.set(key, value);
-  });
-  return cachedJson(`/api/ofertas${search.toString() ? `?${search}` : ""}`, "Nao foi possivel carregar ofertas.");
+  return cachedJson(queryPath("/api/ofertas", params), "Nao foi possivel carregar ofertas.");
 }
 
 export async function listPublicCategories() {
@@ -65,6 +71,7 @@ export async function trackOfferMetric(id, action) {
   fetch(`/api/ofertas/${encodeURIComponent(id)}`, {
     method: "POST",
     credentials: "include",
+    keepalive: true,
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ action, visitorId: visitorId() }),
   }).catch(() => {});

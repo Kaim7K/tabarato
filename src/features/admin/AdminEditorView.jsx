@@ -68,6 +68,12 @@ export function EditorView({ form, selected, categories, saving, autoFilling, se
                 <option>Outra</option>
               </select>
             </Field>
+            <Field label="Campanha"><input value={form.campaignName || ""} onChange={(e) => set("campaignName", e.target.value)} className={inputCls} placeholder="Ex.: Achadinhos da noite" /></Field>
+            <Field label="Prioridade">
+              <select value={form.priority || 0} onChange={(e) => set("priority", e.target.value)} className={inputCls}>
+                <option value="-5">Baixa</option><option value="0">Normal</option><option value="5">Alta</option><option value="10">Urgente</option>
+              </select>
+            </Field>
             <div className="md:col-span-2">
               <Field label="Descricao curta"><textarea value={form.shortDescription} onChange={(e) => set("shortDescription", e.target.value)} rows={3} className={`${inputCls} resize-none`} /></Field>
             </div>

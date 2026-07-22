@@ -1,28 +1,39 @@
+import { createHmac, timingSafeEqual } from "node:crypto";
+
+const MAX_JSON_BODY_BYTES = 1_000_000;
+
+function parseJsonBody(raw) {
+  if (Buffer.byteLength(raw, "utf8") > MAX_JSON_BODY_BYTES) {
+    throw Object.assign(new Error("Corpo da requisicao muito grande."), { statusCode: 413 });
+  }
+
+  try {
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    throw Object.assign(new Error("JSON invalido."), { statusCode: 400 });
+  }
+}
+
 export function sendJson(res, status, body) {
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   return res.status(status).json(body);
 }
 
 export async function readJson(req) {
-  if (req.body && typeof req.body === "object") return req.body;
-  if (typeof req.body === "string") {
-    try {
-      return req.body ? JSON.parse(req.body) : {};
-    } catch {
-      throw Object.assign(new Error("JSON invalido."), { statusCode: 400 });
-    }
-  }
+  if (req.body && typeof req.body === "object" && !Buffer.isBuffer(req.body)) return req.body;
+  if (typeof req.body === "string" || Buffer.isBuffer(req.body)) return parseJsonBody(req.body.toString("utf8"));
+
   const chunks = [];
-  for await (const chunk of req) chunks.push(chunk);
-  const raw = Buffer.concat(chunks).toString("utf8");
-  if (Buffer.byteLength(raw, "utf8") > 1_000_000) {
-    throw Object.assign(new Error("Corpo da requisicao muito grande."), { statusCode: 413 });
+  let bytesRead = 0;
+  for await (const chunk of req) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk));
+    bytesRead += buffer.length;
+    if (bytesRead > MAX_JSON_BODY_BYTES) {
+      throw Object.assign(new Error("Corpo da requisicao muito grande."), { statusCode: 413 });
+    }
+    chunks.push(buffer);
   }
-  try {
-    return raw ? JSON.parse(raw) : {};
-  } catch {
-    throw Object.assign(new Error("JSON invalido."), { statusCode: 400 });
-  }
+  return parseJsonBody(Buffer.concat(chunks).toString("utf8"));
 }
 
 export function getBearer(req) {
@@ -33,7 +44,12 @@ export function getBearer(req) {
 export function getCookie(req, name) {
   const cookies = req.headers.cookie || "";
   const match = cookies.split(";").map((item) => item.trim()).find((item) => item.startsWith(`${name}=`));
-  return match ? decodeURIComponent(match.slice(name.length + 1)) : "";
+  if (!match) return "";
+  try {
+    return decodeURIComponent(match.slice(name.length + 1));
+  } catch {
+    return "";
+  }
 }
 
 export function getAdminSessionCookie(value, maxAge = 60 * 60 * 24 * 7) {
@@ -160,4 +176,3 @@ export function publicError(res, error, fallback = "Erro interno.") {
   const status = Number(error?.statusCode) || 500;
   return sendJson(res, status, { error: status < 500 ? error.message : fallback });
 }
-import { createHmac, timingSafeEqual } from "node:crypto";

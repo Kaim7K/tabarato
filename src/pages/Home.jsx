@@ -44,11 +44,14 @@ export default function Home() {
   const searchQuery = searchParams.get("q") || "";
 
   useEffect(() => {
+    let active = true;
+    setLoading(true);
     setError("");
     listPublicOffers({ limit: 24 })
-      .then(setOffers)
-      .catch((requestError) => setError(requestError.message || "Não foi possível carregar as ofertas."))
-      .finally(() => setLoading(false));
+      .then((items) => { if (active) setOffers(items); })
+      .catch((requestError) => { if (active) setError(requestError.message || "Não foi possível carregar as ofertas."); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
   }, []);
 
   const normalizedQuery = normalizeText(searchQuery);
@@ -72,6 +75,8 @@ export default function Home() {
           src="/brand/hero-marketplace-v1.jpg"
           alt=""
           aria-hidden="true"
+          fetchPriority="high"
+          decoding="async"
           className="absolute inset-0 -z-20 h-full w-full object-cover object-[68%_center] sm:object-center"
         />
         <div className="absolute inset-0 -z-10 bg-[#090909]/55 sm:bg-[#090909]/42" aria-hidden="true" />

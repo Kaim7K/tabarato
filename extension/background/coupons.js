@@ -6,6 +6,7 @@
   const STORAGE_KEY = "tabarato_coupon_activation_operation_v3";
   const TERMINAL_STATUSES = new Set(["completed", "stopped", "exhausted", "failed"]);
   const resumeLocks = new Map();
+  const operationControllers = new Map();
 
   function isCouponUrl(value = "") {
     try {
@@ -35,10 +36,9 @@
     }).catch(() => {});
   }
 
-  async function waitForCouponPage(tabId, timeout = 30000) {
-    const startedAt = Date.now();
-    while (Date.now() - startedAt < timeout) {
-      const ready = await chrome.scripting.executeScript({
+  async function waitForCouponPage(tabId, timeout = 30000, signal) {
+    await runtime.poll(async () => {
+      const results = await chrome.scripting.executeScript({
         target: { tabId },
         func: () => {
           const text = String(document.body?.innerText || "").replace(/\s+/g, " ").toLowerCase();
@@ -46,11 +46,16 @@
             && /\/cupons(?:\/|$)/i.test(location.pathname)
             && /cupons/.test(text);
         },
-      }).then((results) => Boolean(results[0]?.result)).catch(() => false);
-      if (ready) return;
-      await runtime.delay(180);
-    }
-    throw new Error("A pagina de cupons nao terminou de carregar.");
+      }).catch(() => []);
+      return Boolean(results[0]?.result);
+    }, {
+      timeout,
+      interval: 180,
+      maxInterval: 650,
+      signal,
+      throwOnTimeout: true,
+      timeoutMessage: "A pagina de cupons nao terminou de carregar.",
+    });
   }
 
   async function openPage() {
@@ -76,13 +81,21 @@
     if (!loaded) throw new Error("O automatizador de cupons nao foi carregado. Recarregue a extensao e tente novamente.");
   }
 
-  async function sendCouponMessage(tabId, message, { retry = true } = {}) {
+  async function sendCouponMessage(tabId, message, { retry = true, signal } = {}) {
     const attempts = retry ? 2 : 1;
     let lastError = null;
     for (let attempt = 0; attempt < attempts; attempt += 1) {
       try {
+        runtime.throwIfAborted(signal);
         await ensureCouponAutomation(tabId);
-        return await chrome.tabs.sendMessage(tabId, message);
+        return await runtime.runWithTimeout(
+          () => chrome.tabs.sendMessage(tabId, message),
+          {
+            milliseconds: 12000,
+            message: "A pagina de cupons demorou para responder.",
+            signal,
+          },
+        );
       } catch (error) {
         lastError = error;
         const text = runtime.errorMessage(error);
@@ -110,11 +123,14 @@
     if (!operation || TERMINAL_STATUSES.has(operation.status) || Number(operation.tabId) !== Number(tabId)) return operation;
     if (resumeLocks.has(operation.id)) return resumeLocks.get(operation.id);
 
+    const controller = new AbortController();
+    operationControllers.set(operation.id, controller);
     const task = (async () => {
       try {
+        const { signal } = controller;
         const tab = await chrome.tabs.get(tabId);
         if (!isCouponUrl(tab.url)) throw new Error("A aba de cupons saiu da pagina esperada.");
-        await waitForCouponPage(tabId);
+        await waitForCouponPage(tabId, 30000, signal);
 
         let current = await operationState();
         if (!current || current.id !== operation.id || TERMINAL_STATUSES.has(current.status)) return current;
@@ -130,7 +146,7 @@
             type: "TABARATO_COUPON_PAGE_STEP",
             operationId: current.id,
             remaining,
-          });
+          }, { signal });
         } catch (error) {
           const text = runtime.errorMessage(error);
           if (/message port closed|receiving end does not exist|could not establish connection|extension context invalidated/i.test(text)) {
@@ -197,7 +213,7 @@
           await sendCouponMessage(tabId, {
             type: "TABARATO_COUPON_NEXT_PAGE",
             operationId: current.id,
-          }, { retry: false });
+          }, { retry: false, signal });
         } catch (error) {
           const text = runtime.errorMessage(error);
           if (!/message port closed|receiving end does not exist|could not establish connection|extension context invalidated/i.test(text)) throw error;
@@ -211,6 +227,7 @@
       }
     })().finally(() => {
       resumeLocks.delete(operation.id);
+      if (operationControllers.get(operation.id) === controller) operationControllers.delete(operation.id);
     });
 
     resumeLocks.set(operation.id, task);
@@ -250,6 +267,7 @@
   async function stop() {
     const operation = await operationState();
     if (!operation || TERMINAL_STATUSES.has(operation.status)) return { ok: true, stopped: false };
+    operationControllers.get(operation.id)?.abort(runtime.abortError("Ativacao de cupons cancelada pelo usuario."));
     await chrome.tabs.sendMessage(operation.tabId, { type: "TABARATO_STOP_COUPONS" }).catch(() => {});
     const stopped = await finish(operation, "stopped");
     return { ok: true, stopped: true, activated: stopped.activated || 0 };
@@ -260,7 +278,6 @@
     const operation = await operationState();
     if (!operation || TERMINAL_STATUSES.has(operation.status) || Number(operation.tabId) !== Number(tabId)) return false;
     if (!isCouponUrl(tab?.url || changeInfo.url || "")) return false;
-    await runtime.delay(420);
     resume(tabId).catch((error) => runtime.reportError("coupon-tab-resume", error));
     return true;
   }

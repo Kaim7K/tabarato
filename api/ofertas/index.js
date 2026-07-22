@@ -72,7 +72,7 @@ export default async function handler(req, res) {
                       ORDER BY COALESCE(published_at, updated_at, created_at) DESC
                     ) AS category_position
              FROM telegram_offers
-             WHERE status = 'PUBLICADO'
+             WHERE site_published_at IS NOT NULL
            ) ranked_offers
            WHERE category_position <= 4
            ORDER BY category ASC, COALESCE(published_at, updated_at, created_at) DESC`
@@ -92,7 +92,7 @@ export default async function handler(req, res) {
     const limit = Math.max(1, Math.min(Number.isFinite(requestedLimit) ? requestedLimit : 24, 100));
     const page = Math.max(1, Number.isFinite(requestedPage) ? Math.floor(requestedPage) : 1);
     const offset = (page - 1) * limit;
-    const filters = ["status = 'PUBLICADO'"];
+    const filters = ["site_published_at IS NOT NULL"];
     const params = [];
 
     if (search) {
@@ -134,15 +134,19 @@ export default async function handler(req, res) {
     params.push(limit);
     const limitParam = params.length;
     params.push(offset);
-    const result = await query(
-      `SELECT ${PUBLIC_OFFER_COLUMNS}, COUNT(*) OVER() AS total_count FROM telegram_offers
-       WHERE ${filters.join(" AND ")}
-       ORDER BY ${orderBy}
-       LIMIT $${limitParam} OFFSET $${params.length}`,
-      params
-    );
+    const where = filters.join(" AND ");
+    const [result, countResult] = await Promise.all([
+      query(
+        `SELECT ${PUBLIC_OFFER_COLUMNS} FROM telegram_offers
+         WHERE ${where}
+         ORDER BY ${orderBy}
+         LIMIT $${limitParam} OFFSET $${params.length}`,
+        params,
+      ),
+      query(`SELECT COUNT(*) AS total_count FROM telegram_offers WHERE ${where}`, params.slice(0, -2)),
+    ]);
     setPublicCache(res);
-    const total = Number(result.rows[0]?.total_count || 0);
+    const total = Number(countResult.rows[0]?.total_count || 0);
     return sendJson(res, 200, {
       offers: result.rows.map(mapPublicOffer),
       pagination: { page, limit, total, pages: Math.ceil(total / limit) },
