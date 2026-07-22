@@ -218,9 +218,6 @@ export async function ensureSchema() {
         offer_id UUID NOT NULL REFERENCES telegram_offers(id) ON DELETE CASCADE,
         channel TEXT NOT NULL,
         status TEXT NOT NULL,
-        price_snapshot NUMERIC(12, 2),
-        coupon_snapshot TEXT,
-        free_shipping_snapshot BOOLEAN NOT NULL DEFAULT FALSE,
         external_message_id TEXT,
         error_message TEXT,
         published_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -228,10 +225,6 @@ export async function ensureSchema() {
 
       CREATE INDEX IF NOT EXISTS idx_offer_publication_history_offer_date
       ON offer_publication_history (offer_id, published_at DESC);
-
-      ALTER TABLE offer_publication_history ADD COLUMN IF NOT EXISTS price_snapshot NUMERIC(12, 2);
-      ALTER TABLE offer_publication_history ADD COLUMN IF NOT EXISTS coupon_snapshot TEXT;
-      ALTER TABLE offer_publication_history ADD COLUMN IF NOT EXISTS free_shipping_snapshot BOOLEAN NOT NULL DEFAULT FALSE;
 
       CREATE INDEX IF NOT EXISTS idx_offer_publication_history_success_recent
       ON offer_publication_history (offer_id, published_at DESC)

@@ -208,10 +208,13 @@ export default function AdminOffers() {
     const requestVersion = ++loadVersionRef.current;
     if (isMountedRef.current) setLoading(true);
     try {
-      const [data, messagesData] = await Promise.all([
+      const [offersResult, messagesResult] = await Promise.allSettled([
         telegramOffersApi.list(),
         telegramOffersApi.listMessages(),
       ]);
+      if (offersResult.status !== "fulfilled") throw offersResult.reason;
+      const data = offersResult.value;
+      const messagesData = messagesResult.status === "fulfilled" ? messagesResult.value : { messages: [] };
       const nextOffers = data.offers || [];
       const serverCategories = data.categories || [];
       const legacyCategories = loadCustomCategories();
@@ -227,6 +230,7 @@ export default function AdminOffers() {
       if (requestedOffer) edit(requestedOffer);
       setCustomCategories(synchronizedCategories.filter((item) => !baseCategories.includes(item.name)));
       setAutoMessages(messagesData.messages || []);
+      if (messagesResult.status !== "fulfilled") showMessage(`Ofertas carregadas, mas mensagens falharam: ${messagesResult.reason?.message || "erro interno"}.`, "error");
       setSelectedIds((current) => current.filter((id) => nextOffers.some((offer) => offer.id === id)));
       try {
         localStorage.removeItem(CUSTOM_CATEGORIES_KEY);
