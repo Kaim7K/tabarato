@@ -111,6 +111,7 @@
     batchLog: byId("batch-log"),
     batchSummary: byId("batch-summary"),
     batchPreviewButton: byId("batch-preview-button"),
+    batchShowHiddenButton: byId("batch-show-hidden-button"),
     batchPreviewList: byId("batch-preview-list"),
     batchSelectionCount: byId("batch-selection-count"),
     customToggle: byId("custom-toggle"),

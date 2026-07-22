@@ -171,6 +171,47 @@
     });
   }
 
+  async function selectedProductEntries(sourceTab, limit = 50) {
+    if (!sourceTab?.id) return [];
+    const send = () => chrome.tabs.sendMessage(sourceTab.id, { type: "TABARATO_GET_SELECTED_PRODUCTS" }, { frameId: 0 });
+    let result = null;
+    try {
+      result = await send();
+    } catch {
+      await panel.capture.ensureScripts(sourceTab);
+      result = await send();
+    }
+    if (!result?.ok || !Array.isArray(result.products)) return [];
+    const seen = new Set();
+    return result.products.flatMap((item) => {
+      const identity = batchUtils.productIdentityFromUrl(item.url)?.key || item.identity || item.url;
+      if (!identity || seen.has(identity)) return [];
+      seen.add(identity);
+      return [{
+        url: item.url,
+        tabId: null,
+        owned: true,
+        selected: true,
+        title: item.title || "",
+      }];
+    }).slice(0, Math.max(1, limit));
+  }
+
+  async function showHiddenProducts() {
+    const sourceTab = await activeTab();
+    if (!sourceTab?.id) throw new Error("Abra a listagem onde os produtos foram escondidos.");
+    const send = () => chrome.tabs.sendMessage(sourceTab.id, { type: "TABARATO_SHOW_HIDDEN_PRODUCTS" }, { frameId: 0 });
+    let result = null;
+    try {
+      result = await send();
+    } catch {
+      await panel.capture.ensureScripts(sourceTab);
+      result = await send();
+    }
+    if (!result?.ok) throw new Error(result?.error || "Nao foi possivel mostrar os produtos escondidos.");
+    showToast("Produtos escondidos voltaram a aparecer nesta loja.", "success");
+  }
+
   function pause() {
     if (!state.batchController) {
       showToast("Nenhum lote está em andamento.", "neutral");
@@ -386,6 +427,36 @@
     };
   }
 
+  async function processProductWhatsAppOnly(product, url, controller, position, total) {
+    const reviewReasons = batchUtils.reviewProduct(product, LIMITS.minimumBatchConfidence, parsePrice);
+    if (reviewReasons.length) {
+      return {
+        status: "skipped",
+        message: `Ignorado no WhatsApp (${reviewReasons.join(", ")}): ${product.productName || url}`,
+        tone: "error",
+      };
+    }
+
+    state.activeProduct = product;
+    panel.product.invalidateShareImage();
+    const payload = panel.product.toPayload(product, "APROVADO");
+    const result = await panel.media.sendOfferToWhatsApp(
+      payload,
+      (label) => {
+        if (elements.batchNextTime) elements.batchNextTime.textContent = `WhatsApp ${position}/${total}: ${label}`;
+      },
+      controller.signal,
+    );
+    return {
+      status: result.ok || result.partial ? "published" : "failed",
+      message: result.ok ? `Enviado no WhatsApp: ${payload.productName}` : `Envio parcial no WhatsApp: ${payload.productName}`,
+      tone: result.ok ? "success" : "neutral",
+      whatsappError: result.partial
+        ? (result.results || []).filter((item) => !item.ok).map((item) => item.error).filter(Boolean).join(" | ")
+        : "",
+    };
+  }
+
   function criticalProductChanges(before = {}, after = {}) {
     const changes = [];
     const comparable = (value) => String(value || "").replace(/\s+/g, " ").trim();
@@ -422,27 +493,33 @@
     const limit = Math.max(1, Math.min(50, Number(elements.batchLimit.value) || 5));
     const openTabsOnly = Boolean(elements.batchOpenTabsOnly?.checked);
     const pasted = pastedLinkEntries();
+    const selectedEntries = pasted.length ? [] : await selectedProductEntries(sourceTab, limit).catch((error) => {
+      runtime.reportError("batch-selected-products", error);
+      return [];
+    });
     const [visibleUrls, rightTabs] = await Promise.all([
-      pasted.length || openTabsOnly ? Promise.resolve([]) : panel.capture.visibleProductUrls(limit, sourceTab).catch(() => []),
-      pasted.length ? Promise.resolve([]) : panel.capture.productTabsToRight(sourceTab, limit).catch(() => []),
+      pasted.length || selectedEntries.length || openTabsOnly ? Promise.resolve([]) : panel.capture.visibleProductUrls(limit, sourceTab).catch(() => []),
+      pasted.length || selectedEntries.length ? Promise.resolve([]) : panel.capture.productTabsToRight(sourceTab, limit).catch(() => []),
     ]);
     const seen = new Set();
     const entries = [];
-    for (const item of [...pasted, ...rightTabs, ...visibleUrls.map((url) => ({ url }))]) {
+    for (const item of [...selectedEntries, ...pasted, ...rightTabs, ...visibleUrls.map((url) => ({ url }))]) {
       const identity = batchUtils.productIdentityFromUrl(item.url)?.key || item.url;
       if (!identity || seen.has(identity)) continue;
       seen.add(identity);
-      entries.push({ url: item.url, identity });
+      entries.push({ url: item.url, identity, selected: Boolean(item.selected), title: item.title || "" });
     }
-    const posted = await panel.catalog.previouslyPostedUrls(entries.map((item) => item.url)).catch(() => []);
+    const posted = selectedEntries.length ? [] : await panel.catalog.previouslyPostedUrls(entries.map((item) => item.url)).catch(() => []);
     const postedSet = new Set(posted.map((item) => item.url));
     state.batchPreviewEntries = entries.map((item) => ({ ...item, duplicate: postedSet.has(item.url) }));
-    elements.batchSelectionCount.textContent = `${entries.length} produto(s), ${postedSet.size} duplicado(s).`;
+    elements.batchSelectionCount.textContent = selectedEntries.length
+      ? `${entries.length} selecionado(s) para WhatsApp direto.`
+      : `${entries.length} produto(s), ${postedSet.size} duplicado(s).`;
     elements.batchPreviewList.replaceChildren(...state.batchPreviewEntries.map((entry, index) => {
       const row = document.createElement("div");
       row.className = "batch-preview-item";
       const label = document.createElement("div");
-      label.textContent = `${index + 1}. ${entry.url}`;
+      label.textContent = `${index + 1}. ${entry.title || entry.url}`;
       const status = document.createElement("small");
       status.textContent = entry.duplicate ? "Duplicado — será ignorado" : "Pronto para validar";
       row.append(label, status);
@@ -495,7 +572,12 @@
       if (!sourceTab?.id) throw new Error("Abra uma aba do navegador antes de iniciar o lote.");
       const openTabsOnly = Boolean(elements.batchOpenTabsOnly?.checked);
       const pasted = pastedLinkEntries();
-      const catalogSync = runtime.withTimeout(
+      const selectedEntries = pasted.length ? [] : await selectedProductEntries(sourceTab, limit).catch((error) => {
+        runtime.reportError("batch-selected-products", error);
+        log("Nao foi possivel ler a selecao marcada na pagina. O lote padrao sera usado.", "neutral");
+        return [];
+      });
+      const catalogSync = selectedEntries.length ? Promise.resolve(null) : runtime.withTimeout(
         panel.catalog.synchronize(),
         14000,
         "O histórico online demorou demais para atualizar.",
@@ -505,12 +587,12 @@
         return null;
       });
       const [visibleUrls, rightTabs] = await Promise.all([
-        pasted.length || openTabsOnly ? Promise.resolve([]) : panel.capture.visibleProductUrls(limit, sourceTab).catch((error) => {
+        pasted.length || selectedEntries.length || openTabsOnly ? Promise.resolve([]) : panel.capture.visibleProductUrls(limit, sourceTab).catch((error) => {
           runtime.reportError("batch-visible-products", error);
           log("Não foi possível ler os produtos visíveis. As abas à direita ainda serão processadas.", "neutral");
           return [];
         }),
-        pasted.length ? Promise.resolve([]) : panel.capture.productTabsToRight(sourceTab, limit).catch((error) => {
+        pasted.length || selectedEntries.length ? Promise.resolve([]) : panel.capture.productTabsToRight(sourceTab, limit).catch((error) => {
           runtime.reportError("batch-right-tabs", error);
           log("Não foi possível consultar as abas à direita. A coleta padrão ainda será usada.", "neutral");
           return [];
@@ -519,6 +601,12 @@
       ]);
       const seen = new Set();
       const queue = [];
+      for (const entry of selectedEntries) {
+        const identity = batchUtils.productIdentityFromUrl(entry.url)?.key || entry.url;
+        if (seen.has(identity)) continue;
+        seen.add(identity);
+        queue.push(entry);
+      }
       for (const entry of pasted) {
         const identity = batchUtils.productIdentityFromUrl(entry.url)?.key || entry.url;
         if (seen.has(identity)) continue;
@@ -539,6 +627,7 @@
       }
       const limitedQueue = queue.slice(0, limit);
       const urls = limitedQueue.map((item) => item.url);
+      const whatsappOnly = selectedEntries.length > 0;
       if (!urls.length) {
         throw new Error(openTabsOnly
           ? "Nenhum produto aberto em abas à direita foi encontrado."
@@ -550,14 +639,15 @@
       log(`Cadência escolhida: ${cadenceLabel(cadence)}.`);
 
       log("Verificando o histórico antes de abrir as abas...");
-      const previouslyPosted = await panel.catalog.previouslyPostedUrls?.(urls) || [];
+      if (whatsappOnly) log("Modo WhatsApp direto ativo: site e Telegram nao serao usados.", "neutral");
+      const previouslyPosted = whatsappOnly ? [] : await panel.catalog.previouslyPostedUrls?.(urls) || [];
       const postedUrlSet = new Set(previouslyPosted.map((item) => item.url));
       previouslyPosted.forEach((item) => {
         skipped += 1;
         log(`Já publicado, não foi aberto: ${item.sourceProductId}`, "neutral");
       });
       renderSummary({ published, skipped, failed });
-      const pendingEntries = limitedQueue.filter((item) => !postedUrlSet.has(item.url));
+      const pendingEntries = whatsappOnly ? limitedQueue : limitedQueue.filter((item) => !postedUrlSet.has(item.url));
       const pendingUrls = pendingEntries.map((item) => item.url);
       if (!pendingEntries.length) {
         showToast(`Lote finalizado: 0 publicados, ${skipped} ja publicados, 0 erros.`, "success");
@@ -606,7 +696,9 @@
               log(`Pausado para revisão (${freshProduct.queueValidationChanges.join(", ")} mudou): ${freshProduct.productName || worker.url}`, "neutral");
               continue;
             }
-            const result = await processProduct(freshProduct, worker.url, controller);
+            const result = whatsappOnly
+              ? await processProductWhatsAppOnly(freshProduct, worker.url, controller, worker.index + 1, pendingUrls.length)
+              : await processProduct(freshProduct, worker.url, controller);
             if (result.status === "published") published += 1;
             else if (result.status === "failed") failed += 1;
             else skipped += 1;
@@ -669,5 +761,5 @@
     chrome.runtime.sendMessage({ type: "TABARATO_STOP_WHATSAPP" }).catch(() => {});
   });
 
-  panel.batch = { log, pause, previewQueue, renderSummary, start, stop };
+  panel.batch = { log, pause, previewQueue, renderSummary, showHiddenProducts, start, stop };
 })();

@@ -6,7 +6,10 @@
   const BUTTON_ID = "tabarato-launcher";
   const BUTTON_POSITION_KEY = "tabarato_launcher_position_v1";
   const BUTTON_MARGIN = 12;
+  const HIDDEN_PRODUCTS_KEY = "tabarato_hidden_products_v1";
+  const SELECTED_PRODUCTS_KEY = "tabarato_selected_products_v1";
   const runtime = globalThis.TaBaratoRuntime;
+  const tools = globalThis.TaBaratoCapture;
   const pageContext = globalThis.TaBaratoPageContext;
   let extractionPromise = null;
   let extractionUrl = "";
@@ -15,6 +18,10 @@
   let allowedPage = false;
   let navigationTimer = null;
   let launcherRatio = null;
+  let productControlsTimer = null;
+  let productControlsObserver = null;
+  let hiddenProductMap = {};
+  let selectedProductMap = {};
 
   async function syncAdminMarker() {
     const stored = await chrome.storage.local.get("tabarato_extension_session").catch(() => ({}));
@@ -205,6 +212,205 @@
     return menu;
   }
 
+  function productIdentityFromUrl(value = "") {
+    const url = String(value || "");
+    const mercadoLivre = url.match(/\bMLB-?(\d{6,})\b/i);
+    if (mercadoLivre) return `mlb:${mercadoLivre[1]}`;
+    const shopee = url.match(/(?:i\.|\/product\/)(\d+)[./](\d+)/i);
+    if (shopee) return `shopee:${shopee[1]}:${shopee[2]}`;
+    try {
+      const parsed = new URL(url, location.href);
+      parsed.hash = "";
+      return `${parsed.origin}${parsed.pathname.replace(/\/$/, "")}`;
+    } catch {
+      return "";
+    }
+  }
+
+  function canonicalProductUrlFromLink(link) {
+    const href = link?.href || link?.getAttribute?.("href") || "";
+    try {
+      const url = new URL(href, location.href);
+      if (/mercadolivre|mercadolibre/i.test(url.hostname)) {
+        if (!/(?:^|[/?-])MLB-?\d{6,}(?:$|[/?#-])/i.test(url.href)) return "";
+      } else if (/shopee/i.test(url.hostname)) {
+        if (!/(?:\/product\/|[-.]i\.\d+\.\d+)/i.test(url.href)) return "";
+      } else {
+        return "";
+      }
+      url.hash = "";
+      return url.toString();
+    } catch {
+      return "";
+    }
+  }
+
+  function productCardForLink(link) {
+    return link?.closest?.([
+      ".poly-card",
+      "li.ui-search-layout__item",
+      ".ui-search-result__wrapper",
+      ".ui-search-result",
+      ".shops__layout-item",
+      "[class*='search-result' i]",
+      "[class*='poly-card' i]",
+    ].join(", ")) || null;
+  }
+
+  function productTitleFromCard(card, link) {
+    return tools.clean(
+      card?.querySelector?.(".poly-component__title, .ui-search-item__title, h2, h3")?.textContent
+      || link?.getAttribute?.("title")
+      || link?.textContent
+      || ""
+    ).slice(0, 220);
+  }
+
+  function selectedRecords() {
+    return Object.values(selectedProductMap || {})
+      .filter((item) => item?.url && item.selected !== false)
+      .sort((left, right) => Number(left.selectedAt || 0) - Number(right.selectedAt || 0));
+  }
+
+  async function saveProductUiState() {
+    await chrome.storage.local.set({
+      [HIDDEN_PRODUCTS_KEY]: hiddenProductMap,
+      [SELECTED_PRODUCTS_KEY]: selectedProductMap,
+    }).catch(() => {});
+  }
+
+  function applyCardHiddenState(card, identity) {
+    const hidden = Boolean(hiddenProductMap?.[identity]);
+    card.dataset.tabaratoHiddenProduct = hidden ? "true" : "false";
+    card.style.display = hidden ? "none" : "";
+  }
+
+  function renderCardSelection(button, identity) {
+    const selected = Boolean(selectedProductMap?.[identity]);
+    button.dataset.selected = selected ? "true" : "false";
+    button.title = selected ? "Remover da seleção do lote" : "Selecionar para lote no WhatsApp";
+    button.setAttribute("aria-label", button.title);
+    button.textContent = selected ? "-" : "+";
+  }
+
+  function ensureCardControls() {
+    if (!tools?.clean) return;
+    if (!/mercadolivre|mercadolibre|shopee/i.test(location.hostname)) return;
+    const links = [...document.querySelectorAll("a[href]")].map((link) => {
+      const url = canonicalProductUrlFromLink(link);
+      if (!url) return null;
+      const identity = productIdentityFromUrl(url);
+      const card = productCardForLink(link);
+      if (!identity || !card || card.dataset.tabaratoProductControls === "true") return null;
+      return { link, url, identity, card };
+    }).filter(Boolean);
+
+    links.forEach(({ link, url, identity, card }) => {
+      card.dataset.tabaratoProductControls = "true";
+      card.dataset.tabaratoProductIdentity = identity;
+      if (getComputedStyle(card).position === "static") card.style.position = "relative";
+
+      const tray = document.createElement("div");
+      tray.className = "tabarato-card-actions";
+      Object.assign(tray.style, {
+        position: "absolute",
+        right: "10px",
+        bottom: "10px",
+        zIndex: "20",
+        display: "flex",
+        gap: "6px",
+        alignItems: "center",
+      });
+
+      const makeButton = (label, title) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = label;
+        button.title = title;
+        button.setAttribute("aria-label", title);
+        Object.assign(button.style, {
+          width: "28px",
+          height: "28px",
+          border: "1px solid rgba(17,17,17,.18)",
+          borderRadius: "50%",
+          background: "#fff",
+          color: "#111827",
+          boxShadow: "0 6px 18px rgba(17,17,17,.18)",
+          cursor: "pointer",
+          fontWeight: "800",
+          lineHeight: "1",
+        });
+        button.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+        });
+        return button;
+      };
+
+      const selectButton = makeButton("+", "Selecionar para lote no WhatsApp");
+      const hideButton = makeButton("x", "Esconder este produto");
+      hideButton.style.color = "#d93025";
+      renderCardSelection(selectButton, identity);
+
+      selectButton.addEventListener("click", async () => {
+        if (selectedProductMap[identity]) delete selectedProductMap[identity];
+        else {
+          selectedProductMap[identity] = {
+            identity,
+            url,
+            title: productTitleFromCard(card, link),
+            platform: /shopee/i.test(new URL(url).hostname) ? "Shopee" : "Mercado Livre",
+            selectedAt: Date.now(),
+          };
+        }
+        renderCardSelection(selectButton, identity);
+        await saveProductUiState();
+      });
+
+      hideButton.addEventListener("click", async () => {
+        hiddenProductMap[identity] = { identity, url, title: productTitleFromCard(card, link), hiddenAt: Date.now() };
+        applyCardHiddenState(card, identity);
+        await saveProductUiState();
+      });
+
+      tray.append(selectButton, hideButton);
+      card.appendChild(tray);
+      applyCardHiddenState(card, identity);
+    });
+  }
+
+  function scheduleProductControls() {
+    window.clearTimeout(productControlsTimer);
+    productControlsTimer = window.setTimeout(() => {
+      try { ensureCardControls(); } catch (error) { runtime.reportError("product-card-controls", error); }
+    }, 120);
+  }
+
+  async function loadProductUiState() {
+    const stored = await chrome.storage.local.get([HIDDEN_PRODUCTS_KEY, SELECTED_PRODUCTS_KEY]).catch(() => ({}));
+    hiddenProductMap = stored[HIDDEN_PRODUCTS_KEY] || {};
+    selectedProductMap = stored[SELECTED_PRODUCTS_KEY] || {};
+    scheduleProductControls();
+  }
+
+  async function showHiddenProducts() {
+    hiddenProductMap = {};
+    await chrome.storage.local.set({ [HIDDEN_PRODUCTS_KEY]: hiddenProductMap }).catch(() => {});
+    document.querySelectorAll("[data-tabarato-hidden-product='true']").forEach((card) => {
+      card.style.display = "";
+      card.dataset.tabaratoHiddenProduct = "false";
+    });
+    scheduleProductControls();
+    return { ok: true };
+  }
+
+  function startProductControlsObserver() {
+    if (productControlsObserver || !/mercadolivre|mercadolibre|shopee/i.test(location.hostname)) return;
+    productControlsObserver = new MutationObserver(scheduleProductControls);
+    productControlsObserver.observe(document.documentElement, { childList: true, subtree: true });
+    scheduleProductControls();
+  }
+
   async function updateButton() {
     await updateAllowedPage();
     const existing = document.getElementById(BUTTON_ID);
@@ -391,12 +597,37 @@
         .catch((error) => sendResponse({ ok: false, error: runtime.errorMessage(error), urls: [] }));
       return true;
     }
+
+    if (message?.type === "TABARATO_GET_SELECTED_PRODUCTS") {
+      sendResponse({ ok: true, products: selectedRecords() });
+      return false;
+    }
+
+    if (message?.type === "TABARATO_SHOW_HIDDEN_PRODUCTS") {
+      showHiddenProducts()
+        .then((result) => sendResponse(result))
+        .catch((error) => sendResponse({ ok: false, error: runtime.errorMessage(error) }));
+      return true;
+    }
   });
 
   updateButton().catch((error) => runtime.reportError("launcher", error));
+  loadProductUiState().catch((error) => runtime.reportError("product-card-state", error));
+  startProductControlsObserver();
   syncAdminMarker().catch(() => {});
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== "local") return;
+    if (changes[HIDDEN_PRODUCTS_KEY]) {
+      hiddenProductMap = changes[HIDDEN_PRODUCTS_KEY].newValue || {};
+      scheduleProductControls();
+    }
+    if (changes[SELECTED_PRODUCTS_KEY]) {
+      selectedProductMap = changes[SELECTED_PRODUCTS_KEY].newValue || {};
+      document.querySelectorAll("[data-tabarato-product-identity]").forEach((card) => {
+        const button = card.querySelector(".tabarato-card-actions button:first-child");
+        if (button) renderCardSelection(button, card.dataset.tabaratoProductIdentity);
+      });
+    }
     if (changes.tabarato_extension_session) syncAdminMarker().catch(() => {});
     if (changes[BUTTON_POSITION_KEY]) {
       const value = changes[BUTTON_POSITION_KEY].newValue;
@@ -416,6 +647,7 @@
         enrichmentPromise = null;
         enrichmentUrl = "";
         updateButton().catch(() => {});
+        scheduleProductControls();
       } catch (error) {
         runtime.reportError("store-button", error);
       }
@@ -446,6 +678,7 @@
   scheduleNavigationWatch();
   window.addEventListener("pagehide", () => {
     window.clearTimeout(navigationWatch);
+    if (productControlsObserver) productControlsObserver.disconnect();
     stopNavigationObserver?.();
   }, { once: true });
 })();

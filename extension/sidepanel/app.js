@@ -77,6 +77,8 @@
     elements.batchStartButton.addEventListener("click", panel.batch.start);
     elements.batchPreviewButton.addEventListener("click", () => panel.batch.previewQueue()
       .catch((error) => showToast(runtime.errorMessage(error), "error")));
+    elements.batchShowHiddenButton.addEventListener("click", () => panel.batch.showHiddenProducts()
+      .catch((error) => showToast(runtime.errorMessage(error), "error")));
     elements.customToggle.addEventListener("click", () => {
       const opening = elements.customBody.classList.contains("hidden");
       elements.customBody.classList.toggle("hidden", !opening);
