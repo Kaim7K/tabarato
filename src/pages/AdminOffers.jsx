@@ -156,6 +156,7 @@ const browserCaptureScript = `(() => {
 
 export default function AdminOffers() {
   useDocumentMetadata("Painel administrativo | Tá Barato", undefined, "noindex, nofollow");
+  const adminBuildLabel = "admin-robust-load-v2";
   const [offers, setOffers] = useState([]);
   const [siteMetrics, setSiteMetrics] = useState({ uniqueVisitors: 0, visits: 0, realClicks: 0, socialUniqueVisitors: 0, socialVisits: 0, socialVisitsToday: 0, socialVisits7d: 0 });
   const [autoMessages, setAutoMessages] = useState([]);
@@ -655,7 +656,7 @@ export default function AdminOffers() {
   };
 
   return (
-    <div className="admin-theme min-h-screen bg-[#0D0D0D] text-white">
+    <div className="admin-theme min-h-screen bg-[#0D0D0D] text-white" data-admin-build={adminBuildLabel}>
       <AdminHeader testTelegram={testTelegram} saving={saving} />
 
       <main className="max-w-[1500px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
