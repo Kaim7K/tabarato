@@ -268,8 +268,12 @@ test("capture extracts requested product fields and closes store popups", () => 
 
 test("product panel ignores captured metadata without a matching form field", () => {
   const source = readFileSync(join(extensionRoot, "sidepanel", "modules", "product.js"), "utf8");
+  const panel = readFileSync(join(extensionRoot, "sidepanel", "index.html"), "utf8");
   assert.match(source, /const field = elements\.fields\[key\];\s*if \(field\) field\.value = value;/);
   assert.match(source, /intelligenceEvidence: product\.intelligenceEvidence \|\| \{\}/);
+  assert.match(source, /function renderOfferIntelligence\(product, values\)/);
+  assert.match(panel, /id="offer-intelligence"/);
+  assert.match(panel, /id="intelligence-reason"/);
 });
 
 test("coupon parser reads explicit Com CODE labels and never invents a coupon", () => {

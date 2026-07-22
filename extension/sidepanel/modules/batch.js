@@ -34,6 +34,7 @@
 
   function renderSummary({ published = 0, skipped = 0, failed = 0 } = {}) {
     if (!elements.batchSummary) return;
+    elements.batchSummary.classList?.remove("hidden");
     const values = [published, skipped, failed];
     [...elements.batchSummary.querySelectorAll("strong")].forEach((element, index) => {
       element.textContent = String(values[index] || 0);
