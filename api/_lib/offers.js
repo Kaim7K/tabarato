@@ -4,6 +4,14 @@ import { evaluateOffer, evaluateRepublish, queuePriority } from "./offerIntellig
 export const STATUSES = ["RASCUNHO", "APROVADO", "AGENDADO", "PUBLICANDO", "PUBLICADO", "ERRO", "EXPIRADO"];
 
 const URL_FIELDS = ["imageUrl", "affiliateLink"];
+const ADMIN_OFFER_COLUMNS = `
+  id, product_name, short_description, current_price, previous_price, coupon, coupon_discount_percent,
+  category, image_url, affiliate_link, platform, source_product_id, product_key, availability_status,
+  last_checked_at, last_check_error, extra_text, status, scheduled_at, published_at, site_published_at,
+  telegram_message_id, error_message, clicks, shares, favorites, campaign_name, priority,
+  intelligence_evidence, telegram_retry_count, telegram_next_retry_at, telegram_last_error_code,
+  created_at, updated_at
+`;
 
 function parsePrice(value) {
   const raw = String(value || "").replace(/[^\d.,]/g, "");
@@ -318,7 +326,7 @@ export async function listOffers({ search = "", status = "", category = "" } = {
     filters.push(`category = $${params.length}`);
   }
   const where = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
-  const sql = `SELECT telegram_offers.*,
+  const sql = `SELECT ${ADMIN_OFFER_COLUMNS},
     (SELECT COUNT(*) FROM site_analytics_events events WHERE events.offer_id=telegram_offers.id AND events.event_type='click') AS real_clicks,
     (SELECT COUNT(*) FROM offer_publication_history history WHERE history.offer_id=telegram_offers.id AND history.status='SUCESSO') AS publication_count,
     (SELECT MAX(published_at) FROM offer_publication_history history WHERE history.offer_id=telegram_offers.id AND history.status='SUCESSO') AS last_published_at,
@@ -331,14 +339,14 @@ export async function listOffers({ search = "", status = "", category = "" } = {
     ) AS last_published_price,
     COALESCE(telegram_offers.coupon, '') AS last_published_coupon,
     telegram_offers.extra_text ~* 'frete\\s+gr[aá]tis' AS last_published_free_shipping
-    FROM telegram_offers ${where} ORDER BY created_at DESC LIMIT 500`;
+    FROM telegram_offers ${where} ORDER BY created_at DESC LIMIT 300`;
   const result = await query(sql, params).catch(async (error) => {
     if (!/column .* does not exist|relation .* does not exist/i.test(String(error?.message || ""))) throw error;
     console.error("admin-offers-fallback", error?.message || error);
     return query(`SELECT
       id, product_name, short_description, current_price, previous_price, coupon, category, image_url,
       affiliate_link, platform, extra_text, status, scheduled_at, published_at, telegram_message_id,
-      telegram_response, error_message, clicks, created_at, updated_at,
+      NULL AS telegram_response, error_message, clicks, created_at, updated_at,
       0 AS shares, 0 AS favorites, NULL AS source_product_id, NULL AS product_key,
       NULL AS coupon_discount_percent, 'DESCONHECIDO' AS availability_status, NULL AS last_checked_at,
       NULL AS last_check_error, NULL AS site_published_at, 0 AS telegram_retry_count,
@@ -347,7 +355,7 @@ export async function listOffers({ search = "", status = "", category = "" } = {
       0 AS publication_count, published_at AS last_published_at, current_price AS last_published_price,
       COALESCE(coupon, '') AS last_published_coupon,
       FALSE AS last_published_free_shipping
-      FROM telegram_offers ${where} ORDER BY created_at DESC LIMIT 500`, params);
+      FROM telegram_offers ${where} ORDER BY created_at DESC LIMIT 300`, params);
   });
   return result.rows.map((row) => mapOffer({ ...row, clicks: Number(row.real_clicks || 0) }));
 }

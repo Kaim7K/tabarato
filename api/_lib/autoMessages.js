@@ -3,12 +3,14 @@ import { sendTelegramText } from "./telegram.js";
 
 export function mapAutoMessage(row) {
   if (!row) return null;
+  const imageUrl = row.image_url || "";
   return {
     id: row.id,
     title: row.title,
     message: row.message,
     channel: row.channel || "TELEGRAM",
-    imageUrl: row.image_url || "",
+    imageUrl,
+    hasEmbeddedImage: /^data:image\//i.test(imageUrl),
     whatsappGroup: row.whatsapp_group || "",
     isActive: row.is_active,
     intervalMinutes: row.interval_minutes,
@@ -55,7 +57,13 @@ function params(input) {
 }
 
 export async function listAutoMessages() {
-  const result = await query("SELECT * FROM telegram_auto_messages ORDER BY sort_order ASC, created_at ASC");
+  const result = await query(`SELECT
+    id, title, message, channel,
+    CASE WHEN image_url LIKE 'data:image/%' THEN '' ELSE image_url END AS image_url,
+    whatsapp_group, is_active, interval_minutes, sort_order, next_send_at, last_sent_at,
+    telegram_message_id, error_message, send_count, created_at, updated_at
+    FROM telegram_auto_messages
+    ORDER BY sort_order ASC, created_at ASC`);
   return result.rows.map(mapAutoMessage);
 }
 

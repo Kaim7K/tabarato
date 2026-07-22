@@ -197,6 +197,17 @@ test("admin offers do not disappear when automatic messages fail", () => {
   assert.match(offers, /column \.\* does not exist\|relation \.\* does not exist/);
 });
 
+test("admin list endpoints avoid heavy payloads that can exhaust transfer quota", () => {
+  const offers = readFileSync(join(root, "api", "_lib", "offers.js"), "utf8");
+  const messages = readFileSync(join(root, "api", "_lib", "autoMessages.js"), "utf8");
+  assert.match(offers, /ADMIN_OFFER_COLUMNS/);
+  assert.doesNotMatch(offers, /SELECT telegram_offers\.\*/);
+  assert.match(offers, /LIMIT 300/);
+  assert.match(offers, /NULL AS telegram_response/);
+  assert.match(messages, /CASE WHEN image_url LIKE 'data:image\/%'/);
+  assert.match(messages, /hasEmbeddedImage/);
+});
+
 test("extension publication sends a transient branded image to Telegram", () => {
   const route = readFileSync(join(root, "api", "admin", "ofertas", "[id]", "publicar.js"), "utf8");
   const publisher = readFileSync(join(root, "api", "_lib", "publisher.js"), "utf8");
