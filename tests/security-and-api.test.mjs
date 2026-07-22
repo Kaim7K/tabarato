@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { assertSafeProductUrl, isPrivateAddress } from "../api/_lib/productPreview.js";
-import { createAdminExtensionToken, createAdminSessionToken, getCookie, handleExtensionCors, isValidUuid, readJson, requireAdmin, requireCron, verifyAdminExtensionToken } from "../api/_lib/http.js";
+import { createAdminExtensionToken, createAdminSessionToken, getCookie, handleExtensionCors, isValidUuid, publicError, readJson, requireAdmin, requireCron, verifyAdminExtensionToken } from "../api/_lib/http.js";
 import { mapWithConcurrency } from "../src/lib/async.js";
 import { evaluateRepublish, queuePriority } from "../api/_lib/offerIntelligence.js";
 
@@ -30,6 +30,20 @@ test("product preview blocks private and local addresses", async () => {
   assert.equal(isPrivateAddress("8.8.8.8"), false);
   await assert.rejects(assertSafeProductUrl("https://127.0.0.1/produto"), /endereco publico/);
   await assert.rejects(assertSafeProductUrl("http://example.com/produto"), /HTTPS/);
+});
+
+test("public errors expose external transfer quota as a temporary service issue", () => {
+  const res = mockResponse();
+  const originalError = console.error;
+  console.error = () => {};
+  try {
+    publicError(res, new Error("Your project has exceeded the data transfer quota. Upgrade your plan to increase limits."));
+  } finally {
+    console.error = originalError;
+  }
+  assert.equal(res.statusCode, 503);
+  assert.equal(res.body.code, "DATA_TRANSFER_QUOTA");
+  assert.match(res.body.error, /ofertas continuam salvas/i);
 });
 
 test("admin cookie uses a derived token instead of the API key", () => {

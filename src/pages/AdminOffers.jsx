@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { ClipboardList, FolderKanban, LayoutDashboard, MessageSquareText, Plus } from "lucide-react";
+import { AlertTriangle, ClipboardList, FolderKanban, LayoutDashboard, MessageSquareText, Plus } from "lucide-react";
 import { DEFAULT_CATEGORIES, normalizeText } from "@/lib/catalog";
 import { mapWithConcurrency } from "@/lib/async";
 import { telegramOffersApi } from "@/lib/telegramOffersApi";
@@ -178,6 +178,7 @@ export default function AdminOffers() {
   const [sendingMessageId, setSendingMessageId] = useState("");
   const [autoFilling, setAutoFilling] = useState(false);
   const [message, setMessage] = useState(null);
+  const [loadError, setLoadError] = useState("");
   const messageTimerRef = useRef(null);
   const isMountedRef = useRef(true);
   const loadVersionRef = useRef(0);
@@ -224,6 +225,7 @@ export default function AdminOffers() {
       const migrated = await mapWithConcurrency(missingLegacy, (item) => telegramOffersApi.createCategory(item.name));
       const synchronizedCategories = [...serverCategories, ...migrated.map((item) => item.category)];
       if (!isMountedRef.current || requestVersion !== loadVersionRef.current) return;
+      setLoadError("");
       setOffers(nextOffers);
       setSiteMetrics(data.siteMetrics || { uniqueVisitors: 0, visits: 0, realClicks: 0, socialUniqueVisitors: 0, socialVisits: 0, socialVisitsToday: 0, socialVisits7d: 0 });
       const requestedId = new URLSearchParams(window.location.search).get("edit");
@@ -237,7 +239,11 @@ export default function AdminOffers() {
         localStorage.removeItem(CUSTOM_CATEGORIES_KEY);
       } catch {}
     } catch (error) {
-      if (isMountedRef.current && requestVersion === loadVersionRef.current) showMessage(error.message);
+      if (isMountedRef.current && requestVersion === loadVersionRef.current) {
+        const errorMessage = error.message || "Nao foi possivel carregar ofertas.";
+        setLoadError(errorMessage);
+        showMessage(errorMessage);
+      }
     } finally {
       if (isMountedRef.current && requestVersion === loadVersionRef.current) setLoading(false);
     }
@@ -681,6 +687,21 @@ export default function AdminOffers() {
           </aside>
 
           <section className="min-w-0">
+            {loadError && (
+              <div className="mb-4 rounded-lg border border-amber-400/35 bg-amber-500/10 px-4 py-3 text-sm text-amber-100 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <span className="flex items-start gap-2">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 flex-none" aria-hidden="true" />
+                  <span>{loadError}</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={load}
+                  className="self-start sm:self-auto rounded-md border border-amber-200/30 px-3 py-1.5 text-xs font-semibold text-amber-50 hover:bg-amber-200/10"
+                >
+                  Tentar novamente
+                </button>
+              </div>
+            )}
             <Suspense fallback={<div className="min-h-64 flex items-center justify-center text-sm text-white/45" role="status">Carregando seção...</div>}>
             {activeView === "dashboard" && (
               <Dashboard analytics={analytics} offers={offers} loading={loading} onNew={startNew} onEdit={edit} onRefresh={load} />

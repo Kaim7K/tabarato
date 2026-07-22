@@ -161,6 +161,12 @@ export function methodNotAllowed(res, methods) {
   return sendJson(res, 405, { error: "Método não permitido." });
 }
 
+function externalQuotaErrorMessage(error) {
+  const message = String(error?.message || error || "");
+  if (!/exceeded the data transfer quota|data transfer quota/i.test(message)) return "";
+  return "Servico de dados temporariamente bloqueado por limite de transferencia. As ofertas continuam salvas; regularize a quota do provedor de banco/hospedagem e tente novamente.";
+}
+
 export function isValidUuid(value) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ""));
 }
@@ -173,6 +179,8 @@ export function requireUuid(value, res) {
 
 export function publicError(res, error, fallback = "Erro interno.") {
   console.error(error?.message || error);
+  const quotaMessage = externalQuotaErrorMessage(error);
+  if (quotaMessage) return sendJson(res, 503, { error: quotaMessage, code: "DATA_TRANSFER_QUOTA" });
   const status = Number(error?.statusCode) || 500;
   return sendJson(res, status, { error: status < 500 ? error.message : fallback });
 }
