@@ -323,31 +323,14 @@ export async function listOffers({ search = "", status = "", category = "" } = {
     (SELECT COUNT(*) FROM offer_publication_history history WHERE history.offer_id=telegram_offers.id AND history.status='SUCESSO') AS publication_count,
     (SELECT MAX(published_at) FROM offer_publication_history history WHERE history.offer_id=telegram_offers.id AND history.status='SUCESSO') AS last_published_at,
     COALESCE(
-      (SELECT price_snapshot FROM offer_publication_history history
-       WHERE history.offer_id=telegram_offers.id
-         AND history.status='SUCESSO'
-         AND history.price_snapshot IS NOT NULL
-       ORDER BY history.published_at DESC LIMIT 1),
       (SELECT price FROM offer_price_history price_history
        WHERE price_history.offer_id=telegram_offers.id
          AND price_history.recorded_at <= COALESCE(telegram_offers.published_at, telegram_offers.site_published_at, telegram_offers.created_at)
        ORDER BY price_history.recorded_at DESC LIMIT 1),
       telegram_offers.current_price
     ) AS last_published_price,
-    COALESCE(
-      (SELECT coupon_snapshot FROM offer_publication_history history
-       WHERE history.offer_id=telegram_offers.id
-         AND history.status='SUCESSO'
-       ORDER BY history.published_at DESC LIMIT 1),
-      ''
-    ) AS last_published_coupon,
-    COALESCE(
-      (SELECT free_shipping_snapshot FROM offer_publication_history history
-       WHERE history.offer_id=telegram_offers.id
-         AND history.status='SUCESSO'
-       ORDER BY history.published_at DESC LIMIT 1),
-      FALSE
-    ) AS last_published_free_shipping
+    COALESCE(telegram_offers.coupon, '') AS last_published_coupon,
+    telegram_offers.extra_text ~* 'frete\\s+gr[aá]tis' AS last_published_free_shipping
     FROM telegram_offers ${where} ORDER BY created_at DESC LIMIT 500`, params);
   return result.rows.map((row) => mapOffer({ ...row, clicks: Number(row.real_clicks || 0) }));
 }

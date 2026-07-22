@@ -16,20 +16,11 @@ function canRetryTelegram(error, retryCount) {
   return error?.code === "RATE_LIMIT" && retryCount <= MAX_TELEGRAM_RETRIES;
 }
 
-function publicationSnapshot(offer) {
-  return {
-    price: Number(offer?.currentPrice || 0) || null,
-    coupon: offer?.coupon || null,
-    freeShipping: /frete\s+gr[aá]tis/i.test(String(offer?.extraText || "")),
-  };
-}
-
-async function recordSitePublication(id, offer) {
-  const snapshot = publicationSnapshot(offer);
+async function recordSitePublication(id) {
   await query(
-    `INSERT INTO offer_publication_history (offer_id, channel, status, price_snapshot, coupon_snapshot, free_shipping_snapshot)
-     VALUES ($1, 'SITE', 'SUCESSO', $2, $3, $4)`,
-    [id, snapshot.price, snapshot.coupon, snapshot.freeShipping]
+    `INSERT INTO offer_publication_history (offer_id, channel, status)
+     VALUES ($1, 'SITE', 'SUCESSO')`,
+    [id]
   ).catch(() => {});
 }
 
@@ -103,11 +94,11 @@ export async function publishOfferById(id, { shareImageDataUrl = "", forceRepubl
        WHERE id=$1 RETURNING *`,
       [id, siteRequested]
     );
-    if (siteRequested) await recordSitePublication(id, offer);
+    if (siteRequested) await recordSitePublication(id);
     return { ok: true, channels: { site: { ok: siteRequested }, telegram: { ok: true, skipped: true } }, offer: mapOffer(updated.rows[0]) };
   }
 
-  if (siteRequested) await recordSitePublication(id, offer);
+  if (siteRequested) await recordSitePublication(id);
   try {
     const result = await sendTelegramOffer({ ...offer, shareImageDataUrl, messageHeadline });
     const updated = await query(
@@ -120,9 +111,9 @@ export async function publishOfferById(id, { shareImageDataUrl = "", forceRepubl
       [id, result.messageId, JSON.stringify(result.response), siteRequested]
     );
     await query(
-      `INSERT INTO offer_publication_history (offer_id, channel, status, price_snapshot, coupon_snapshot, free_shipping_snapshot, external_message_id)
-       VALUES ($1, 'TELEGRAM', 'SUCESSO', $2, $3, $4, $5)`,
-      [id, publicationSnapshot(offer).price, publicationSnapshot(offer).coupon, publicationSnapshot(offer).freeShipping, result.messageId]
+      `INSERT INTO offer_publication_history (offer_id, channel, status, external_message_id)
+       VALUES ($1, 'TELEGRAM', 'SUCESSO', $2)`,
+      [id, result.messageId]
     ).catch(() => {});
     return {
       ok: true,

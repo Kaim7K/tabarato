@@ -234,8 +234,7 @@ test("system stores publication history and refreshes published offer prices", (
   assert.match(migration, /free_shipping_snapshot/);
   assert.match(migration, /last_checked_at/);
   assert.match(publisher, /external_message_id/);
-  assert.match(publisher, /publicationSnapshot/);
-  assert.match(publisher, /price_snapshot, coupon_snapshot, free_shipping_snapshot/);
+  assert.doesNotMatch(publisher, /price_snapshot, coupon_snapshot, free_shipping_snapshot/);
   assert.match(maintenance, /fetchProductPreview/);
   assert.match(maintenance, /current_price=\$2/);
   assert.match(maintenance, /status='EXPIRADO'/);
@@ -260,8 +259,8 @@ test("recent publication filtering keeps changed-price products eligible for a n
   const route = readFileSync(join(root, "api", "admin", "ofertas", "index.js"), "utf8");
   assert.match(offers, /recentOnly = false, cooldownHours = 24/);
   assert.match(offers, /price_history\.recorded_at > offer\.published_at/);
-  assert.match(offers, /price_snapshot/);
-  assert.match(offers, /coupon_snapshot/);
+  assert.doesNotMatch(offers, /price_snapshot/);
+  assert.doesNotMatch(offers, /coupon_snapshot/);
   assert.match(route, /cooldownHours/);
 });
 
