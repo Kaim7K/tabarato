@@ -18,6 +18,51 @@ function connectedStoreHostsFromOffers(offers) {
   return [...hosts].slice(0, 80);
 }
 
+const emptySiteMetrics = {
+  uniqueVisitors: 0,
+  visits: 0,
+  realClicks: 0,
+  socialUniqueVisitors: 0,
+  socialVisits: 0,
+  socialVisitsToday: 0,
+  socialVisits7d: 0,
+};
+
+async function safeListCategories() {
+  try {
+    return await listCategories();
+  } catch (error) {
+    console.error("admin-offers-categories", error?.message || error);
+    return [];
+  }
+}
+
+async function safeSiteMetrics() {
+  try {
+    const metrics = await query(`SELECT
+      (SELECT COUNT(*) FROM site_visitors) AS unique_visitors,
+      (SELECT COUNT(*) FROM site_visits) AS visits,
+      (SELECT COUNT(*) FROM site_analytics_events WHERE event_type='click') AS real_clicks,
+      (SELECT COUNT(DISTINCT visitor_id) FROM social_page_visits) AS social_unique_visitors,
+      (SELECT COUNT(*) FROM social_page_visits) AS social_visits,
+      (SELECT COUNT(*) FROM social_page_visits WHERE visit_day = (NOW() AT TIME ZONE 'America/Bahia')::date) AS social_visits_today,
+      (SELECT COUNT(*) FROM social_page_visits WHERE visit_day >= (NOW() AT TIME ZONE 'America/Bahia')::date - 6) AS social_visits_7d`);
+    const row = metrics.rows[0] || {};
+    return {
+      uniqueVisitors: Number(row.unique_visitors || 0),
+      visits: Number(row.visits || 0),
+      realClicks: Number(row.real_clicks || 0),
+      socialUniqueVisitors: Number(row.social_unique_visitors || 0),
+      socialVisits: Number(row.social_visits || 0),
+      socialVisitsToday: Number(row.social_visits_today || 0),
+      socialVisits7d: Number(row.social_visits_7d || 0),
+    };
+  } catch (error) {
+    console.error("admin-offers-metrics", error?.message || error);
+    return emptySiteMetrics;
+  }
+}
+
 export default async function handler(req, res) {
   if (handleExtensionCors(req, res, ["GET", "POST", "DELETE"])) return;
   if (!requireAdmin(req, res, { allowExtension: true })) return;
@@ -42,30 +87,14 @@ export default async function handler(req, res) {
         status: req.query.status || "",
         category: req.query.category || "",
       });
-      const [categories, metrics] = await Promise.all([
-        listCategories(),
-        query(`SELECT
-          (SELECT COUNT(*) FROM site_visitors) AS unique_visitors,
-          (SELECT COUNT(*) FROM site_visits) AS visits,
-          (SELECT COUNT(*) FROM site_analytics_events WHERE event_type='click') AS real_clicks,
-          (SELECT COUNT(DISTINCT visitor_id) FROM social_page_visits) AS social_unique_visitors,
-          (SELECT COUNT(*) FROM social_page_visits) AS social_visits,
-          (SELECT COUNT(*) FROM social_page_visits WHERE visit_day = (NOW() AT TIME ZONE 'America/Bahia')::date) AS social_visits_today,
-          (SELECT COUNT(*) FROM social_page_visits WHERE visit_day >= (NOW() AT TIME ZONE 'America/Bahia')::date - 6) AS social_visits_7d`),
+      const [categories, siteMetrics] = await Promise.all([
+        safeListCategories(),
+        safeSiteMetrics(),
       ]);
-      const metricRow = metrics.rows[0] || {};
       return sendJson(res, 200, {
         offers,
         categories,
-        siteMetrics: {
-          uniqueVisitors: Number(metricRow.unique_visitors || 0),
-          visits: Number(metricRow.visits || 0),
-          realClicks: Number(metricRow.real_clicks || 0),
-          socialUniqueVisitors: Number(metricRow.social_unique_visitors || 0),
-          socialVisits: Number(metricRow.social_visits || 0),
-          socialVisitsToday: Number(metricRow.social_visits_today || 0),
-          socialVisits7d: Number(metricRow.social_visits_7d || 0),
-        },
+        siteMetrics,
         connectedStoreHosts: connectedStoreHostsFromOffers(offers),
       });
     }

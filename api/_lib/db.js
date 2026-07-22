@@ -226,15 +226,8 @@ export async function ensureSchema() {
       CREATE INDEX IF NOT EXISTS idx_offer_publication_history_offer_date
       ON offer_publication_history (offer_id, published_at DESC);
 
-      CREATE INDEX IF NOT EXISTS idx_offer_publication_history_success_recent
-      ON offer_publication_history (offer_id, published_at DESC)
-      WHERE status = 'SUCESSO';
-
       CREATE INDEX IF NOT EXISTS idx_offer_price_history_offer_date
       ON offer_price_history (offer_id, recorded_at DESC);
-
-      CREATE INDEX IF NOT EXISTS idx_offer_price_history_offer_price_recent
-      ON offer_price_history (offer_id, recorded_at DESC, price);
 
       INSERT INTO offer_price_history (offer_id, price, recorded_at)
       SELECT id, current_price, COALESCE(published_at, created_at)
@@ -283,8 +276,6 @@ export async function ensureSchema() {
       WHERE telegram_next_retry_at IS NOT NULL;
       CREATE INDEX IF NOT EXISTS idx_telegram_offers_created_at ON telegram_offers (created_at);
       CREATE INDEX IF NOT EXISTS idx_telegram_offers_category ON telegram_offers (category);
-      CREATE INDEX IF NOT EXISTS idx_telegram_offers_queue_score_inputs
-      ON telegram_offers (status, priority, updated_at DESC);
       CREATE INDEX IF NOT EXISTS idx_telegram_offers_public_recent
       ON telegram_offers (COALESCE(published_at, updated_at, created_at) DESC)
       WHERE site_published_at IS NOT NULL;

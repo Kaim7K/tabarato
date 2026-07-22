@@ -185,10 +185,16 @@ test("scheduled messages separate automatic Telegram from manual WhatsApp delive
 
 test("admin offers do not disappear when automatic messages fail", () => {
   const page = readFileSync(join(root, "src", "pages", "AdminOffers.jsx"), "utf8");
+  const route = readFileSync(join(root, "api", "admin", "ofertas", "index.js"), "utf8");
+  const offers = readFileSync(join(root, "api", "_lib", "offers.js"), "utf8");
   assert.match(page, /Promise\.allSettled/);
   assert.match(page, /offersResult\.status !== "fulfilled"/);
   assert.match(page, /messagesResult\.status === "fulfilled"/);
   assert.match(page, /Ofertas carregadas, mas mensagens falharam/);
+  assert.match(route, /safeListCategories/);
+  assert.match(route, /safeSiteMetrics/);
+  assert.match(offers, /admin-offers-fallback/);
+  assert.match(offers, /column \.\* does not exist\|relation \.\* does not exist/);
 });
 
 test("extension publication sends a transient branded image to Telegram", () => {
